@@ -1,0 +1,27 @@
+[
+  {
+    "id": 1,
+    "name": "A4",
+    "format": "{\"width\":210,\"height\":297,\"margins\":{\"top\":20,\"bottom\":20,\"left\":20,\"right\":20},\"unit\":\"mm\"}"
+  },
+  {
+    "id": 2,
+    "name": "Thermal_80mm",
+    "format": "{\"width\":80,\"height\":\"auto\",\"margins\":{\"top\":5,\"bottom\":5,\"left\":5,\"right\":5},\"unit\":\"mm\"}"
+  },
+  {
+    "id": 3,
+    "name": "Thermal_58mm",
+    "format": "{\"width\":58,\"height\":\"auto\",\"margins\":{\"top\":3,\"bottom\":3,\"left\":3,\"right\":3},\"unit\":\"mm\"}"
+  },
+  {
+    "id": 4,
+    "name": "A5",
+    "format": "{\"width\":148,\"height\":210,\"margins\":{\"top\":15,\"bottom\":15,\"left\":15,\"right\":15},\"unit\":\"mm\"}"
+  },
+  {
+    "id": 5,
+    "name": "Custom",
+    "format": "{\"width\":210,\"height\":297,\"margins\":{\"top\":20,\"bottom\":20,\"left\":20,\"right\":20},\"unit\":\"mm\"}"
+  }
+]
