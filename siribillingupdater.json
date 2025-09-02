@@ -1,0 +1,23 @@
+{
+  "version": "0.1.0",
+  "notes": "Initial release of Siri Billing App.",
+  "pub_date": "2025-09-02T11:00:00Z",
+  "platforms": {
+    "darwin-x86_64": {
+      "signature": "YOUR_DARWIN_X86_64_SIGNATURE",
+      "url": "https://github.com/mahiprime2001/Siri-billing-app/releases/download/v0.1.0/siri-billing-app_0.1.0_x64.app.tar.gz"
+    },
+    "darwin-aarch64": {
+      "signature": "YOUR_DARWIN_AARCH64_SIGNATURE",
+      "url": "https://github.com/mahiprime2001/Siri-billing-app/releases/download/v0.1.0/siri-billing-app_0.1.0_aarch64.app.tar.gz"
+    },
+    "linux-x86_64": {
+      "signature": "YOUR_LINUX_X86_64_SIGNATURE",
+      "url": "https://github.com/mahiprime2001/Siri-billing-app/releases/download/v0.1.0/siri-billing-app_0.1.0_amd64.deb"
+    },
+    "windows-x86_64": {
+      "signature": "YOUR_WINDOWS_X86_64_SIGNATURE",
+      "url": "https://github.com/mahiprime2001/Siri-billing-app/releases/download/v0.1.0/siri-billing-app_0.1.0_x64-setup.exe"
+    }
+  }
+}
