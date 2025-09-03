@@ -1,57 +1,203 @@
-name: Build & Release Tauri App
+name: "Tauri Cross-Platform Auto Release"
 
 on:
   push:
-    tags:
-      - "v*" # Run only when pushing version tags like v1.0.0
+    branches:
+      - main   # adjust if your default branch is different
 
 jobs:
-  create-release:
+  bump-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # needed for full commit history
+
+      - name: Setup jq
+        run: sudo apt-get install -y jq
+
+      - name: Determine bump type
+        id: bump-type
+        run: |
+          LAST_COMMIT_MSG=$(git log -1 --pretty=%B)
+          echo "Last commit: $LAST_COMMIT_MSG"
+
+          if echo "$LAST_COMMIT_MSG" | grep -q "BREAKING CHANGE"; then
+            echo "type=major" >> $GITHUB_OUTPUT
+          elif echo "$LAST_COMMIT_MSG" | grep -q "^feat:"; then
+            echo "type=minor" >> $GITHUB_OUTPUT
+          else
+            echo "type=patch" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Bump version in tauri.conf.json & package.json
+        id: bump
+        run: |
+          TAURI_FILE=src-tauri/tauri.conf.json
+          PKG_FILE=package.json
+
+          OLD_VERSION=$(jq -r '.package.version' $TAURI_FILE)
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$OLD_VERSION"
+
+          case "${{ steps.bump-type.outputs.type }}" in
+            major)
+              MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor)
+              MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch)
+              PATCH=$((PATCH + 1)) ;;
+          esac
+
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+
+          # Update files
+          jq ".package.version = \"$NEW_VERSION\"" $TAURI_FILE > tmp.$$.json && mv tmp.$$.json $TAURI_FILE
+          jq ".version = \"$NEW_VERSION\"" $PKG_FILE > tmp.$$.json && mv tmp.$$.json $PKG_FILE
+
+          echo "Bumped version: $OLD_VERSION → $NEW_VERSION"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+          # Commit & tag
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add $TAURI_FILE $PKG_FILE
+          git commit -m "chore: bump version to $NEW_VERSION [skip ci]"
+          git tag v$NEW_VERSION
+          git push origin main --tags
+
+  build:
+    needs: bump-version
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-latest, windows-latest, macos-latest]
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            node_modules
+          key: ${{ runner.os }}-deps-${{ hashFiles('**/pnpm-lock.yaml', '**/yarn.lock', '**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
+
+      - name: Install frontend dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile || npm install
+
+      - name: Build frontend
+        run: |
+          pnpm build || npm run build
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --locked
+
+      - name: Build Tauri App
+        run: |
+          pnpm tauri build || npm run tauri build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-${{ matrix.platform }}
+          path: src-tauri/target/release/bundle/
+
+  release:
+    needs: [bump-version, build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate Conventional Changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          CURR_TAG=v${{ needs.bump-version.outputs.version }}
+
+          if [ -z "$PREV_TAG" ]; then
+            LOG_RANGE=""
+          else
+            LOG_RANGE="$PREV_TAG..HEAD"
+          fi
+
+          echo "Generating changelog from $PREV_TAG → $CURR_TAG"
+
+          {
+            echo "## $CURR_TAG"
+            echo ""
+
+            echo "### ✨ Features"
+            git log $LOG_RANGE --grep="^feat:" --pretty=format:"- %s" || true
+            echo ""
+
+            echo "### 🐞 Fixes"
+            git log $LOG_RANGE --grep="^fix:" --pretty=format:"- %s" || true
+            echo ""
+
+            echo "### 💥 Breaking Changes"
+            git log $LOG_RANGE --grep="BREAKING CHANGE" --pretty=format:"- %s" || true
+            echo ""
+
+            echo "### 📦 Others"
+            git log $LOG_RANGE --invert-grep --grep="^feat:" --grep="^fix:" --grep="BREAKING CHANGE" --pretty=format:"- %s" || true
+            echo ""
+          } > new_changelog.md
+
+          # Prepend to CHANGELOG.md (keep history)
+          if [ -f CHANGELOG.md ]; then
+            cat new_changelog.md CHANGELOG.md > tmp && mv tmp CHANGELOG.md
+          else
+            mv new_changelog.md CHANGELOG.md
+          fi
+
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          cat new_changelog.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Commit updated CHANGELOG.md
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "docs: update changelog for v${{ needs.bump-version.outputs.version }} [skip ci]" || echo "No changes"
+          git push origin main
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  build:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Setup Node
-        uses: actions/setup-node@v3
-        with:
-          node-version: 18
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Dependencies
-        run: npm install --legacy-peer-deps
-
-      - name: Build Tauri App
-        run: npm run tauri build
-
-      - name: Generate updater manifest
-        run: cargo tauri updater build --private-key "${{ secrets.TAURI_PRIVATE_KEY }}"
-
-      - name: Upload Release Assets
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            src-tauri/target/release/bundle/**/*
-            latest.json
+          tag_name: v${{ needs.bump-version.outputs.version }}
+          name: "Release v${{ needs.bump-version.outputs.version }}"
+          body: ${{ steps.changelog.outputs.changelog }}
+          files: artifacts/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
