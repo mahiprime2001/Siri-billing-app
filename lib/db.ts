@@ -1,8 +1,5 @@
 import mysql from 'mysql2/promise';
-import dotenv from 'dotenv';
 import { showToast } from '../components/ui/use-toast';
-
-dotenv.config(); // Load environment variables at the module level
 
 let pool: mysql.Pool | null = null;
 

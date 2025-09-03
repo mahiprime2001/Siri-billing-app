@@ -75,16 +75,12 @@ jobs:
 
           NEW_VERSION="$MAJOR.$MINOR.$PATCH"
 
-          # 🔄 If tag exists but no release, delete it. Else increment patch until free.
           if git rev-parse "v$NEW_VERSION" >/dev/null 2>&1; then
-            echo "⚠️ Tag v$NEW_VERSION already exists. Checking if release exists..."
             RELEASE=$(gh release view "v$NEW_VERSION" --json id --jq '.id' || echo "")
             if [ -z "$RELEASE" ]; then
-              echo "🧹 No release found for v$NEW_VERSION, deleting stale tag"
               git push origin :refs/tags/v$NEW_VERSION || true
               git tag -d v$NEW_VERSION || true
             else
-              echo "✅ Tag v$NEW_VERSION already has a release, will increment patch"
               while git rev-parse "v$NEW_VERSION" >/dev/null 2>&1; do
                 PATCH=$((PATCH + 1))
                 NEW_VERSION="$MAJOR.$MINOR.$PATCH"
@@ -117,7 +113,13 @@ jobs:
     runs-on: ${{ matrix.platform }}
 
     env:
-      SKIP_DB: true   # 👈 Prevent DB connection during CI builds
+      DB_HOST: ${{ secrets.DB_HOST }}
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASS: ${{ secrets.DB_PASS }}
+      DB_NAME: ${{ secrets.DB_NAME }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+      TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
 
     steps:
       - name: Checkout repository
@@ -167,6 +169,15 @@ jobs:
   release:
     needs: [bump-version, build]
     runs-on: ubuntu-latest
+    env:
+      DB_HOST: ${{ secrets.DB_HOST }}
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASS: ${{ secrets.DB_PASS }}
+      DB_NAME: ${{ secrets.DB_NAME }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+      TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -196,25 +207,20 @@ jobs:
           {
             echo "## $CURR_TAG - $DATE"
             echo ""
-
             echo "### ✨ Features"
             git log $RANGE --grep="^feat:" --pretty=format:"- %s" | sed 's/^feat: //g' || true
             echo ""
-
             echo "### 🐞 Fixes"
             git log $RANGE --grep="^fix:" --pretty=format:"- %s" | sed 's/^fix: //g' || true
             echo ""
-
             echo "### 💥 Breaking Changes"
             git log $RANGE --grep="BREAKING CHANGE" --pretty=format:"- %s" || true
             echo ""
-
             echo "### 📦 Others"
             git log $RANGE \
               --invert-grep --grep="^feat:" --grep="^fix:" --grep="BREAKING CHANGE" \
               --pretty=format:"- %s" || true
             echo ""
-
             if [ -n "$COMPARE_LINK" ]; then
               echo "$COMPARE_LINK"
               echo ""
@@ -246,7 +252,7 @@ jobs:
           RELEASE_URL="https://github.com/${{ github.repository }}/releases/download/v$VERSION"
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          echo "${{ secrets.TAURI_PRIVATE_KEY }}" > private.key
+          echo "$TAURI_PRIVATE_KEY" > private.key
 
           echo "{" > latest.json
           echo "  \"version\": \"$VERSION\"," >> latest.json
@@ -260,7 +266,7 @@ jobs:
 
             tauri signer sign \
               --private-key private.key \
-              ${TAURI_KEY_PASSWORD:+--password ${{ secrets.TAURI_KEY_PASSWORD }}} \
+              ${TAURI_KEY_PASSWORD:+--password $TAURI_KEY_PASSWORD} \
               --input "$file" > sig.txt
             signature=$(cat sig.txt)
 
