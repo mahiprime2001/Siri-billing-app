@@ -7,7 +7,7 @@
     "frontendDist": "../.next",
     "devUrl": "http://localhost:3000",
     "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build"
+    "beforeBuildCommand": ""
   },
   "app": {
     "windows": [

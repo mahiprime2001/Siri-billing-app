@@ -144,21 +144,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-deps-
 
-      - name: Install frontend dependencies
-        run: |
-          corepack enable
-          pnpm install --frozen-lockfile || npm install
-
-      - name: Build frontend
-        run: |
-          pnpm build || npm run build
-
       - name: Install Tauri CLI
         run: cargo install tauri-cli --locked
 
       - name: Build Tauri App
         run: |
-          pnpm tauri build || npm run tauri build
+          tauri build || tauri build
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
