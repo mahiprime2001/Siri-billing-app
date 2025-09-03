@@ -18,8 +18,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup jq
-        run: sudo apt-get install -y jq
+      - name: Setup tools
+        run: |
+          sudo apt-get install -y jq
+          curl -sSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+          sudo apt update
+          sudo apt install gh -y
 
       - name: Determine bump type
         id: bump-type
@@ -66,10 +72,27 @@ jobs:
 
           NEW_VERSION="$MAJOR.$MINOR.$PATCH"
 
+          # 🔄 If tag exists but no release, delete it. Else increment patch until free.
+          if git rev-parse "v$NEW_VERSION" >/dev/null 2>&1; then
+            echo "⚠️ Tag v$NEW_VERSION already exists. Checking if release exists..."
+            RELEASE=$(gh release view "v$NEW_VERSION" --json id --jq '.id' || echo "")
+            if [ -z "$RELEASE" ]; then
+              echo "🧹 No release found for v$NEW_VERSION, deleting stale tag"
+              git push origin :refs/tags/v$NEW_VERSION || true
+              git tag -d v$NEW_VERSION || true
+            else
+              echo "✅ Tag v$NEW_VERSION already has a release, will increment patch"
+              while git rev-parse "v$NEW_VERSION" >/dev/null 2>&1; do
+                PATCH=$((PATCH + 1))
+                NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+              done
+            fi
+          fi
+
           jq ".version = \"$NEW_VERSION\"" $TAURI_FILE > tmp.$$.json && mv tmp.$$.json $TAURI_FILE
           jq ".version = \"$NEW_VERSION\"" $PKG_FILE > tmp.$$.json && mv tmp.$$.json $PKG_FILE
 
-          echo "Bumped version: $OLD_VERSION → $NEW_VERSION"
+          echo "✅ Final version: $OLD_VERSION → $NEW_VERSION"
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
           git config user.name "github-actions[bot]"
@@ -78,6 +101,8 @@ jobs:
           git commit -m "chore: bump version to $NEW_VERSION [skip ci]" || echo "No changes"
           git tag v$NEW_VERSION
           git push origin main --tags
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build:
     needs: bump-version
@@ -150,8 +175,8 @@ jobs:
       - name: Generate Conventional Changelog
         id: changelog
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           CURR_TAG=v${{ needs.bump-version.outputs.version }}
+          PREV_TAG=$(git describe --tags --abbrev=0 --exclude="$CURR_TAG" 2>/dev/null || echo "")
           DATE=$(date -u +"%Y-%m-%d")
 
           if [ -z "$PREV_TAG" ]; then
@@ -190,7 +215,9 @@ jobs:
             fi
           } > new_changelog.md
 
+          # --- Clean old entries if reusing version ---
           if [ -f CHANGELOG.md ]; then
+            sed -i "/^## $CURR_TAG - /,/^## v[0-9]\+\.[0-9]\+\.[0-9]\+/d" CHANGELOG.md
             cat new_changelog.md CHANGELOG.md > tmp && mv tmp CHANGELOG.md
           else
             mv new_changelog.md CHANGELOG.md
