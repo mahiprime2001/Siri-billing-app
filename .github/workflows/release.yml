@@ -9,7 +9,6 @@ on:
 permissions:
   contents: write
 
-
 jobs:
   bump-version:
     runs-on: ubuntu-latest
@@ -117,6 +116,9 @@ jobs:
 
     runs-on: ${{ matrix.platform }}
 
+    env:
+      SKIP_DB: true   # 👈 Prevent DB connection during CI builds
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -219,7 +221,6 @@ jobs:
             fi
           } > new_changelog.md
 
-          # --- Clean old entries if reusing version ---
           if [ -f CHANGELOG.md ]; then
             sed -i "/^## $CURR_TAG - /,/^## v[0-9]\+\.[0-9]\+\.[0-9]\+/d" CHANGELOG.md
             cat new_changelog.md CHANGELOG.md > tmp && mv tmp CHANGELOG.md
