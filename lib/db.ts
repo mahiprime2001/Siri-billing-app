@@ -4,16 +4,23 @@ import { showToast } from '../components/ui/use-toast';
 
 dotenv.config(); // Load environment variables at the module level
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  port: parseInt(process.env.DB_PORT || '3306', 10),
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-});
+let pool: mysql.Pool | null = null;
+
+function getPool(): mysql.Pool {
+  if (!pool) {
+    pool = mysql.createPool({
+      host: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT || '3306', 10),
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0,
+    });
+  }
+  return pool;
+}
 
 export async function checkDbConnection(isOnline: boolean) {
   if (!isOnline) {
@@ -27,7 +34,7 @@ export async function checkDbConnection(isOnline: boolean) {
   }
 
   try {
-    const connection = await pool.getConnection();
+    const connection = await getPool().getConnection();
     connection.release();
     console.log('Database connection successful.');
     return true;
@@ -42,4 +49,4 @@ export async function checkDbConnection(isOnline: boolean) {
   }
 }
 
-export default pool;
+export default getPool;

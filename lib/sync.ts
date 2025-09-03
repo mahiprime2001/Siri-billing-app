@@ -1,4 +1,4 @@
-import pool from './db'; // Assuming lib/db.ts exports the mysql2 pool
+import getPool from './db'; // Assuming lib/db.ts exports the mysql2 pool
 import { promises as fs } from 'fs';
 import path from 'path';
 import { logEvent, LogEventType } from './log'; // Import logEvent and LogEventType
@@ -40,9 +40,10 @@ export async function logSyncEvent(
   let connection;
   const syncTime = new Date(); // Moved declaration outside try block
   const sanitizedData = sanitizeChangeData(changeType, changeData); // Moved declaration outside try block
-  const changeDataJson = JSON.stringify(sanitizedData); // Moved declaration outside try block
+    const changeDataJson = JSON.stringify(sanitizedData); // Moved declaration outside try block
 
   try {
+    const pool = getPool(); // Get the pool at runtime
     connection = await pool.getConnection();
 
     await connection.query(
@@ -110,6 +111,7 @@ export async function replayPendingSyncEvents(): Promise<void> {
       return;
     }
 
+    const pool = getPool(); // Get the pool at runtime
     connection = await pool.getConnection();
     console.log(`Attempting to replay ${pendingEvents.length} pending sync events...`);
 
@@ -166,6 +168,7 @@ export async function replayPendingSyncEvents(): Promise<void> {
 export async function fetchDataAndSaveToJson(tableName: string, fileName: string): Promise<void> {
   let connection;
   try {
+    const pool = getPool(); // Get the pool at runtime
     connection = await pool.getConnection();
     const [rows] = await connection.query<any[]>(`SELECT * FROM ${tableName}`);
     await fs.writeFile(path.join(JSON_DATA_DIR, fileName), JSON.stringify(rows, null, 2), 'utf8');
@@ -185,6 +188,7 @@ export async function fetchDataAndSaveToJson(tableName: string, fileName: string
 export async function updateUserSessionOnStartup(): Promise<void> {
   let connection;
   try {
+    const pool = getPool(); // Get the pool at runtime
     connection = await pool.getConnection();
     const startupTime = new Date();
 

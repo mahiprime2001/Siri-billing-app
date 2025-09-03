@@ -1,4 +1,4 @@
-import pool from './db';
+import getPool from './db';
 import path from 'path';
 import fs from 'fs/promises';
 import dotenv from 'dotenv';
@@ -9,7 +9,7 @@ dotenv.config();
 export async function generateDatabaseSchema() {
     let connection;
     try {
-        connection = await pool.getConnection();
+        connection = await getPool().getConnection();
         const [rows] = await connection.execute("SHOW TABLES");
         const tableNames = (rows as any[]).map((table: any) => Object.values(table)[0]);
 
@@ -35,6 +35,7 @@ export async function generateDatabaseSchema() {
 export async function extractAllData() {
     try {
         console.log('Starting data extraction...');
+        const pool = getPool(); // Get the pool at runtime
         // 1. Extract Products and ProductBarcodes
         const [products] = await pool.query('SELECT * FROM Products');
         const [productBarcodes] = await pool.query('SELECT * FROM ProductBarcodes');
