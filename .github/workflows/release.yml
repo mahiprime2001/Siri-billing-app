@@ -146,6 +146,7 @@ jobs:
 
       - name: Install Tauri CLI and Build App
         run: |
+          npm install -g pnpm
           pnpm install -g @tauri-apps/cli
           pnpm tauri build
 
