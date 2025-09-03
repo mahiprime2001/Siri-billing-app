@@ -21,13 +21,6 @@
     ],
     "security": {
       "csp": null
-    },
-    "updater": {
-      "active": true,
-      "endpoints": [
-        "https://github.com/mahiprime2001/Siri-billing-app/releases/download/latest/latest.json"
-      ],
-      "pubkey": "RWQG3zfbD0Wvvmem6Gm9Tz5yXoCECpF68RoqE0izwW8u4h+3yK3sCiNt"
     }
   },
   "bundle": {
@@ -40,5 +33,14 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/mahiprime2001/Siri-billing-app/releases/download/latest/latest.json"
+      ],
+      "pubkey": "RWQG3zfbD0Wvvmem6Gm9Tz5yXoCECpF68RoqE0izwW8u4h+3yK3sCiNt"
+    }
   }
 }
