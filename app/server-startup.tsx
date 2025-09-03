@@ -1,14 +1,11 @@
 import { replayPendingSyncEvents, updateUserSessionOnStartup } from '@/lib/sync';
-import { generateDatabaseSchema, extractAllData } from '@/lib/script-functions';
+import { extractAllData } from '@/lib/script-functions';
 import { logEvent, LogEventType } from '@/lib/log'; // Import logEvent and LogEventType
 
 // This component will run only on the server
 export default async function ServerStartup() {
   console.log('Running server startup tasks...');
   try {
-    // Generate database schema (can be run periodically or on demand)
-    await generateDatabaseSchema();
-
     // Extract initial data (can be run periodically or on demand)
     await extractAllData();
 

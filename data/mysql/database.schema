@@ -1,4 +1,3 @@
--- Table: BillFormats
 CREATE TABLE `BillFormats` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(255) DEFAULT NULL,
@@ -7,7 +6,6 @@ CREATE TABLE `BillFormats` (
   UNIQUE KEY `name` (`name`)
 ) ENGINE=InnoDB AUTO_INCREMENT=16 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Table: BillItems
 CREATE TABLE `BillItems` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `billId` varchar(255) DEFAULT NULL,
@@ -24,9 +22,8 @@ CREATE TABLE `BillItems` (
   KEY `productId` (`productId`),
   CONSTRAINT `BillItems_ibfk_1` FOREIGN KEY (`billId`) REFERENCES `Bills` (`id`),
   CONSTRAINT `BillItems_ibfk_2` FOREIGN KEY (`productId`) REFERENCES `Products` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=1754821412530 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=1754821412533 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Table: Bills
 CREATE TABLE `Bills` (
   `id` varchar(255) NOT NULL,
   `storeId` varchar(255) DEFAULT NULL,
@@ -62,7 +59,6 @@ CREATE TABLE `Bills` (
   CONSTRAINT `Bills_ibfk_3` FOREIGN KEY (`customerId`) REFERENCES `Customers` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Table: Customers
 CREATE TABLE `Customers` (
   `id` varchar(255) NOT NULL,
   `name` varchar(255) DEFAULT NULL,
@@ -76,7 +72,6 @@ CREATE TABLE `Customers` (
   UNIQUE KEY `email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Table: ProductBarcodes
 CREATE TABLE `ProductBarcodes` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `productId` varchar(255) DEFAULT NULL,
@@ -86,7 +81,6 @@ CREATE TABLE `ProductBarcodes` (
   CONSTRAINT `ProductBarcodes_ibfk_1` FOREIGN KEY (`productId`) REFERENCES `Products` (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Table: Products
 CREATE TABLE `Products` (
   `id` varchar(255) NOT NULL,
   `name` varchar(255) DEFAULT NULL,
@@ -98,7 +92,6 @@ CREATE TABLE `Products` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Table: Stores
 CREATE TABLE `Stores` (
   `id` varchar(255) NOT NULL,
   `name` varchar(255) DEFAULT NULL,
@@ -110,7 +103,6 @@ CREATE TABLE `Stores` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Table: SystemSettings
 CREATE TABLE `SystemSettings` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `gstin` varchar(255) DEFAULT NULL,
@@ -122,7 +114,6 @@ CREATE TABLE `SystemSettings` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Table: UserStores
 CREATE TABLE `UserStores` (
   `userId` varchar(255) NOT NULL,
   `storeId` varchar(255) NOT NULL,
@@ -132,7 +123,6 @@ CREATE TABLE `UserStores` (
   CONSTRAINT `UserStores_ibfk_2` FOREIGN KEY (`storeId`) REFERENCES `Stores` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Table: Users
 CREATE TABLE `Users` (
   `id` varchar(255) NOT NULL,
   `name` varchar(255) DEFAULT NULL,
@@ -140,20 +130,59 @@ CREATE TABLE `Users` (
   `password` varchar(255) DEFAULT NULL,
   `role` varchar(50) DEFAULT NULL,
   `status` varchar(50) DEFAULT NULL,
+  `sessionDuration` int(11) DEFAULT NULL,
+  `createdAt` datetime DEFAULT NULL,
+  `updatedAt` datetime DEFAULT NULL,
   `lastLogin` datetime DEFAULT NULL,
   `lastLogout` datetime DEFAULT NULL,
   `totalSessionDuration` int(11) DEFAULT 0,
-  `createdAt` datetime DEFAULT NULL,
-  `updatedAt` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Table: sync_table
+CREATE TABLE `app_config` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `config_key` varchar(100) NOT NULL,
+  `config_value` text NOT NULL,
+  `created_at` datetime DEFAULT current_timestamp(),
+  `updated_at` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `config_key` (`config_key`)
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `password_change_log` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` varchar(255) NOT NULL,
+  `changed_at` datetime DEFAULT current_timestamp(),
+  `ip_address` varchar(45) DEFAULT NULL,
+  `user_agent` text DEFAULT NULL,
+  `change_type` enum('reset','change','admin') DEFAULT 'reset',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_changed_at` (`changed_at`),
+  CONSTRAINT `password_change_log_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `Users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `password_reset_tokens` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` varchar(255) NOT NULL,
+  `token_hash` varchar(64) NOT NULL,
+  `expires_at` datetime NOT NULL,
+  `used_at` datetime DEFAULT NULL,
+  `created_at` datetime DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_user_token` (`user_id`,`token_hash`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_token_hash` (`token_hash`),
+  KEY `idx_expires_at` (`expires_at`),
+  CONSTRAINT `password_reset_tokens_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `Users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE `sync_table` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `sync_time` datetime DEFAULT NULL,
   `change_type` varchar(50) DEFAULT NULL,
   `change_data` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`change_data`)),
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=18 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=54 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

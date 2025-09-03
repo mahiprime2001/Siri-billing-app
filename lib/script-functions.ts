@@ -6,32 +6,6 @@ import mysql from 'mysql2/promise';
 
 dotenv.config();
 
-export async function generateDatabaseSchema() {
-    let connection;
-    try {
-        connection = await getPool().getConnection();
-        const [rows] = await connection.execute("SHOW TABLES");
-        const tableNames = (rows as any[]).map((table: any) => Object.values(table)[0]);
-
-        let schema = '';
-        for (const tableName of tableNames) {
-            const [createTableResult] = await connection.execute(`SHOW CREATE TABLE \`${tableName}\``);
-            const createTableStatement = (createTableResult as any[])[0]['Create Table'];
-            schema += `${createTableStatement};\n\n`;
-        }
-
-        const schemaFilePath = path.join(process.cwd(), 'database.schema');
-        await fs.writeFile(schemaFilePath, schema);
-        console.log('Database schema has been updated successfully.');
-    } catch (error) {
-        console.error('Error generating database schema:', error);
-    } finally {
-        if (connection) {
-            connection.release();
-        }
-    }
-}
-
 export async function extractAllData() {
     try {
         console.log('Starting data extraction...');
