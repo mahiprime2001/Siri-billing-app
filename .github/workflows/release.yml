@@ -150,9 +150,11 @@ jobs:
           else
             cp new_changelog.md CHANGELOG.md
           fi
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          # Use a random delimiter to avoid conflicts
+          delimiter="ghadelimiter_$(openssl rand -hex 8)"
+          echo "changelog<<${delimiter}" >> $GITHUB_OUTPUT
           cat new_changelog.md >> $GITHUB_OUTPUT
-          echo EOF >> $GITHUB_OUTPUT
+          echo "${delimiter}" >> $GITHUB_OUTPUT
       - name: Commit changelog
         run: |
           git add CHANGELOG.md
