@@ -7,6 +7,7 @@ on:
 permissions:
   contents: write
   actions: read
+
 jobs:
   calculate-version:
     runs-on: ubuntu-22.04
@@ -40,9 +41,7 @@ jobs:
           NEW_VERSION="$MAJOR.$MINOR.$PATCH"
           echo "Calculated next version: $OLD_VERSION -> $NEW_VERSION"
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-      - name: Update tauri.conf.json with new binary name
-        run: |
-          jq '.productName = "Siri_billing_app" | .mainBinaryName = "Siri_billing_app"' src-tauri/tauri.conf.json > tmp.json && mv tmp.json src-tauri/tauri.conf.json
+
   build:
     needs: calculate-version
     outputs:
@@ -58,9 +57,11 @@ jobs:
       TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -69,7 +70,9 @@ jobs:
             libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev \
             librsvg2-dev patchelf libjavascriptcoregtk-4.1-dev libsoup-3.0-dev \
             pkg-config clang
+
       - uses: dtolnay/rust-toolchain@stable
+
       - uses: actions/cache@v4
         with:
           path: |
@@ -79,19 +82,38 @@ jobs:
           key: ${{ runner.os }}-deps-${{ hashFiles('**/pnpm-lock.yaml','**/yarn.lock','**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-deps-
-      - name: Update tauri.conf.json with binary name
+
+      - name: Update tauri.conf.json with binary name (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
-          jq '.productName = "Siri_billing_app" | .mainBinaryName = "Siri_billing_app"' src-tauri/tauri.conf.json > tmp.json && mv tmp.json src-tauri/tauri.conf.json
+          rm -f tmp.json
+          jq '.productName = "Siri_billing_app" | .mainBinaryName = "Siri_billing_app"' src-tauri/tauri.conf.json > tmp.json
+          mv tmp.json src-tauri/tauri.conf.json
+
+      - name: Update tauri.conf.json with binary name (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Remove-Item -Force tmp.json -ErrorAction SilentlyContinue
+          jq '.productName = "Siri_billing_app" | .mainBinaryName = "Siri_billing_app"' src-tauri/tauri.conf.json > tmp.json
+          Move-Item tmp.json src-tauri/tauri.conf.json -Force
+
       - run: |
           corepack enable
           pnpm install --frozen-lockfile || npm install
+
       - run: pnpm build || npm run build
+
       - run: cargo install tauri-cli --locked
+
       - run: pnpm tauri build || npm run tauri build
+
       - uses: actions/upload-artifact@v4
         with:
           name: tauri-${{ matrix.platform }}
           path: src-tauri/target/release/bundle/
+
   bump-and-release:
     needs: build
     runs-on: ubuntu-22.04
@@ -106,6 +128,7 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Safety check for VERSION
         run: |
           if [ -z "$VERSION" ]; then
@@ -113,17 +136,18 @@ jobs:
             exit 1
           fi
           echo "✅ Using VERSION=$VERSION"
+
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-      - name: Update version in package.json and tauri.conf.json
+
+      - name: Update version and binary name in configs
+        shell: bash
         run: |
-          # Pull latest changes to avoid non-fast-forward error
           git pull origin main
-          
-          jq ".version = \"$VERSION\" | .productName = \"Siri_billing_app\" | .mainBinaryName = \"Siri_billing_app\"" package.json > tmp.json && mv tmp.json package.json
-          jq ".version = \"$VERSION\" | .productName = \"Siri_billing_app\" | .mainBinaryName = \"Siri_billing_app\"" src-tauri/tauri.conf.json > tmp.json && mv tmp.json src-tauri/tauri.conf.json
+          jq ".version = \"$VERSION\"" package.json > tmp.json && mv tmp.json package.json
+          jq ".version = \"$VERSION\"" src-tauri/tauri.conf.json > tmp2.json && mv tmp2.json src-tauri/tauri.conf.json
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add package.json src-tauri/tauri.conf.json
@@ -132,6 +156,7 @@ jobs:
           git push origin :refs/tags/v$VERSION || true
           git tag v$VERSION
           git push origin main --tags
+
       - name: Generate changelog
         id: changelog
         run: |
@@ -155,70 +180,15 @@ jobs:
               --invert-grep --grep="^feat:" --grep="^fix:" --grep="BREAKING CHANGE" \
               --pretty=format:"- %s" || true
           } > new_changelog.md
-          if [ -f CHANGELOG.md ]; then
-            sed -i "/^## $CURR_TAG - /,/^## v[0-9]\+\.[0-9]\+\.[0-9]\+/d" CHANGELOG.md || true
-            cat new_changelog.md CHANGELOG.md > tmp && mv tmp CHANGELOG.md
-          else
-            cp new_changelog.md CHANGELOG.md
-          fi
-          
-          # Use base64 encoding to handle special characters safely
           CHANGELOG_B64=$(base64 -w 0 new_changelog.md)
           echo "changelog_base64=$CHANGELOG_B64" >> $GITHUB_OUTPUT
+
       - name: Commit changelog
         run: |
-          git add CHANGELOG.md
+          git add CHANGELOG.md new_changelog.md
           git commit -m "docs: update changelog for v$VERSION [skip ci]" || echo "No changes"
           git push origin main
+
       - name: Generate latest.json
         run: |
-          RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/v$VERSION"
-          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          
-          # Decode the changelog for use
-          CHANGELOG_DECODED=$(echo "${{ steps.changelog.outputs.changelog_base64 }}" | base64 --decode)
-          
-          echo "$TAURI_PRIVATE_KEY" > private.key
-          echo "{" > latest.json
-          echo "  \"version\": \"$VERSION\"," >> latest.json
-          printf "  \"notes\": %s,\n" "$(printf '%s' "$CHANGELOG_DECODED" | jq -R -s .)" >> latest.json
-          echo "  \"pub_date\": \"$DATE\"," >> latest.json
-          echo "  \"platforms\": {" >> latest.json
-          sep=""
-          for file in $(find artifacts -type f); do
-            fname=$(basename "$file")
-            tauri signer sign \
-              --private-key private.key \
-              ${TAURI_KEY_PASSWORD:+--password $TAURI_KEY_PASSWORD} \
-              --input "$file" > sig.txt
-            signature=$(cat sig.txt)
-            case "$fname" in
-              *.dmg) platform="darwin-universal" ;;
-              *.msi|*.nsis.exe) platform="windows-x86_64" ;;
-              *.AppImage|*.deb) platform="linux-x86_64" ;;
-              *) continue ;;
-            esac
-            url="$RELEASE_URL/$fname"
-            echo "$sep    \"$platform\": {" >> latest.json
-            echo "      \"signature\": \"$signature\"," >> latest.json
-            echo "      \"url\": \"$url\"" >> latest.json
-            echo -n "    }" >> latest.json
-            sep=",\n"
-          done
-          echo "" >> latest.json
-          echo "  }" >> latest.json
-          echo "}" >> latest.json
-      - name: Commit latest.json
-        run: |
-          git add latest.json
-          git commit -m "chore: add latest.json for v$VERSION [skip ci]" || echo "No changes"
-          git push origin main
-      - name: Create GitHub Release
-        run: |
-          # Decode changelog for GitHub release
-          CHANGELOG_DECODED=$(echo "${{ steps.changelog.outputs.changelog_base64 }}" | base64 --decode)
-          gh release create v$VERSION artifacts/**/* \
-            --title "Release v$VERSION" \
-            --notes "$CHANGELOG_DECODED"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_URL="https://github
