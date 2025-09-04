@@ -111,7 +111,7 @@ jobs:
           name: tauri-${{ matrix.platform }}
           path: src-tauri/target/release/bundle/
 
-  bump-and-release:
+    bump-and-release:
     needs: build
     runs-on: ubuntu-22.04
     if: success()
@@ -127,8 +127,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Safety check for VERSION
-        run: |
-          test -n "$VERSION"
+        run: test -n "$VERSION"
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -221,4 +220,6 @@ jobs:
             --title "Release v$VERSION" \
             --notes "$CHANGELOG_DECODED"
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
