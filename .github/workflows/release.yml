@@ -98,7 +98,9 @@ jobs:
             librsvg2-dev \
             patchelf \
             libjavascriptcoregtk-4.1-dev \
-            libsoup-3.0-dev
+            libsoup-3.0-dev \
+            pkg-config \
+            clang
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -200,9 +202,10 @@ jobs:
             cp new_changelog.md CHANGELOG.md
           fi
 
+          # Correct GITHUB_OUTPUT syntax
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
           cat new_changelog.md >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo EOF >> $GITHUB_OUTPUT
 
       - name: Commit changelog
         run: |
@@ -218,4 +221,3 @@ jobs:
           body: ${{ steps.changelog.outputs.changelog }}
           files: |
             src-tauri/target/release/bundle/**/*
-
