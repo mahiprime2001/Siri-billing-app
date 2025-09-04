@@ -1,0 +1,297 @@
+name: "Tauri Cross-Platform Auto Release"
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup tools
+        run: |
+          sudo apt-get install -y jq
+          curl -sSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+          sudo apt update
+          sudo apt install gh -y
+
+      - name: Determine bump type
+        id: bump-type
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            RANGE=""
+          else
+            RANGE="$PREV_TAG..HEAD"
+          fi
+
+          echo "Checking commits in range: $RANGE"
+
+          if git log $RANGE --pretty=%B | grep -q "BREAKING CHANGE"; then
+            echo "type=major" >> $GITHUB_OUTPUT
+          elif git log $RANGE --pretty=%B | grep -q "^feat:"; then
+            echo "type=minor" >> $GITHUB_OUTPUT
+          elif git log $RANGE --pretty=%B | grep -q "^fix:"; then
+            echo "type=patch" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ No conventional commits found, defaulting to patch"
+            echo "type=patch" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Bump version in tauri.conf.json & package.json
+        id: bump
+        run: |
+          TAURI_FILE=src-tauri/tauri.conf.json
+          PKG_FILE=package.json
+
+          OLD_VERSION=$(jq -r '.version' $TAURI_FILE)
+          if [ "$OLD_VERSION" = "null" ] || [ -z "$OLD_VERSION" ]; then
+            echo "❌ Could not find version in $TAURI_FILE"
+            exit 1
+          fi
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$OLD_VERSION"
+
+          case "${{ steps.bump-type.outputs.type }}" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+
+          if git rev-parse "v$NEW_VERSION" >/dev/null 2>&1; then
+            RELEASE=$(gh release view "v$NEW_VERSION" --json id --jq '.id' || echo "")
+            if [ -z "$RELEASE" ]; then
+              git push origin :refs/tags/v$NEW_VERSION || true
+              git tag -d v$NEW_VERSION || true
+            else
+              while git rev-parse "v$NEW_VERSION" >/dev/null 2>&1; do
+                PATCH=$((PATCH + 1))
+                NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+              done
+            fi
+          fi
+
+          jq ".version = \"$NEW_VERSION\"" $TAURI_FILE > tmp.$$.json && mv tmp.$$.json $TAURI_FILE
+          jq ".version = \"$NEW_VERSION\"" $PKG_FILE > tmp.$$.json && mv tmp.$$.json $PKG_FILE
+
+          echo "✅ Final version: $OLD_VERSION → $NEW_VERSION"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add $TAURI_FILE $PKG_FILE
+          git commit -m "chore: bump version to $NEW_VERSION [skip ci]" || echo "No changes"
+          git tag v$NEW_VERSION
+          git push origin main --tags
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build:
+    needs: bump-version
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-latest, windows-latest, macos-latest]
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            node_modules
+          key: ${{ runner.os }}-deps-${{ hashFiles('**/pnpm-lock.yaml', '**/yarn.lock', '**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
+
+      - name: Install frontend dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile || npm install
+
+      - name: Build frontend
+        run: |
+          pnpm build || npm run build
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --locked
+
+      - name: Build Tauri App
+        run: |
+          pnpm tauri build || npm run tauri build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-${{ matrix.platform }}
+          path: src-tauri/target/release/bundle/
+
+  release:
+    needs: [bump-version, build]
+    runs-on: ubuntu-latest
+    env:
+      DB_HOST: ${{ secrets.DB_HOST }}
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASS: ${{ secrets.DB_PASS }}
+      DB_NAME: ${{ secrets.DB_NAME }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+      TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate Conventional Changelog
+        id: changelog
+        run: |
+          CURR_TAG=v${{ needs.bump-version.outputs.version }}
+          PREV_TAG=$(git describe --tags --abbrev=0 --exclude="$CURR_TAG" 2>/dev/null || echo "")
+          DATE=$(date -u +"%Y-%m-%d")
+
+          if [ -z "$PREV_TAG" ]; then
+            RANGE=""
+            COMPARE_LINK=""
+          else
+            RANGE="$PREV_TAG..HEAD"
+            COMPARE_LINK="[Compare $PREV_TAG...$CURR_TAG](https://github.com/${{ github.repository }}/compare/$PREV_TAG...$CURR_TAG)"
+          fi
+
+          {
+            echo "## $CURR_TAG - $DATE"
+            echo ""
+            echo "### ✨ Features"
+            git log $RANGE --grep="^feat:" --pretty=format:"- %s" | sed 's/^feat: //g' || true
+            echo ""
+            echo "### 🐞 Fixes"
+            git log $RANGE --grep="^fix:" --pretty=format:"- %s" | sed 's/^fix: //g' || true
+            echo ""
+            echo "### 💥 Breaking Changes"
+            git log $RANGE --grep="BREAKING CHANGE" --pretty=format:"- %s" || true
+            echo ""
+            echo "### 📦 Others"
+            git log $RANGE \
+              --invert-grep --grep="^feat:" --grep="^fix:" --grep="BREAKING CHANGE" \
+              --pretty=format:"- %s" || true
+            echo ""
+            if [ -n "$COMPARE_LINK" ]; then
+              echo "$COMPARE_LINK"
+              echo ""
+            fi
+          } > new_changelog.md
+
+          if [ -f CHANGELOG.md ]; then
+            sed -i "/^## $CURR_TAG - /,/^## v[0-9]\+\.[0-9]\+\.[0-9]\+/d" CHANGELOG.md
+            cat new_changelog.md CHANGELOG.md > tmp && mv tmp CHANGELOG.md
+          else
+            mv new_changelog.md CHANGELOG.md
+          fi
+
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          cat new_changelog.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Commit updated CHANGELOG.md
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "docs: update changelog for v${{ needs.bump-version.outputs.version }} [skip ci]" || echo "No changes"
+          git push origin main
+
+      - name: Generate latest.json with signatures
+        run: |
+          VERSION=${{ needs.bump-version.outputs.version }}
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/download/v$VERSION"
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          echo "$TAURI_PRIVATE_KEY" > private.key
+
+          echo "{" > latest.json
+          echo "  \"version\": \"$VERSION\"," >> latest.json
+          echo "  \"notes\": \"${{ steps.changelog.outputs.changelog }}\"," >> latest.json
+          echo "  \"pub_date\": \"$DATE\"," >> latest.json
+          echo "  \"platforms\": {" >> latest.json
+
+          sep=""
+          for file in $(find artifacts -type f); do
+            fname=$(basename "$file")
+
+            tauri signer sign \
+              --private-key private.key \
+              ${TAURI_KEY_PASSWORD:+--password $TAURI_KEY_PASSWORD} \
+              --input "$file" > sig.txt
+            signature=$(cat sig.txt)
+
+            case "$fname" in
+              *.dmg) platform="darwin-universal" ;;
+              *.msi|*.nsis.exe) platform="windows-x86_64" ;;
+              *.AppImage|*.deb) platform="linux-x86_64" ;;
+              *) continue ;;
+            esac
+
+            url="$RELEASE_URL/$fname"
+
+            echo "$sep    \"$platform\": {" >> latest.json
+            echo "      \"signature\": \"$signature\"," >> latest.json
+            echo "      \"url\": \"$url\"" >> latest.json
+            echo -n "    }" >> latest.json
+
+            sep=",\n"
+          done
+
+          echo "" >> latest.json
+          echo "  }" >> latest.json
+          echo "}" >> latest.json
+
+          cat latest.json
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.bump-version.outputs.version }}
+          name: "Release v${{ needs.bump-version.outputs.version }}"
+          body: ${{ steps.changelog.outputs.changelog }}
+          files: |
+            artifacts/**/*
+            latest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
