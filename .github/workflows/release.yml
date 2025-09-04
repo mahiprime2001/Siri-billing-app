@@ -136,6 +136,7 @@ jobs:
           path: artifacts
 
       - name: Update version in configs
+        shell: bash
         run: |
           git pull origin main
           jq ".version=\"$VERSION\"" package.json > tmp.json && mv tmp.json package.json
@@ -160,11 +161,12 @@ jobs:
             echo "## $CURR_TAG - $DATE"
             echo "### ✨ Features"
             git log $RANGE --grep="^feat:" --pretty=format:"- %s"
-          }>new_changelog.md
+          } > new_changelog.md
           CHANGELOG_B64=$(base64 -w0 new_changelog.md)
           echo "changelog_base64=$CHANGELOG_B64" >> $GITHUB_OUTPUT
 
       - name: Commit changelog
+        shell: bash
         run: |
           mv new_changelog.md CHANGELOG.md
           git add CHANGELOG.md
@@ -175,37 +177,48 @@ jobs:
         run: cargo install tauri-cli --locked
 
       - name: Generate latest.json
+        shell: bash
         run: |
           RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/v$VERSION"
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          CHANGELOG_DECODED=$(echo "${{ steps.changelog.outputs.changelog_base64 }}"|base64--decode)
-          echo "$TAURI_PRIVATE_KEY">private.key
+          CHANGELOG_DECODED=$(echo "${{ steps.changelog.outputs.changelog_base64 }}" | base64 --decode)
+          echo "$TAURI_PRIVATE_KEY" > private.key
           echo "{" > latest.json
-          echo "  \"version\":\"$VERSION\"," >> latest.json
-          printf "  \"notes\": %s,\n" "$(printf '%s' "$CHANGELOG_DECODED"|jq -R -s .)" >> latest.json
-          echo "  \"pub_date\":\"$DATE\"," >> latest.json
-          echo "  \"platforms\":{" >> latest.json
+          echo "  \"version\": \"$VERSION\"," >> latest.json
+          printf "  \"notes\": %s,\n" "$(printf '%s' "$CHANGELOG_DECODED" | jq -R -s .)" >> latest.json
+          echo "  \"pub_date\": \"$DATE\"," >> latest.json
+          echo "  \"platforms\": {" >> latest.json
           sep=""
           for file in $(find artifacts -type f); do
             fname=$(basename "$file")
-            tauri signer sign --private-key private.key ${TAURI_KEY_PASSWORD:+--password $TAURI_KEY_PASSWORD} --input "$file">sig.txt
-            signature=$(<sig.txt)
+            tauri signer sign \
+              --private-key private.key \
+              ${TAURI_KEY_PASSWORD:+--password $TAURI_KEY_PASSWORD} \
+              --input "$file" > sig.txt
+            signature=$(cat sig.txt)
             case "$fname" in
-              *.dmg)platform="darwin-universal";;
-              *.msi|*.nsis.exe)platform="windows-x86_64";;
-              *.AppImage|*.deb)platform="linux-x86_64";;
-              *)continue;;
+              *.dmg) platform="darwin-universal" ;;
+              *.msi|*.nsis.exe) platform="windows-x86_64" ;;
+              *.AppImage|*.deb) platform="linux-x86_64" ;;
+              *) continue ;;
             esac
             url="$RELEASE_URL/$fname"
-            echo "$sep\"$platform\":{" >> latest.json
-            echo "\"signature\":\"$signature\",\"url\":\"$url\"}" >> latest.json
-            sep=","
+            echo "$sep    \"$platform\": {" >> latest.json
+            echo "      \"signature\": \"$signature\"," >> latest.json
+            echo "      \"url\": \"$url\"" >> latest.json
+            echo -n "    }" >> latest.json
+            sep=",\n"
           done
-          echo "}}" >> latest.json
+          echo "" >> latest.json
+          echo "  }" >> latest.json
+          echo "}" >> latest.json
 
       - name: Create GitHub Release
+        shell: bash
         run: |
-          CHANGELOG_DECODED=$(echo "${{ steps.changelog.outputs.changelog_base64 }}"|base64--decode)
-          gh release create v$VERSION artifacts/**/* --title "Release v$VERSION" --notes "$CHANGELOG_DECODED"
+          CHANGELOG_DECODED=$(echo "${{ steps.changelog.outputs.changelog_base64 }}" | base64 --decode)
+          gh release create v$VERSION artifacts/**/* \
+            --title "Release v$VERSION" \
+            --notes "$CHANGELOG_DECODED"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
