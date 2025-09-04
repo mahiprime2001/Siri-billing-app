@@ -185,7 +185,8 @@ jobs:
 
       - name: Commit changelog
         run: |
-          git add CHANGELOG.md new_changelog.md
+          mv new_changelog.md CHANGELOG.md
+          git add CHANGELOG.md
           git commit -m "docs: update changelog for v$VERSION [skip ci]" || echo "No changes"
           git push origin main
 
