@@ -1,6 +1,6 @@
 {
   "name": "Siri Billing App",
-  "version": "0.1.24",
+  "version": "0.1.25",
   "private": true,
   "type": "module",
   "scripts": {
