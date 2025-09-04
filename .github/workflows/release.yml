@@ -214,16 +214,11 @@ jobs:
           git commit -m "chore: add latest.json for v$VERSION [skip ci]" || echo "No changes"
           git push origin main
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v$VERSION
-          name: "Release v$VERSION"
-          body: ${{ fromJSON('"').join([steps.changelog.outputs.changelog_base64]) }}
-        env:
-          CHANGELOG_CONTENT: ${{ steps.changelog.outputs.changelog_base64 }}
         run: |
           # Decode changelog for GitHub release
-          CHANGELOG_DECODED=$(echo "$CHANGELOG_CONTENT" | base64 --decode)
+          CHANGELOG_DECODED=$(echo "${{ steps.changelog.outputs.changelog_base64 }}" | base64 --decode)
           gh release create v$VERSION artifacts/**/* \
             --title "Release v$VERSION" \
             --notes "$CHANGELOG_DECODED"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
