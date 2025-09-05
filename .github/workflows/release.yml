@@ -102,8 +102,6 @@ jobs:
 
       - run: pnpm build || npm run build
 
-      - run: cargo install tauri-cli --locked
-
       - run: pnpm tauri build || npm run tauri build
 
       - uses: actions/upload-artifact@v4
@@ -118,8 +116,6 @@ jobs:
     env:
       VERSION: ${{ needs.build.outputs.version }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-      TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -153,7 +149,7 @@ jobs:
         id: changelog
         run: |
           CURR_TAG=v$VERSION
-          PREV_TAG=$(git describe --tags --abbrev=0 --exclude="$CURR_TAG" 2>/dev/null||echo "")
+          PREV_TAG=$(git describe --tags --abbrev=0 --exclude="$CURR_TAG" 2>/dev/null || echo "")
           DATE=$(date -u +"%Y-%m-%d")
           RANGE=${PREV_TAG:+$PREV_TAG..HEAD}
           {
@@ -171,46 +167,6 @@ jobs:
           git add CHANGELOG.md
           git commit -m "docs: update changelog for v$VERSION [skip ci]" || echo "No changes"
           git push origin main
-
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --locked
-
-      - name: Generate latest.json
-        shell: bash
-        run: |
-          RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/v$VERSION"
-          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          CHANGELOG_DECODED=$(echo "${{ steps.changelog.outputs.changelog_base64 }}" | base64 --decode)
-          echo "$TAURI_PRIVATE_KEY" > private.key
-          echo "{" > latest.json
-          echo "  \"version\": \"$VERSION\"," >> latest.json
-          printf "  \"notes\": %s,\n" "$(printf '%s' "$CHANGELOG_DECODED" | jq -R -s .)" >> latest.json
-          echo "  \"pub_date\": \"$DATE\"," >> latest.json
-          echo "  \"platforms\": {" >> latest.json
-          sep=""
-          for file in $(find artifacts -type f); do
-            fname=$(basename "$file")
-            tauri signer sign \
-              --private-key private.key \
-              ${TAURI_KEY_PASSWORD:+--password $TAURI_KEY_PASSWORD} \
-              --input "$file" > sig.txt
-            signature=$(cat sig.txt)
-            case "$fname" in
-              *.dmg) platform="darwin-universal" ;;
-              *.msi|*.nsis.exe) platform="windows-x86_64" ;;
-              *.AppImage|*.deb) platform="linux-x86_64" ;;
-              *) continue ;;
-            esac
-            url="$RELEASE_URL/$fname"
-            echo "$sep    \"$platform\": {" >> latest.json
-            echo "      \"signature\": \"$signature\"," >> latest.json
-            echo "      \"url\": \"$url\"" >> latest.json
-            echo -n "    }" >> latest.json
-            sep=",\n"
-          done
-          echo "" >> latest.json
-          echo "  }" >> latest.json
-          echo "}" >> latest.json
 
       - name: Create GitHub Release
         shell: bash
