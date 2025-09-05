@@ -172,7 +172,13 @@ jobs:
         shell: bash
         run: |
           CHANGELOG_DECODED=$(echo "${{ steps.changelog.outputs.changelog_base64 }}" | base64 --decode)
-          gh release create v$VERSION artifacts/**/* \
+          # Find files only, exclude directories
+          FILES=$(find artifacts -type f \( -name "*.exe" -o -name "*.msi" -o -name "*.dmg" -o -name "*.deb" -o -name "*.AppImage" \))
+          if [ -z "$FILES" ]; then
+            echo "No release files found"
+            exit 1
+          fi
+          gh release create v$VERSION $FILES \
             --title "Release v$VERSION" \
             --notes "$CHANGELOG_DECODED"
         env:
