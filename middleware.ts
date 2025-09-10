@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import jwt from 'jsonwebtoken';
+import { jwtVerify } from 'jose';
 
-const JWT_SECRET = "Siriart@2025";
+const JWT_SECRET = new TextEncoder().encode("Siriart@2025");
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -25,7 +25,8 @@ export async function middleware(request: NextRequest) {
 
   try {
     // Verify the token
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string, email: string, role: string };
+    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const decoded = payload as { userId: string, email: string, role: string };
 
     // Attach user info to the request (if needed, though not directly supported in Next.js middleware for `request` object)
     // For API routes, you'd typically re-verify the token in the route handler or pass info via headers.

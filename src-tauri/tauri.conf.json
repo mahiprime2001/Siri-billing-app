@@ -33,7 +33,16 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "resources": ["../.next",
+  "../public", 
+"../node_modules",
+"../package.json",
+"node",
+"../lib",
+"middleware.ts",
+"tailwind.config.ts"]
+
   },
   "plugins": {
     "updater": {

@@ -35,7 +35,7 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts"
-  ],
+, "electron/main.ts"  ],
   "exclude": [
     "node_modules"
   ]

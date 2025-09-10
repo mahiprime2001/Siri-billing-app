@@ -1,29 +1,61 @@
-import getPool from './db'; // Assuming lib/db.ts exports the mysql2 pool
-import { promises as fs } from 'fs';
-import path from 'path';
-import { logEvent, LogEventType } from './log'; // Import logEvent and LogEventType
+"use server";
 
+import fs from 'fs/promises';
+import path from 'path';
+import getPool from './db'; // Assuming lib/db.ts exports the mysql2 pool
+
+// --- From lib/log.ts ---
+const LOG_FILE_PATH = path.join(process.cwd(), 'logs', 'events.log');
+
+export type LogEventType = "USER_LOGIN" | "BILL_CREATED" | "OTHER_EVENT" | "USER_LOGOUT" | "USER_UNGRACEFUL_LOGOUT" | "APP_STARTUP";
+
+interface LogEntry {
+  timestamp: string;
+  eventType: LogEventType;
+  userId: string;
+  details?: Record<string, any>;
+}
+
+export async function logEvent(
+  eventType: LogEventType,
+  userId: string,
+  details?: Record<string, any>
+): Promise<void> {
+  const logEntry: LogEntry = {
+    timestamp: new Date().toISOString(),
+    eventType,
+    userId,
+    details,
+  };
+
+  const logMessage = JSON.stringify(logEntry) + '\n';
+
+  try {
+    await fs.mkdir(path.dirname(LOG_FILE_PATH), { recursive: true });
+    await fs.appendFile(LOG_FILE_PATH, logMessage);
+    console.log(`Log event recorded: ${eventType} by user ${userId}`);
+  } catch (error) {
+    console.error('Failed to write log event:', error);
+  }
+}
+
+// --- From lib/sync.ts ---
 const JSON_DATA_DIR = path.join(process.cwd(), 'data', 'json');
 const PENDING_SYNC_FILE = path.join(JSON_DATA_DIR, 'pending_sync.json');
 
 export type ChangeType = "USER_LOGIN" | "BILL_CREATED" | "PRODUCT_UPDATED" | "CUSTOMER_UPDATED" | "OTHER_CHANGE" | "USER_LOGOUT" | "USER_UNGRACEFUL_LOGOUT" | "APP_STARTUP";
 
-// Helper function to strip sensitive data
 function sanitizeChangeData(changeType: ChangeType, data: Record<string, any>): Record<string, any> {
   const sanitizedData = { ...data };
-
-  // Define sensitive keys that should be removed or masked
   const sensitiveKeys = ['password', 'secret', 'token', 'jwt', 'privateKey', 'apiKey'];
 
   for (const key of sensitiveKeys) {
     if (sanitizedData.hasOwnProperty(key)) {
-      sanitizedData[key] = '[REDACTED]'; // Mask sensitive data
+      sanitizedData[key] = '[REDACTED]';
     }
   }
 
-  // Specific sanitization based on changeType if needed
   if (changeType === "USER_LOGIN" || changeType === "USER_UNGRACEFUL_LOGOUT") {
-    // Ensure no full user objects are logged, only IDs or non-sensitive info
     if (sanitizedData.user && typeof sanitizedData.user === 'object') {
       const { password, ...userWithoutSensitiveInfo } = sanitizedData.user;
       sanitizedData.user = userWithoutSensitiveInfo;
@@ -38,12 +70,12 @@ export async function logSyncEvent(
   changeData: Record<string, any>
 ): Promise<void> {
   let connection;
-  const syncTime = new Date(); // Moved declaration outside try block
-  const sanitizedData = sanitizeChangeData(changeType, changeData); // Moved declaration outside try block
-    const changeDataJson = JSON.stringify(sanitizedData); // Moved declaration outside try block
+  const syncTime = new Date();
+  const sanitizedData = sanitizeChangeData(changeType, changeData);
+  const changeDataJson = JSON.stringify(sanitizedData);
 
   try {
-    const pool = getPool(); // Get the pool at runtime
+    const pool = getPool();
     connection = await pool.getConnection();
 
     await connection.query(
@@ -51,20 +83,17 @@ export async function logSyncEvent(
       [syncTime, changeType, changeDataJson]
     );
     console.log(`Sync event recorded: ${changeType}`);
-  } catch (error: any) { // Re-added 'any' for easier error handling, will log to file
+  } catch (error: any) {
     await logEvent("OTHER_EVENT", "system", {
       message: 'Failed to write sync event to DB',
       error: error.message,
       changeType,
       changeData: sanitizedData,
     });
-    // If DB is offline, write to a local JSON file
-    // Check if error is an object and has a 'code' property
-    if (typeof error === 'object' && error !== null && 'code' in error && (error.code === 'ECONNREFUSED' || error.code === 'ER_ACCESS_DENIED_ERROR' || error.code === 'ENOTFOUND')) { // Common DB connection errors
+    if (typeof error === 'object' && error !== null && 'code' in error && (error.code === 'ECONNREFUSED' || error.code === 'ER_ACCESS_DENIED_ERROR' || error.code === 'ENOTFOUND')) {
       console.log('Database connection failed. Writing sync event to pending_sync.json');
       await writePendingSyncEvent({ syncTime: syncTime, changeType: changeType, changeData: sanitizedData });
     } else {
-      // This case is already covered by the logEvent above, but keeping console.error for immediate visibility
       console.error('An unexpected error occurred during sync event logging:', error);
     }
   } finally {
@@ -79,7 +108,7 @@ async function writePendingSyncEvent(event: { syncTime: Date; changeType: Change
       const data = await fs.readFile(PENDING_SYNC_FILE, 'utf8');
       pendingEvents = JSON.parse(data);
     } catch (readError: any) {
-      if (readError.code !== 'ENOENT') { // Ignore file not found error
+      if (readError.code !== 'ENOENT') {
         await logEvent("OTHER_EVENT", "system", {
           message: 'Error reading pending_sync.json',
           error: readError.message,
@@ -111,7 +140,7 @@ export async function replayPendingSyncEvents(): Promise<void> {
       return;
     }
 
-    const pool = getPool(); // Get the pool at runtime
+    const pool = getPool();
     connection = await pool.getConnection();
     console.log(`Attempting to replay ${pendingEvents.length} pending sync events...`);
 
@@ -136,7 +165,6 @@ export async function replayPendingSyncEvents(): Promise<void> {
       }
     }
 
-    // Overwrite pending_sync.json with only the events that failed to replay
     await fs.writeFile(PENDING_SYNC_FILE, JSON.stringify(failedToReplay, null, 2), 'utf8');
 
     if (successfullyReplayed.length > 0) {
@@ -164,11 +192,10 @@ export async function replayPendingSyncEvents(): Promise<void> {
   }
 }
 
-
 export async function fetchDataAndSaveToJson(tableName: string, fileName: string): Promise<void> {
   let connection;
   try {
-    const pool = getPool(); // Get the pool at runtime
+    const pool = getPool();
     connection = await pool.getConnection();
     const [rows] = await connection.query<any[]>(`SELECT * FROM ${tableName}`);
     await fs.writeFile(path.join(JSON_DATA_DIR, fileName), JSON.stringify(rows, null, 2), 'utf8');
@@ -188,14 +215,12 @@ export async function fetchDataAndSaveToJson(tableName: string, fileName: string
 export async function updateUserSessionOnStartup(): Promise<void> {
   let connection;
   try {
-    const pool = getPool(); // Get the pool at runtime
+    const pool = getPool();
     connection = await pool.getConnection();
     const startupTime = new Date();
 
-    // 1. Log APP_STARTUP event
     await logSyncEvent("APP_STARTUP", { message: "Application started up" });
 
-    // 2. Find users who were logged in at the time of the crash/shutdown
     const [users] = await connection.query<any[]>(
       `SELECT id, lastLogin, totalSessionDuration FROM Users WHERE lastLogin IS NOT NULL AND (lastLogout IS NULL OR lastLogin > lastLogout)`
     );
@@ -205,13 +230,11 @@ export async function updateUserSessionOnStartup(): Promise<void> {
       const sessionDurationMs = startupTime.getTime() - lastLoginTime.getTime();
       const sessionDurationSeconds = Math.floor(sessionDurationMs / 1000);
 
-      // Update user's total session duration and lastLogout
       await connection.query(
         `UPDATE Users SET totalSessionDuration = totalSessionDuration + ?, lastLogout = ? WHERE id = ?`,
         [sessionDurationSeconds, startupTime, user.id]
       );
 
-      // Log an ungraceful logout event
       await logSyncEvent(
         "USER_UNGRACEFUL_LOGOUT",
         {
@@ -233,5 +256,10 @@ export async function updateUserSessionOnStartup(): Promise<void> {
     if (connection) connection.release();
   }
 }
-// A small change to trigger a new push
-// Another small change for another push
+
+export async function runAllBackgroundTasks() {
+  console.log("Running all background tasks...");
+  await updateUserSessionOnStartup();
+  await replayPendingSyncEvents();
+  // Add other background tasks here if needed
+}

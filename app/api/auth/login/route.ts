@@ -1,15 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
-import { logEvent, LogEventType } from "@/lib/log"; // Import LogEventType
-import { logSyncEvent } from "@/lib/sync";
-import jwt from "jsonwebtoken";
+import { logEvent, LogEventType, logSyncEvent } from "@/lib/background-tasks"; // Import LogEventType and logSyncEvent
+import { SignJWT } from "jose";
 import { serialize } from "cookie";
 import pool from "@/lib/db"; // Assuming lib/db.ts exports the mysql2 pool
 import { z } from "zod"; // Import zod
 import { checkRateLimit, recordAttempt } from "@/lib/rate-limit"; // Import rate limiter
 
-const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret"; // Use environment variable for secret
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "Siriart@2025"); // Use environment variable for secret
 
 // Define schema for login request body
 const loginSchema = z.object({
@@ -71,7 +70,7 @@ export async function POST(request: NextRequest) {
 
       let connection;
       try {
-        connection = await pool.getConnection();
+        connection = await pool().getConnection();
         const loginTime = new Date();
 
         // Fetch current user data to check for ungraceful logout
@@ -120,9 +119,11 @@ export async function POST(request: NextRequest) {
       }
 
       // Generate JWT token
-      const token = jwt.sign({ userId: user.id, email: user.email, role: user.role }, JWT_SECRET, {
-        expiresIn: "1h", // Token expires in 1 hour
-      });
+      const token = await new SignJWT({ userId: user.id, email: user.email, role: user.role })
+        .setProtectedHeader({ alg: 'HS256' })
+        .setIssuedAt()
+        .setExpirationTime('1h') // Token expires in 1 hour
+        .sign(JWT_SECRET);
 
       // Set the token in an HTTP-only cookie
       const cookie = serialize("auth_token", token, {

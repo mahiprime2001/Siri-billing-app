@@ -17,3 +17,11 @@
 {"timestamp":"2025-08-29T03:23:40.303Z","eventType":"BILL_CREATED","userId":"UNKNOWN_USER","details":{"billId":"INV-792019"}}
 {"timestamp":"2025-08-29T04:19:36.966Z","eventType":"USER_LOGIN","userId":"2"}
 {"timestamp":"2025-08-30T06:27:44.020Z","eventType":"USER_LOGIN","userId":"2"}
+{"timestamp":"2025-09-10T18:02:33.577Z","eventType":"USER_LOGIN","userId":"2"}
+{"timestamp":"2025-09-10T18:02:36.719Z","eventType":"OTHER_EVENT","userId":"2","details":{"message":"Failed to update user login/logout times and session duration","error":"_lib_db__WEBPACK_IMPORTED_MODULE_7__.default.getConnection is not a function","userId":"2"}}
+{"timestamp":"2025-09-10T18:12:24.744Z","eventType":"USER_LOGIN","userId":"2"}
+{"timestamp":"2025-09-10T18:12:26.645Z","eventType":"OTHER_EVENT","userId":"2","details":{"message":"Failed to update user login/logout times and session duration","error":"_lib_db__WEBPACK_IMPORTED_MODULE_7__.default.getConnection is not a function","userId":"2"}}
+{"timestamp":"2025-09-10T18:12:36.283Z","eventType":"USER_LOGIN","userId":"2"}
+{"timestamp":"2025-09-10T18:12:36.366Z","eventType":"OTHER_EVENT","userId":"2","details":{"message":"Failed to update user login/logout times and session duration","error":"_lib_db__WEBPACK_IMPORTED_MODULE_7__.default.getConnection is not a function","userId":"2"}}
+{"timestamp":"2025-09-10T18:17:07.233Z","eventType":"USER_LOGIN","userId":"2"}
+{"timestamp":"2025-09-10T18:21:18.456Z","eventType":"USER_LOGIN","userId":"2"}
