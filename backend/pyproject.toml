@@ -1,0 +1,13 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "Flask",
+    "Flask-Cors",
+    "python-dotenv",
+    "mysql-connector-python",
+    "python-dateutil>=2.9.0.post0",
+]
