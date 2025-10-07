@@ -33,13 +33,27 @@ jobs:
       - name: ⚡ Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 8
+          version: 9
 
       - name: ⚙️ Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
+
+      # Check and fix workspace configuration
+      - name: 🔧 Check pnpm workspace configuration
+        run: |
+          if [ -f "pnpm-workspace.yaml" ] || [ -f "pnpm-workspace.yml" ]; then
+            echo "Workspace file exists, checking configuration..."
+            if ! pnpm list --depth=0 > /dev/null 2>&1; then
+              echo "Creating minimal workspace configuration..."
+              echo "packages:" > pnpm-workspace.yaml
+              echo "  - '.'" >> pnpm-workspace.yaml
+            fi
+          else
+            echo "No workspace configuration found, proceeding with single package setup..."
+          fi
 
       - name: 🧱 Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
@@ -62,7 +76,7 @@ jobs:
           workspaces: "./src-tauri -> target"
 
       - name: 📦 Install frontend dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install
 
       - name: 🏗️ Build frontend
         run: pnpm run build
