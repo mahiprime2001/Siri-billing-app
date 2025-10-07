@@ -33,21 +33,7 @@ jobs:
       - name: ⚡ Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
-
-      # Check and fix workspace configuration
-      - name: 🔧 Check pnpm workspace configuration
-        run: |
-          if (Test-Path "pnpm-workspace.yaml" -or Test-Path "pnpm-workspace.yml") {
-            Write-Host "Workspace file exists, checking configuration..."
-            pnpm list --depth=0 | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-              Write-Host "Creating minimal workspace configuration..."
-              Set-Content -Path "pnpm-workspace.yaml" -Value "packages:`n  - '.'"
-            }
-          } else {
-            Write-Host "No workspace configuration found, proceeding with single package setup..."
-          }
+          version: 8
 
       - name: ⚙️ Setup Node.js
         uses: actions/setup-node@v4
@@ -76,7 +62,7 @@ jobs:
           workspaces: "./src-tauri -> target"
 
       - name: 📦 Install frontend dependencies
-        run: pnpm install
+        run: pnpm install --no-frozen-lockfile
 
       - name: 🏗️ Build frontend
         run: pnpm run build
@@ -88,7 +74,7 @@ jobs:
         uses: phips28/gh-action-bump-version@v10.1.1
         with:
           tag-prefix: "v"
-          version-type: patch
+          bump-type: patch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
