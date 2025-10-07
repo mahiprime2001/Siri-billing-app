@@ -32,6 +32,7 @@ import InvoicePreview from "./invoice-preview"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/components/ui/use-toast"
 import { LogOut } from "lucide-react"
+import { useOnlineStatus } from "@/hooks/use-online-status"
 
 interface User {
   id: string;
@@ -141,6 +142,7 @@ const createNewBillingInstance = (id: string): BillingInstance => ({
 export default function BillingAndCart() {
   const router = useRouter()
   const { toast } = useToast()
+  const isOnline = useOnlineStatus() // Get online status
   const [products, setProducts] = useState<Product[]>([])
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([])
   const [settings, setSettings] = useState<Settings | null>(null)
@@ -162,7 +164,6 @@ export default function BillingAndCart() {
   // Invoice preview
   const [showPreview, setShowPreview] = useState(false)
   const [currentInvoice, setCurrentInvoice] = useState<Invoice | null>(null)
-  const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
   const barcodeInputRef = useRef<HTMLInputElement>(null)
 
@@ -170,34 +171,39 @@ export default function BillingAndCart() {
 
   const calculateSubtotal = useCallback(() => {
     if (!activeBillingInstance) return 0
-    return activeBillingInstance.cartItems.reduce((sum, item) => sum + item.total, 0)
+    const subtotal = activeBillingInstance.cartItems.reduce((sum, item) => sum + item.total, 0)
+    return Math.round(subtotal * 100) / 100 // Round to 2 decimal places
   }, [activeBillingInstance])
 
   const calculateDiscountAmount = useCallback(() => {
     if (!activeBillingInstance) return 0
     const subtotal = calculateSubtotal()
-    return (subtotal * activeBillingInstance.discount) / 100
+    const discountAmount = (subtotal * activeBillingInstance.discount) / 100
+    return Math.round(discountAmount * 100) / 100 // Round to 2 decimal places
   }, [activeBillingInstance, calculateSubtotal])
 
   const calculateTaxableAmount = useCallback(() => {
-    return calculateSubtotal() - calculateDiscountAmount()
+    const taxableAmount = calculateSubtotal() - calculateDiscountAmount()
+    return Math.round(taxableAmount * 100) / 100 // Round to 2 decimal places
   }, [calculateSubtotal, calculateDiscountAmount])
 
   const calculateTaxAmount = useCallback(() => {
     if (!settings) return 0
     const taxableAmount = calculateTaxableAmount()
-    return (taxableAmount * (settings.taxPercentage || 0)) / 100
+    const taxAmount = (taxableAmount * (settings.taxPercentage || 0)) / 100
+    return Math.round(taxAmount * 100) / 100 // Round to 2 decimal places
   }, [settings, calculateTaxableAmount])
 
   const calculateFinalTotal = useCallback(() => {
-    return calculateTaxableAmount() + calculateTaxAmount()
+    const finalTotal = calculateTaxableAmount() + calculateTaxAmount()
+    return Math.round(finalTotal * 100) / 100 // Round to 2 decimal places
   }, [calculateTaxableAmount, calculateTaxAmount])
 
   useEffect(() => {
     fetchProducts()
     fetchSettings()
     fetchUserData()
-  }, [])
+  }, [isOnline])
 
   // Effect to set the initial user
   useEffect(() => {
@@ -268,20 +274,27 @@ export default function BillingAndCart() {
     )
   }
 
+
   const fetchProducts = async () => {
     try {
-      const response = await fetch("/api/products")
+      const response = await fetch("http://localhost:8080/api/products")
       const data = await response.json()
+      console.log("Fetched products:", data); // Log fetched products
       setProducts(data)
       setFilteredProducts([])
     } catch (error) {
       console.error("Error fetching products:", error)
+      toast({
+        title: "Network Error",
+        description: "Failed to fetch products from server. Check your connection.",
+        variant: "destructive",
+      })
     }
   }
 
   const fetchSettings = async () => {
     try {
-      const response = await fetch("/api/settings")
+      const response = await fetch("http://localhost:8080/api/settings")
       let data = await response.json()
       if (Array.isArray(data) && data.length > 0) {
         data = data[0]
@@ -292,15 +305,20 @@ export default function BillingAndCart() {
       setSettings(data)
     } catch (error) {
       console.error("Error fetching settings:", error)
+      toast({
+        title: "Network Error",
+        description: "Failed to fetch settings from server. Check your connection.",
+        variant: "destructive",
+      })
     }
   }
 
   const fetchUserData = async () => {
     try {
       const [usersRes, storesRes, userStoresRes] = await Promise.all([
-        fetch("/api/users"),
-        fetch("/api/stores"),
-        fetch("/api/user-stores"),
+        fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/users`),
+        fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/stores`),
+        fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/user-stores`),
       ]);
       const { users: usersData } = await usersRes.json();
       const { stores: storesData } = await storesRes.json();
@@ -310,8 +328,14 @@ export default function BillingAndCart() {
       setUserStores(userStoresData);
     } catch (error) {
       console.error("Error fetching user data:", error);
+      toast({
+        title: "Network Error",
+        description: "Failed to fetch user data from server. Check your connection.",
+        variant: "destructive",
+      })
     }
   };
+
 
   const addToCart = (productId: string, qty = 1) => {
     if (!activeBillingInstance) return
@@ -334,7 +358,7 @@ export default function BillingAndCart() {
       name: product.name,
       quantity: qty,
       price: Number(product.price),
-      total: Number(product.price) * qty,
+      total: Math.round(Number(product.price) * qty * 100) / 100, // Round to 2 decimal places
       tax: Number(product.tax),
       gstRate: Number(product.tax),
       barcodes: product.barcodes,
@@ -345,28 +369,42 @@ export default function BillingAndCart() {
     updateBillingInstance(activeTab, { cartItems: updatedCartItems })
     setSearchTerm("")
     setShowAllProducts(false)
-    setAlert({ type: "success", message: `${product.name} added to cart!` })
-    setTimeout(() => setAlert(null), 2000)
+    toast({
+      title: "Success",
+      description: `${product.name} added to cart!`,
+      variant: "default",
+    })
   }
 
   const handleBarcodeSearch = () => {
-    if (!barcodeInput.trim()) return
+    const trimmedBarcodeInput = barcodeInput.trim();
+    console.log("handleBarcodeSearch called with input:", trimmedBarcodeInput);
+    console.log("Current products state:", products);
 
-    const product = products.find(
-      (p) =>
-        (p.barcodes && p.barcodes.includes(barcodeInput)) ||
-        p.id === barcodeInput ||
-        p.name.toLowerCase().includes(barcodeInput.toLowerCase()),
-    )
+    if (!trimmedBarcodeInput) return;
+
+    const product = products.find((p) => {
+      if (p.barcodes) {
+        const productBarcodes = p.barcodes.split(',').map(b => b.trim());
+        console.log(`Checking product ${p.name} (ID: ${p.id}) with barcodes:`, productBarcodes);
+        return productBarcodes.includes(trimmedBarcodeInput);
+      }
+      return false;
+    });
 
     if (product) {
-      addToCart(product.id, 1)
-      setBarcodeInput("")
+      console.log("Product found:", product);
+      addToCart(product.id, 1);
+      setBarcodeInput("");
     } else {
-      setAlert({ type: "error", message: "Product not found with this barcode/ID" })
-      setTimeout(() => setAlert(null), 3000)
+      console.log("Product not found for barcode:", trimmedBarcodeInput);
+      toast({
+        title: "Error",
+        description: "Product not found with this barcode.",
+        variant: "destructive",
+      })
     }
-  }
+  };
 
   const handleBarcodeKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
@@ -377,8 +415,11 @@ export default function BillingAndCart() {
   const startBarcodeScanning = () => {
     setIsScanning(true)
     barcodeInputRef.current?.focus()
-    setAlert({ type: "success", message: "Barcode scanner ready! Scan or type barcode and press Enter." })
-    setTimeout(() => setAlert(null), 3000)
+    toast({
+      title: "Success",
+      description: "Barcode scanner ready! Scan or type barcode and press Enter.",
+      variant: "default",
+    })
   }
 
   const removeFromCart = (id: string) => {
@@ -395,7 +436,7 @@ export default function BillingAndCart() {
     }
 
     const updatedCartItems = activeBillingInstance.cartItems.map((item) =>
-      item.id === id ? { ...item, quantity: newQuantity, total: item.price * newQuantity } : item,
+      item.id === id ? { ...item, quantity: newQuantity, total: Math.round(item.price * newQuantity * 100) / 100 } : item,
     )
     updateBillingInstance(activeTab, { cartItems: updatedCartItems })
   }
@@ -436,20 +477,29 @@ export default function BillingAndCart() {
 
   const handlePreview = () => {
     if (!currentStore) {
-      setAlert({ type: "error", message: "No store selected. Please select a store." });
-      setTimeout(() => setAlert(null), 3000);
+      toast({
+        title: "Error",
+        description: "No store selected. Please select a store.",
+        variant: "destructive",
+      })
       return;
     }
 
     if (!activeBillingInstance || activeBillingInstance.cartItems.length === 0) {
-      setAlert({ type: "error", message: "Please add at least one item to the cart." })
-      setTimeout(() => setAlert(null), 3000)
+      toast({
+        title: "Error",
+        description: "Please add at least one item to the cart.",
+        variant: "destructive",
+      })
       return
     }
 
     if (!settings) {
-      setAlert({ type: "error", message: "Settings not loaded. Please try again." })
-      setTimeout(() => setAlert(null), 3000)
+      toast({
+        title: "Error",
+        description: "Settings not loaded. Please try again.",
+        variant: "destructive",
+      })
       return
     }
 
@@ -485,9 +535,22 @@ export default function BillingAndCart() {
     setShowPreview(true)
   }
 
-  const handleSaveInvoice = async (invoice: Invoice) => {
+  const handleSaveInvoice = async (invoice: Invoice, isReplay = false) => {
+    // If offline, we cannot save to the Flask backend.
+    // The user's instruction is to use the Flask server for ALL functions,
+    // implying no offline local storage. Therefore, if offline, we will
+    // simply show an error and prevent saving.
+    if (!isOnline) {
+      toast({
+        title: "Error",
+        description: "Cannot save invoice while offline. Please connect to the internet.",
+        variant: "destructive",
+      })
+      return false;
+    }
+
     try {
-      const response = await fetch("/api/billing/save", {
+      const response = await fetch("http://localhost:8080/api/billing/save", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -496,22 +559,38 @@ export default function BillingAndCart() {
       })
 
       if (response.ok) {
-        setAlert({ type: "success", message: "Invoice saved successfully!" })
-        // Reset the current tab
-        const newId = `bill-${Date.now()}`
-        const newTabs = billingTabs.map((tab) =>
-          tab.id === activeTab ? createNewBillingInstance(newId) : tab,
-        )
-        setBillingTabs(newTabs)
-        setActiveTab(newId)
-        setShowPreview(false)
+        toast({
+          title: "Success",
+          description: `Invoice ${isReplay ? "synced" : "saved"} successfully!`,
+          variant: "default",
+        })
+        // Reset the current tab only if it's not a replay (replay doesn't affect current UI state)
+        if (!isReplay) {
+          const newId = `bill-${Date.now()}`
+          const newTabs = billingTabs.map((tab) =>
+            tab.id === activeTab ? createNewBillingInstance(newId) : tab,
+          )
+          setBillingTabs(newTabs)
+          setActiveTab(newId)
+          setShowPreview(false)
+        }
         return true
       } else {
-        setAlert({ type: "error", message: "Failed to save invoice." })
+        const errorData = await response.json();
+        toast({
+          title: "Error",
+          description: `Failed to save invoice: ${errorData.error || response.statusText}`,
+          variant: "destructive",
+        })
         return false
       }
     } catch (error) {
-      setAlert({ type: "error", message: "An error occurred while saving the invoice." })
+      console.error("Error saving invoice:", error);
+      toast({
+        title: "Error",
+        description: "An error occurred while saving the invoice.",
+        variant: "destructive",
+      })
       return false
     }
   }
@@ -519,9 +598,8 @@ export default function BillingAndCart() {
   const handlePrintAndSave = async (invoice: Invoice) => {
     const saved = await handleSaveInvoice(invoice)
     if (saved) {
-      setTimeout(() => {
-        window.print()
-      }, 500)
+      // window.print() call removed as per user request.
+      // Printing functionality is now expected to be handled by the InvoicePreview component.
     }
   }
 
@@ -563,14 +641,20 @@ export default function BillingAndCart() {
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) {
-      setAlert({ type: "error", message: "No file selected." });
-      setTimeout(() => setAlert(null), 3000);
+      toast({
+        title: "Error",
+        description: "No file selected.",
+        variant: "destructive",
+      })
       return;
     }
 
     if (file.type !== "application/json") {
-      setAlert({ type: "error", message: "Please upload a JSON file." });
-      setTimeout(() => setAlert(null), 3000);
+      toast({
+        title: "Error",
+        description: "Please upload a JSON file.",
+        variant: "destructive",
+      })
       return;
     }
 
@@ -578,7 +662,7 @@ export default function BillingAndCart() {
       const fileContent = await file.text();
       const jsonData = JSON.parse(fileContent);
 
-      const response = await fetch("/api/products/upload", {
+      const response = await fetch("http://localhost:8080/api/products/upload", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -587,17 +671,28 @@ export default function BillingAndCart() {
       });
 
       if (response.ok) {
-        setAlert({ type: "success", message: "Products uploaded successfully!" });
+        toast({
+          title: "Success",
+          description: "Products uploaded successfully!",
+          variant: "default",
+        })
         fetchProducts(); // Refresh product list
       } else {
         const errorData = await response.json();
-        setAlert({ type: "error", message: `Failed to upload products: ${errorData.error}` });
+        toast({
+          title: "Error",
+          description: `Failed to upload products: ${errorData.error}`,
+          variant: "destructive",
+        })
       }
     } catch (error: any) {
-      setAlert({ type: "error", message: `Error processing file: ${error.message}` });
+      toast({
+        title: "Error",
+        description: `Error processing file: ${error.message}`,
+        variant: "destructive",
+      })
     } finally {
       event.target.value = ""; // Clear the file input
-      setTimeout(() => setAlert(null), 3000);
     }
   };
 
@@ -608,12 +703,6 @@ export default function BillingAndCart() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left Column - Product Search & Barcode Scanner */}
         <div className="space-y-6">
-          {alert && (
-            <Alert variant={alert.type === "error" ? "destructive" : "default"}>
-              <AlertDescription>{alert.message}</AlertDescription>
-            </Alert>
-          )}
-
           {/* Barcode Scanner */}
           <Card>
             <CardHeader>
@@ -635,9 +724,6 @@ export default function BillingAndCart() {
                 <Button onClick={startBarcodeScanning} variant="outline">
                   <ScanLine className="h-4 w-4 mr-2" />
                   Scan
-                </Button>
-                <Button onClick={handleBarcodeSearch} disabled={!barcodeInput.trim()}>
-                  Search
                 </Button>
               </div>
               {isScanning && <p className="text-sm text-green-600">Scanner active - scan barcode or type manually</p>}

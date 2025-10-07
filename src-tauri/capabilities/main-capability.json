@@ -1,0 +1,29 @@
+{
+  "identifier": "main-capability",
+  "description": "Main capability for Siri Billing App",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:path:default",
+    "core:window:default",
+    "core:webview:default",
+    "core:webview:allow-create-webview-window",
+    "shell:default",
+    "shell:allow-execute",
+    "shell:allow-spawn",
+    "shell:allow-kill",
+    "log:default",
+    "log:allow-log",
+    "updater:default",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "Siribilling-backend",
+          "sidecar": true
+        }
+      ]
+    },
+    "allow-open-print-window"
+  ]
+}

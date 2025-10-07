@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-open-print-window"
+description = "Allows invoking the open_print_window command"
+commands.allow = ["open_print_window"]

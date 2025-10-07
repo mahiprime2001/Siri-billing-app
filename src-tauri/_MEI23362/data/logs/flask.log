@@ -1,0 +1,76 @@
+2025-10-06 20:50:55,043 - main - INFO - Flask server starting up...
+2025-10-06 20:50:55,105 - main - INFO - Background pull sync completed successfully.
+2025-10-06 20:50:57,708 - main - INFO - Flask server starting...
+2025-10-06 20:50:57,708 - main - INFO - Flask will run on port 8080
+2025-10-06 20:50:57,710 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 20:50:58,612 - main - INFO - Background pull sync completed successfully.
+2025-10-06 20:55:55,107 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 20:55:56,270 - main - INFO - Background pull sync completed successfully.
+2025-10-06 20:55:58,622 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 20:55:59,745 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:00:56,271 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:00:57,445 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:00:59,758 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:01:00,966 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:05:57,446 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:05:58,673 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:06:00,971 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:06:02,117 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:10:58,674 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:10:59,847 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:11:02,118 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:11:03,330 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:15:59,848 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:16:01,058 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:16:03,336 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:16:04,564 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:21:01,062 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:21:02,292 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:21:04,565 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:21:05,806 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:26:02,303 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:26:03,715 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:26:05,808 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:26:07,070 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:31:03,716 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:31:04,974 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:31:07,070 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:31:08,286 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:36:04,975 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:36:06,200 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:36:08,291 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:36:09,543 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:41:06,206 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:41:07,406 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:41:09,543 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:41:10,692 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:46:07,411 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:46:08,591 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:46:10,693 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:46:11,875 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:50:52,689 - main - INFO - Returns search: invoice='INV-585878' found 1 bills
+2025-10-06 21:51:08,595 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:51:09,800 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:51:11,877 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:51:13,050 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:56:09,803 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:56:10,937 - main - INFO - Background pull sync completed successfully.
+2025-10-06 21:56:13,056 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 21:56:14,267 - main - INFO - Background pull sync completed successfully.
+2025-10-06 22:01:10,938 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 22:01:12,243 - main - INFO - Background pull sync completed successfully.
+2025-10-06 22:01:14,269 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 22:01:15,771 - main - INFO - Background pull sync completed successfully.
+2025-10-06 22:06:12,246 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 22:06:13,443 - main - INFO - Background pull sync completed successfully.
+2025-10-06 22:06:15,772 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 22:06:17,006 - main - INFO - Background pull sync completed successfully.
+2025-10-06 22:11:13,444 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 22:11:14,621 - main - INFO - Background pull sync completed successfully.
+2025-10-06 22:11:17,010 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 22:11:18,230 - main - INFO - Background pull sync completed successfully.
+2025-10-06 22:12:17,053 - main - INFO - Returns search: invoice='INV-585878' found 1 bills
+2025-10-06 22:16:14,621 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 22:16:15,767 - main - INFO - Background pull sync completed successfully.
+2025-10-06 22:16:18,230 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 22:16:19,432 - main - INFO - Background pull sync completed successfully.

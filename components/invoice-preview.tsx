@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef } from "react"
+import { useRef, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -10,8 +10,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Download, Save, Printer } from "lucide-react"
+import { Download, Save, Printer, AlertCircle } from "lucide-react"
 import PrintableInvoice from "./printable-invoice"
+import { safePrint } from "@/lib/printUtils"
 
 interface Invoice {
   id: string;
@@ -39,7 +40,7 @@ interface Invoice {
   companyEmail: string;
   billFormat: string;
   createdBy: string;
-  items: any[]; // You might want to define a proper type for items
+  items: any[];
 }
 
 interface InvoicePreviewProps {
@@ -60,101 +61,66 @@ export default function InvoicePreview({
   paperSize = "Thermal 80mm",
 }: InvoicePreviewProps) {
   const printRef = useRef<HTMLDivElement>(null)
+  const [isPrinting, setIsPrinting] = useState(false)
+  const [printError, setPrintError] = useState<string | null>(null)
 
-  const handlePrint = () => {
-    if (printRef.current) {
-      // Create a new window for printing
-      const printWindow = window.open("", "_blank")
-      if (printWindow) {
-        const printContent = printRef.current.innerHTML
+  const handlePrint = async () => {
+    if (!printRef.current) {
+      setPrintError("Print content not available. Please try again.")
+      return
+    }
 
-        // Define margins based on paper size
-        const getPageStyles = () => {
-          if (paperSize === "Thermal 58mm" || paperSize === "Thermal 80mm") {
-            return `
-              @page {
-                size: ${paperSize === "Thermal 58mm" ? "58mm auto" : "80mm auto"};
-                margin: 2mm;
-              }
-            `
-          } else if (paperSize === "A4") {
-            return `
-              @page {
-                size: A4 portrait;
-                margin: 15mm 10mm;
-              }
-            `
-          } else if (paperSize === "Letter") {
-            return `
-              @page {
-                size: Letter portrait;
-                margin: 0.6in 0.4in;
-              }
-            `
-          }
-          return `
-            @page {
-              size: A4 portrait;
-              margin: 15mm 10mm;
-            }
-          `
-        }
+    setIsPrinting(true)
+    setPrintError(null)
 
-        printWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>Invoice-${invoice.id}</title>
-              <style>
-                ${getPageStyles()}
-                
-                body {
-                  margin: 0;
-                  padding: 0;
-                  -webkit-print-color-adjust: exact;
-                  color-adjust: exact;
-                  font-family: Arial, sans-serif;
-                }
-                
-                @media print {
-                  body {
-                    -webkit-print-color-adjust: exact;
-                    color-adjust: exact;
-                  }
-                  
-                  * {
-                    box-sizing: border-box;
-                  }
-                }
-              </style>
-            </head>
-            <body>
-              ${printContent}
-            </body>
-          </html>
-        `)
+    try {
+      const printContent = printRef.current.innerHTML
+      const htmlContent = generatePrintHTML(printContent, paperSize, invoice.id)
 
-        printWindow.document.close()
-        printWindow.focus()
+      console.log("🖨 [InvoicePreview] Starting print process...")
+      const result = await safePrint(htmlContent, paperSize)
 
-        // Wait for content to load then print
-        setTimeout(() => {
-          printWindow.print()
-          printWindow.close()
-        }, 250)
+      if (!result.success) {
+        setPrintError(result.error || "Failed to print. Please try again.")
+      } else {
+        console.log("✅ [InvoicePreview] Print completed successfully")
       }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred while printing."
+      console.error("❌ [InvoicePreview] Print error:", error)
+      setPrintError(errorMessage)
+    } finally {
+      setIsPrinting(false)
     }
   }
 
   const handlePrintAndSave = async () => {
-    if (onPrintAndSave) {
-      await onPrintAndSave()
+    setIsPrinting(true)
+    setPrintError(null)
+
+    try {
+      if (onPrintAndSave) {
+        console.log("💾 [InvoicePreview] Saving invoice...")
+        await onPrintAndSave()
+      }
+      await handlePrint()
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "An error occurred during save and print."
+      console.error("❌ [InvoicePreview] Print and save error:", error)
+      setPrintError(errorMessage)
+      setIsPrinting(false)
     }
-    handlePrint()
   }
 
-  const handlePrintOnly = () => {
-    handlePrint()
+  const handleClose = () => {
+    setPrintError(null)
+    onClose()
   }
 
   const isThermal = paperSize.includes("Thermal")
@@ -162,7 +128,7 @@ export default function InvoicePreview({
   const isLetter = paperSize === "Letter"
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
@@ -174,17 +140,47 @@ export default function InvoicePreview({
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Error Alert */}
+          {printError && (
+            <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-md">
+              <div className="flex items-center">
+                <AlertCircle className="h-4 w-4 mr-2" />
+                <div>
+                  <strong>Print Error:</strong> {printError}
+                  <br />
+                  <span className="text-sm">
+                    Please resolve the issue and try again.
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Invoice Preview */}
           <div className="bg-white mx-auto shadow-lg border rounded-lg overflow-hidden">
             <div className="p-4 bg-gray-50 border-b">
-              <p className="text-sm text-gray-600">Preview - This is how your invoice will look when printed</p>
+              <p className="text-sm text-gray-600">
+                Preview - This is how your invoice will look when printed
+              </p>
             </div>
             <div className="p-4 max-h-96 overflow-y-auto">
               <div
                 className={`mx-auto ${
-                  isThermal ? "max-w-sm" : isA4 ? "max-w-2xl" : isLetter ? "max-w-2xl" : "max-w-2xl"
+                  isThermal && paperSize === "Thermal 80mm"
+                    ? "w-[80mm]" // Set explicit width for 80mm thermal
+                    : isThermal && paperSize === "Thermal 58mm"
+                    ? "w-[58mm]" // Set explicit width for 58mm thermal
+                    : isA4
+                    ? "max-w-2xl"
+                    : isLetter
+                    ? "max-w-2xl"
+                    : "max-w-2xl"
                 }`}
-                style={{ transform: "scale(0.8)", transformOrigin: "top center" }}
+                style={
+                  isThermal
+                    ? { transformOrigin: "top center" } // Remove scale for thermal, keep origin
+                    : { transform: "scale(0.8)", transformOrigin: "top center" }
+                }
               >
                 <PrintableInvoice invoice={invoice} paperSize={paperSize} />
               </div>
@@ -198,29 +194,133 @@ export default function InvoicePreview({
 
           {/* Action Buttons */}
           <div className="flex justify-center space-x-4">
-            <Button onClick={handlePrintAndSave} className="bg-blue-600 hover:bg-blue-700">
+            <Button
+              onClick={handlePrintAndSave}
+              className="bg-blue-600 hover:bg-blue-700"
+              disabled={isPrinting}
+            >
               <Printer className="h-4 w-4 mr-2" />
-              Print & Save
+              {isPrinting ? "Processing..." : "Print & Save"}
             </Button>
 
             {onSave && (
-              <Button onClick={onSave} variant="outline">
+              <Button onClick={onSave} variant="outline" disabled={isPrinting}>
                 <Save className="h-4 w-4 mr-2" />
                 Save Only
               </Button>
             )}
 
-            <Button variant="outline" onClick={handlePrintOnly}>
-              <Download className="h-4 w-4 mr-2" />
-              Print Only
-            </Button>
-
-            <Button variant="outline" onClick={onClose}>
+            <Button variant="outline" onClick={handleClose} disabled={isPrinting}>
               Close
             </Button>
           </div>
+
+          {/* Loading indicator */}
+          {isPrinting && (
+            <div className="text-center text-sm text-gray-600">
+              <div className="inline-flex items-center">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                Preparing print...
+              </div>
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>
   )
+}
+
+/**
+ * Generate complete HTML for printing with proper styles
+ */
+function generatePrintHTML(printContent: string, paperSize: string, invoiceId: string): string {
+  const getPageStyles = (): string => {
+    if (paperSize === "Thermal 58mm") {
+      return `
+        @page {
+          /* Actual printable width for 58mm paper is ~48mm */
+          size: 58mm auto;
+          margin: 1mm 2mm; /* small safe margin for most 58mm printers */
+        }
+        body {
+          width: 48mm;
+        }
+      `
+    } else if (paperSize === "Thermal 80mm") {
+      return `
+        @page {
+          /* Actual printable width for 80mm paper is ~72mm */
+          size: 80mm auto;
+          margin: 2mm 3mm;
+        }
+        body {
+          width: 72mm;
+        }
+      `
+    } else if (paperSize === "A4") {
+      return `
+        @page {
+          size: A4 portrait;
+          margin: 15mm 10mm;
+        }
+      `
+    } else if (paperSize === "Letter") {
+      return `
+        @page {
+          size: Letter portrait;
+          margin: 0.6in 0.4in;
+        }
+      `
+    }
+    return `
+      @page {
+        size: A4 portrait;
+        margin: 15mm 10mm;
+      }
+    `
+  }
+
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Invoice-${invoiceId}</title>
+        <style>
+          ${getPageStyles()}
+          * { box-sizing: border-box; }
+          html, body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            font-size: ${paperSize.includes("Thermal") ? "11px" : "14px"};
+            line-height: 1.4;
+            -webkit-print-color-adjust: exact;
+            background: white;
+          }
+          @media print {
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              overflow: visible !important;
+            }
+            .no-print { display: none !important; }
+            .invoice-section { page-break-inside: avoid; margin-bottom: 6px; }
+          }
+          .print-container {
+            width: 100%;
+            max-width: 100%;
+            padding: 0;
+            margin: 0 auto;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="print-container">
+          ${printContent}
+        </div>
+      </body>
+    </html>
+  `
 }

@@ -1,0 +1,60 @@
+[
+  {
+    "id": "1",
+    "name": "Super Admin",
+    "email": "admin@siriart.com",
+    "password": "admin123",
+    "role": "super_admin",
+    "status": "active",
+    "sessionDuration": null,
+    "createdAt": "2022-12-31T18:30:00",
+    "updatedAt": "2023-01-01T00:00:00",
+    "lastLogin": null,
+    "lastLogout": null,
+    "totalSessionDuration": 0
+  },
+  {
+    "id": "c55868c9-b09f-4e53-a6fe-d16d7840ae99",
+    "name": "billing user",
+    "email": "billing@siriart.com",
+    "password": "Simhamahi@01",
+    "role": "billing_user",
+    "status": "active",
+    "sessionDuration": null,
+    "createdAt": "2025-09-20T19:51:38",
+    "updatedAt": "2025-09-20T19:51:38",
+    "lastLogin": null,
+    "lastLogout": null,
+    "totalSessionDuration": 0,
+    "storeId": "STR-1758004817814"
+  },
+  {
+    "id": "e0d02ce4-d0c6-4132-b858-9dcc26434f20",
+    "name": "Simha Mahendra Reddy",
+    "email": "MAHENDRAREDDY965@GMAIL.COM",
+    "password": "Simhamahi@01",
+    "role": "billing_user",
+    "status": "active",
+    "sessionDuration": null,
+    "createdAt": "2025-09-16T22:39:31",
+    "updatedAt": "2025-09-16T22:39:31",
+    "lastLogin": null,
+    "lastLogout": null,
+    "totalSessionDuration": 0,
+    "storeId": "STR-1758042415183"
+  },
+  {
+    "id": "f3c47100-7a07-4287-b389-2514db15f928",
+    "name": "Test User",
+    "email": "test@example.com",
+    "password": "password123",
+    "role": "staff",
+    "status": null,
+    "sessionDuration": null,
+    "createdAt": "2025-09-20T11:02:47",
+    "updatedAt": "2025-09-20T11:02:47",
+    "lastLogin": null,
+    "lastLogout": null,
+    "totalSessionDuration": 0
+  }
+]

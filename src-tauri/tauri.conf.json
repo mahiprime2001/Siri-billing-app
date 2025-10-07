@@ -1,27 +1,32 @@
 {
-  "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Siri_Art_Jewellery",
-  "version": "0.1.1",
-  "identifier": "com.Siri.dev",
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Siri Billing App",
+  "version": "0.1.0",
+  "identifier": "com.SiriBillingApp.dev",
+  
   "build": {
-    "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build",
-    "frontendDist": "../.next",
-    "devUrl": "http://localhost:3000"
+    "frontendDist": "../out",
+    "devUrl": "http://localhost:3000",
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build"
   },
   "app": {
     "windows": [
       {
-        "title": "Siri Art Jewellery",
+        "label": "main",
+        "title": "Siri Billing App",
         "width": 800,
         "height": 600,
         "resizable": true,
-        "fullscreen": true,
-        "url": "http://localhost:1420"
+        "fullscreen": false,
+        "maximized": true,
+        "center": true,
+        "additionalBrowserArgs": "--disable-popup-blocking --allow-running-insecure-content --disable-web-security"
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "capabilities": ["main-capability"]
     }
   },
   "bundle": {
@@ -29,19 +34,35 @@
     "targets": "all",
     "icon": [
       "icons/32x32.png",
+      "icons/64x64.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
-      "icons/icon.ico"
+      "icons/icon.ico",
+      "icons/icon.png",
+      "icons/Square30x30Logo.png",
+      "icons/Square44x44Logo.png",
+      "icons/Square71x71Logo.png",
+      "icons/Square89x89Logo.png",
+      "icons/Square107x107Logo.png",
+      "icons/Square142x142Logo.png",
+      "icons/Square150x150Logo.png",
+      "icons/Square284x284Logo.png",
+      "icons/Square310x310Logo.png",
+      "icons/StoreLogo.png"
+    ],
+    "externalBin": [
+      "binaries/Siribilling-backend"
     ]
   },
   "plugins": {
     "updater": {
       "active": true,
+      "dialog": true,
       "endpoints": [
-        "https://github.com/mahiprime2001/Siri-billing-app/releases/download/latest/latest.json"
+        "https://your-update-server.com/api/updater"
       ],
-      "pubkey": "RWQG3zfbD0Wvvmem6Gm9Tz5yXoCECpF68RoqE0izwW8u4h+3yK3sCiNt"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQzOTQ1MzNGRkQ5OTI0ODgKUldTSUpKbjlQMU9VMCtMREpKS0ZJd2o5ZkREbEtLQVNsZVQvak9POXJiQUtrM1FxVmhGSDY3TU8K"
     }
   }
 }

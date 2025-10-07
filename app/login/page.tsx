@@ -42,7 +42,7 @@ export default function LoginPage() {
     setError("")
 
     try {
-      const response = await fetch("/api/auth/login", {
+      const response = await fetch("http://localhost:8080/api/auth/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -53,15 +53,21 @@ export default function LoginPage() {
       const data = await response.json()
 
       if (response.ok) {
-        localStorage.setItem("user", JSON.stringify(data.user))
-        localStorage.setItem("userEmail", data.user.email)
+        localStorage.setItem("adminLoggedIn", "true")
+        localStorage.setItem("adminUser", JSON.stringify(data.user))
 
         toast("✅ Login Successful", {
           description: "Welcome back!",
           duration: 3000,
         })
 
-        router.push("/billing")
+        setTimeout(() => {
+          if (data.user.role === "super_admin") {
+            router.push("/billing")
+          } else {
+            router.push("/billing")
+          }
+        }, 0);
       } else {
         setError(data.error || "Login failed")
         toast("❌ Login Failed", {
@@ -112,7 +118,7 @@ export default function LoginPage() {
     }))
 
     try {
-      const response = await fetch("/api/auth/forgot-password-proxy", {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/auth/forgot-password-proxy`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

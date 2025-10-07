@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -50,35 +50,35 @@ export default function BillingHistory() {
   const [showPrintDialog, setShowPrintDialog] = useState(false)
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null)
   const [printPaperSize, setPrintPaperSize] = useState("Thermal 80mm");
-  const [loggedInUserId, setLoggedInUserId] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Fetch the logged-in user's ID from localStorage or context
-    // For now, we'll simulate fetching it. In a real app, this would come from auth context.
-    // No longer fetching user ID from /api/users, as it will be handled by JWT in API route
-    // The userId will be implicitly sent via the cookie with each request.
-    // We can remove the local state for loggedInUserId and rely on the server to authenticate.
-    // For now, we'll keep a placeholder to satisfy the useEffect dependency, but it won't be used.
-    setLoggedInUserId("authenticated"); // Placeholder value
-  }, []);
-
-  const fetchBillingHistory = async () => {
+  const fetchBillingHistory = useCallback(async () => {
     try {
-      // The userId is now handled by the JWT in the API route, no need to send it as a query param
-      console.log("Fetching billing history...");
-      const response = await fetch(`/api/billing/history`);
-      const data = await response.json();
-      console.log("Billing history data:", data);
-      setInvoices(data);
-      setFilteredInvoices(data);
+      console.log("Fetching billing history from Flask backend...");
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/bills`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const bills = await response.json();
+      // Sort by timestamp (most recent first)
+      bills.sort((a: Invoice, b: Invoice) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setInvoices(bills);
+      setFilteredInvoices(bills);
+      console.log(`Loaded ${bills.length} invoices from Flask backend.`);
     } catch (error) {
-      console.error("Failed to fetch billing history:", error);
+      console.error("Failed to fetch billing history from Flask backend:", error);
+      // Optionally, handle error by showing a toast or setting an offline state
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchBillingHistory();
-  }, []); // No longer dependent on loggedInUserId state
+
+    // Set up an interval to refresh billing history from local storage every 30 seconds
+    // This ensures the UI reflects changes from background syncs
+    const refreshInterval = setInterval(fetchBillingHistory, 30 * 1000);
+
+    return () => clearInterval(refreshInterval);
+  }, [fetchBillingHistory]);
 
   useEffect(() => {
     const filtered = invoices.filter(
@@ -472,7 +472,7 @@ export default function BillingHistory() {
                   <TableCell className="font-medium">{invoice.id}</TableCell>
                   <TableCell>{invoice.customerName}</TableCell>
                   <TableCell>
-                    {new Date(invoice.timestamp).toLocaleDateString()}
+                    {new Date(invoice.timestamp).toLocaleString()}
                   </TableCell>
                   <TableCell>₹{invoice.total.toLocaleString()}</TableCell>
                   <TableCell>

@@ -1,19 +1,21 @@
 "use client"
 
-import type { Metadata } from 'next'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import './globals.css'
 import { Toaster } from '@/components/ui/sonner'
 import { toast } from 'sonner'
 import { useOnlineStatus } from '@/hooks/use-online-status'
-import { useEffect, useRef } from 'react'
-import ServerStartup from './server-startup';
+import { useEffect } from 'react'
 
-// Declare a global variable to track explicit logout
+// Correct import for Tauri v2 updater plugin
+import { check } from '@tauri-apps/plugin-updater'
+import { relaunch } from '@tauri-apps/plugin-process'
+
 declare global {
   interface Window {
     isLoggingOut: boolean;
+    __TAURI__?: unknown
   }
 }
 
@@ -23,7 +25,6 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   const online = useOnlineStatus()
-  const isExplicitlyLoggingOut = useRef(false);
 
   useEffect(() => {
     if (!online) {
@@ -33,34 +34,43 @@ export default function RootLayout({
       })
     }
 
-    // Set a global flag when an explicit logout is initiated
-    window.isLoggingOut = false;
+    window.isLoggingOut = false
 
-    const handleBeforeUnload = async () => {
-      // Only trigger automatic logout if not explicitly logging out
-      if (window.isLoggingOut) {
-        return;
+    async function setupUpdater() {
+      // Only run updater logic if in Tauri environment
+      if (typeof window === 'undefined' || !window.__TAURI__) {
+        return
       }
 
-      const userId = localStorage.getItem('userId'); // Assuming userId is stored in localStorage on login
-
-      if (userId) {
-        await fetch('/api/auth/logout', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ userId }),
-          keepalive: true,
-        });
+      try {
+        // Check for updates
+        const update = await check()
+        
+        if (update?.available) {
+          toast("Update available", {
+            description: `Update to ${update.version} available!`,
+            action: { 
+              label: "Install now", 
+              onClick: async () => {
+                try {
+                  await update.downloadAndInstall()
+                  await relaunch()
+                } catch (error) {
+                  console.error("Update failed:", error)
+                  toast("Update failed", {
+                    description: "Failed to install the update."
+                  })
+                }
+              }
+            },
+          })
+        }
+      } catch (error) {
+        console.error("Update check failed:", error)
       }
-    };
+    }
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
+    setupUpdater()
   }, [online])
 
   return (
@@ -74,8 +84,7 @@ html {
 }
         `}</style>
       </head>
-      <body>
-        <ServerStartup />
+      <body suppressHydrationWarning={true}>
         {children}
         <Toaster position="top-right" />
       </body>

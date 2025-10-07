@@ -1,0 +1,20 @@
+[
+  {
+    "id": "STR-1758004817814",
+    "name": "Test Store",
+    "address": null,
+    "phone": null,
+    "status": "active",
+    "createdAt": "2025-09-16T12:10:17",
+    "updatedAt": "2025-09-20T19:50:14"
+  },
+  {
+    "id": "STR-1758042415183",
+    "name": "dress cricle ",
+    "address": "kanakamahall gate, nellore",
+    "phone": "6300936015",
+    "status": "active",
+    "createdAt": "2025-09-16T22:36:55",
+    "updatedAt": null
+  }
+]

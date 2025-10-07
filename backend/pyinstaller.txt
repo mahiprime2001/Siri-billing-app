@@ -1,1 +1,1 @@
-pyinstaller --clean --runtime-tmpdir . --name "Siribilling-backend-x86_64-pc-windows-msvc" --onefile --add-data "data:data" --add-data ".env:." --add-data "utils:utils" main.py
+pyinstaller --clean --runtime-tmpdir . --name "Siribilling-backend-x86_64-pc-windows-msvc" --hidden-import=mysql.connector.locales.eng.client_error --onefile --add-data "data:data" --add-data ".env:." --add-data "utils:utils" --hidden-import=mysql.connector.plugins.mysql_native_password main.py

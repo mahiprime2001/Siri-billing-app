@@ -243,44 +243,6 @@ def create_notification(notification_type, message, related_id=None):
     app.logger.info(f"Created notification: {notification_type} - {message}")
     return notification
 
-def read_json_file(file_path):
-    """Read data from a JSON file."""
-    with file_lock:
-        if not os.path.exists(file_path):
-            return []
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
-            app.logger.error(f"Error reading file {file_path}: {e}")
-            return []
-
-def write_json_file(file_path, data):
-    """Write data to a JSON file with timestamps."""
-    with file_lock:
-        try:
-            # Ensure directory exists
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            
-            # Add or update 'lastUpdated' or 'updatedAt' timestamp to each record
-            now_iso = datetime.now().isoformat()
-            if isinstance(data, list):
-                for record in data:
-                    if isinstance(record, dict):
-                        record['updatedAt'] = now_iso
-                        if 'createdAt' not in record:
-                            record['createdAt'] = now_iso
-            elif isinstance(data, dict):
-                data['updatedAt'] = now_iso
-                if 'createdAt' not in data:
-                    data['createdAt'] = now_iso
-
-            with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, default=json_serial)
-        except IOError as e:
-            app.logger.error(f"Error writing file {file_path}: {e}")
-            raise
-
 # API endpoints
 
 @app.route('/api/returns/search', methods=['POST'])
@@ -289,20 +251,15 @@ def search_bills_for_returns_api():
         data = request.json
         if not data:
             return jsonify({"error": "Request data is required"}), 400
-
         query = data.get('query', '').strip()
         search_type = data.get('searchType', 'customer')
-
         if not query:
             return jsonify({"error": "Search query is required"}), 400
-
         if search_type not in ['customer', 'phone', 'invoice']:
             return jsonify({"error": "Invalid search type"}), 400
-
         results = search_bills_for_returns(query, search_type)
         app.logger.info(f"Returns search: {search_type}='{query}' found {len(results)} bills")
         return jsonify(results), 200
-
     except Exception as e:
         app.logger.error(f"Error searching bills for returns: {e}")
         return jsonify({"error": "Internal server error", "details": str(e)}), 500
@@ -313,36 +270,28 @@ def submit_return_request():
         data = request.json
         if not data:
             return jsonify({"error": "Request data is required"}), 400
-
         selected_items = data.get('selectedItems', [])
         return_reason = data.get('returnReason', '').strip()
         refund_method = data.get('refundMethod', 'cash')
         search_results = data.get('searchResults', [])
         created_by = data.get('createdBy', 'Unknown')
-
         if not selected_items:
             return jsonify({"error": "No items selected for return"}), 400
-
         if not return_reason:
             return jsonify({"error": "Return reason is required"}), 400
-
         existing_returns = get_returns_data()
         new_returns = []
         total_return_amount = 0
-
         for item_id in selected_items:
             try:
                 bill_id, item_index = item_id.split('-')
                 item_index = int(item_index)
-
                 bill = next((b for b in search_results if b['id'] == bill_id), None)
                 if not bill or item_index >= len(bill['items']):
                     app.logger.warning(f"Could not find bill or item for {item_id}")
                     continue
-
                 item = bill['items'][item_index]
                 return_id = str(uuid.uuid4())
-
                 return_record = {
                     'return_id': return_id,
                     'product_name': item['productName'],
@@ -364,25 +313,19 @@ def submit_return_request():
             except Exception as e:
                 app.logger.error(f"Error processing return item {item_id}: {e}")
                 continue
-
         if not new_returns:
             return jsonify({"error": "No valid items found for return"}), 400
-
         existing_returns.extend(new_returns)
         save_returns_data(existing_returns)
-
         notification_message = f"New return request submitted by {created_by}. {len(new_returns)} item(s) for ₹{total_return_amount:.2f}"
         create_notification('return_request', notification_message, new_returns[0]['return_id'])
-
         app.logger.info(f"Return request submitted: {len(new_returns)} items, total: ₹{total_return_amount:.2f}")
-
         return jsonify({
             "message": "Return request submitted successfully",
             "returnId": new_returns[0]['return_id'],
             "itemCount": len(new_returns),
             "totalAmount": total_return_amount
         }), 200
-
     except Exception as e:
         app.logger.error(f"Error submitting return request: {e}")
         return jsonify({"error": "Internal server error", "details": str(e)}), 500

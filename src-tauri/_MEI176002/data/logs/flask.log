@@ -1,0 +1,10 @@
+2025-10-06 17:10:43,684 - main - INFO - Flask server starting up...
+2025-10-06 17:10:43,866 - main - INFO - Background pull sync completed successfully.
+2025-10-06 17:10:46,682 - main - INFO - Flask server starting...
+2025-10-06 17:10:46,682 - main - INFO - Flask will run on port 8080
+2025-10-06 17:10:46,682 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 17:10:47,648 - main - INFO - Background pull sync completed successfully.
+2025-10-06 17:15:43,868 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 17:15:45,036 - main - INFO - Background pull sync completed successfully.
+2025-10-06 17:15:47,656 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 17:15:48,867 - main - INFO - Background pull sync completed successfully.

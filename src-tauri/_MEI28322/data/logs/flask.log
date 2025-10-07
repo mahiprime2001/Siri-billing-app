@@ -1,0 +1,29 @@
+2025-10-06 15:03:32,218 - main - INFO - Flask server starting up...
+2025-10-06 15:03:32,435 - main - INFO - Flask server starting...
+2025-10-06 15:03:32,435 - main - INFO - Flask will run on port 8080
+2025-10-06 15:03:32,435 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 15:03:32,566 - main - ERROR - Background pull sync failed: ['Failed to get database connection']
+2025-10-06 15:08:30,940 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 15:08:31,070 - main - ERROR - Background pull sync failed: ['Failed to get database connection']
+2025-10-06 15:08:32,567 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 15:08:32,695 - main - ERROR - Background pull sync failed: ['Failed to get database connection']
+2025-10-06 15:13:31,071 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 15:13:31,197 - main - ERROR - Background pull sync failed: ['Failed to get database connection']
+2025-10-06 15:13:32,697 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 15:13:32,811 - main - ERROR - Background pull sync failed: ['Failed to get database connection']
+2025-10-06 15:18:31,198 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 15:18:31,310 - main - ERROR - Background pull sync failed: ['Failed to get database connection']
+2025-10-06 15:18:32,823 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 15:18:32,955 - main - ERROR - Background pull sync failed: ['Failed to get database connection']
+2025-10-06 15:23:31,321 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 15:23:31,467 - main - ERROR - Background pull sync failed: ['Failed to get database connection']
+2025-10-06 15:23:32,957 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 15:23:33,091 - main - ERROR - Background pull sync failed: ['Failed to get database connection']
+2025-10-06 15:28:31,469 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 15:28:31,592 - main - ERROR - Background pull sync failed: ['Failed to get database connection']
+2025-10-06 15:28:33,094 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 15:28:33,242 - main - ERROR - Background pull sync failed: ['Failed to get database connection']
+2025-10-06 15:33:31,594 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 15:33:31,735 - main - ERROR - Background pull sync failed: ['Failed to get database connection']
+2025-10-06 15:33:33,244 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
+2025-10-06 15:33:33,385 - main - ERROR - Background pull sync failed: ['Failed to get database connection']

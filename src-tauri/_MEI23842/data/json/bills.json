@@ -1,0 +1,44 @@
+[
+  {
+    "id": "INV-744556",
+    "storeId": "STR-1758004817814",
+    "storeName": "Test Store",
+    "storeAddress": "N/A",
+    "customerName": "Walk-in Customer",
+    "customerEmail": "",
+    "customerPhone": "",
+    "customerAddress": "",
+    "customerId": "",
+    "subtotal": 700,
+    "taxPercentage": 12,
+    "taxAmount": 84,
+    "discountPercentage": 0,
+    "discountAmount": 0,
+    "total": 784,
+    "paymentMethod": "Cash",
+    "timestamp": "2025-10-06T08:52:24.556Z",
+    "notes": "",
+    "gstin": "27AAFCV2449G1Z7",
+    "companyName": "SIRI ART JEWELLERY",
+    "companyAddress": "123 Jewelry Street, Mumbai, Maharashtra 400001",
+    "companyPhone": "+91 98765 43210",
+    "companyEmail": "info@siriartjewellery.com",
+    "billFormat": "Thermal 80mm",
+    "createdBy": "c55868c9-b09f-4e53-a6fe-d16d7840ae99",
+    "items": [
+      {
+        "id": "1759740739621",
+        "productId": "01c9193f-c7dd-42c6-a7d0-2fabadfa43f1",
+        "name": "S.NECKLACE",
+        "quantity": 1,
+        "price": 700,
+        "total": 700,
+        "tax": 0,
+        "gstRate": 0,
+        "barcodes": "1758303616654798"
+      }
+    ],
+    "updatedAt": "2025-10-06T14:22:27.119217",
+    "createdAt": "2025-10-06T14:22:27.119217"
+  }
+]
