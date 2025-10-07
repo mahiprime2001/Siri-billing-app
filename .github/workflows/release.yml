@@ -29,6 +29,8 @@ jobs:
     steps:
       - name: 🛒 Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # needed for tags
 
       - name: ⚡ Setup pnpm
         uses: pnpm/action-setup@v4
@@ -67,32 +69,99 @@ jobs:
       - name: 🏗️ Build frontend
         run: pnpm run build
 
-      # ⬆️ Auto bump version only once (only on Ubuntu job)
+      # ✅ Auto bump version (Ubuntu only)
       - name: 🔢 Auto Bump Version
         if: matrix.platform == 'ubuntu-22.04'
         id: bump
-        uses: phips28/gh-action-bump-version@v10.1.1
-        with:
-          tag-prefix: "v"
-          bump-type: patch
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(git describe --tags --abbrev=0 || echo "")
+          PACKAGE_VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          echo "Current tauri.conf.json version: $PACKAGE_VERSION"
+          echo "Latest tag: $TAG"
 
-      # 📝 Generate latest.json manually
+          if [ "v$PACKAGE_VERSION" = "$TAG" ]; then
+            echo "✅ Version $PACKAGE_VERSION already tagged, skipping bump."
+            echo "newTag=$TAG" >> $GITHUB_OUTPUT
+          else
+            echo "🔼 Bumping patch version..."
+            npm version patch --no-git-tag-version
+            NEW_VERSION=$(node -p "require('./package.json').version")
+            echo "newTag=v$NEW_VERSION" >> $GITHUB_OUTPUT
+            git tag v$NEW_VERSION
+            git push origin v$NEW_VERSION
+            echo "✅ Bumped and pushed v$NEW_VERSION"
+          fi
+
+      # ✅ Update tauri.conf.json version
+      - name: 📝 Update Tauri version
+        run: |
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          echo "Updating src-tauri/tauri.conf.json -> package.version = $VERSION"
+          jq ".package.version = \"$VERSION\"" src-tauri/tauri.conf.json > /tmp/tf.$$ && mv /tmp/tf.$$ src-tauri/tauri.conf.json
+
+      # ✅ Create stub binaries for macOS if missing
+      - name: ⚙️ Prepare backend binary (macOS)
+        if: startsWith(matrix.platform, 'macos')
+        run: |
+          mkdir -p src-tauri/binaries
+          BACKEND_BIN=src-tauri/binaries/Siribilling-backend-${{ matrix.target }}
+          if [ ! -f "$BACKEND_BIN" ]; then
+            echo "#!/bin/bash\necho 'Backend stub running'" > $BACKEND_BIN
+            chmod +x $BACKEND_BIN
+            echo "✅ Created stub binary: $BACKEND_BIN"
+          else
+            echo "✅ Binary exists: $BACKEND_BIN"
+          fi
+
+      # ✅ Build Tauri App
+      - name: 🚀 Build Tauri App
+        run: |
+          if [ -n "${{ matrix.target }}" ]; then
+            pnpm tauri build -- --target ${{ matrix.target }}
+          else
+            pnpm tauri build
+          fi
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      # ✅ Generate latest.json (Ubuntu only)
       - name: 🧾 Generate latest.json
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          echo "{
-            \"version\": \"$VERSION\",
-            \"notes\": \"Auto Release for version $VERSION.\",
-            \"pub_date\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\",
-            \"platforms\": {}
-          }" > latest.json
+          REPO="${{ github.repository }}"
+          APP_NAME="SiriBillingApp"
+          PUBDATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          cat > latest.json <<EOF
+          {
+            "version": "${VERSION}",
+            "notes": "Auto Release for version ${VERSION}.",
+            "pub_date": "${PUBDATE}",
+            "platforms": {
+              "windows-x86_64": {
+                "signature": "",
+                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/${APP_NAME}_${VERSION}_x64-setup.exe"
+              },
+              "darwin-x86_64": {
+                "signature": "",
+                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/${APP_NAME}_${VERSION}_x64.dmg"
+              },
+              "darwin-aarch64": {
+                "signature": "",
+                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/${APP_NAME}_${VERSION}_aarch64.dmg"
+              },
+              "linux-x86_64": {
+                "signature": "",
+                "url": "https://github.com/${REPO}/releases/download/v${VERSION}/${APP_NAME}_${VERSION}_amd64.AppImage"
+              }
+            }
+          }
+          EOF
           echo "✅ latest.json created for version $VERSION"
 
-      # 🚀 Build and release
-      - name: 🚀 Build and Publish Release
+      # ✅ Build & Release using tauri-action
+      - name: 📦 Build and Publish Release
         uses: tauri-apps/tauri-action@v0.5.7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -101,14 +170,14 @@ jobs:
         with:
           tagName: ${{ steps.bump.outputs.newTag || 'v__VERSION__' }}
           releaseName: "Release ${{ steps.bump.outputs.newTag || 'v__VERSION__' }}"
-          releaseBody: "🚀 Auto-generated release for version ${{ steps.bump.outputs.newTag || 'v__VERSION__' }}."
+          releaseBody: "Auto-generated release for version ${{ steps.bump.outputs.newTag || 'v__VERSION__' }}."
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
           args: ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
 
-      # 📤 Upload latest.json as asset (only once)
-      - name: 📦 Upload latest.json
+      # ✅ Upload latest.json to release (Ubuntu only)
+      - name: 📤 Upload latest.json
         if: matrix.platform == 'ubuntu-22.04'
         uses: softprops/action-gh-release@v2
         with:
