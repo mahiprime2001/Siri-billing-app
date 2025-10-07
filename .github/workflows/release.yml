@@ -15,26 +15,32 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-22.04, windows-latest, macos-latest]
+        include:
+          - platform: "macos-latest"
+            args: "--target aarch64-apple-darwin"
+          - platform: "macos-latest"
+            args: "--target x86_64-apple-darwin"
+          - platform: "ubuntu-22.04"
+            args: ""
+          - platform: "windows-latest"
+            args: ""
+    
     runs-on: ${{ matrix.platform }}
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-
+    
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
         with:
           version: 8
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
 
-      # Install Linux dependencies only for Ubuntu
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -43,37 +49,33 @@ jobs:
             libappindicator3-dev librsvg2-dev patchelf libjavascriptcoregtk-4.1-dev \
             libsoup-3.0-dev pkg-config clang
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: actions/cache@v4
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            node_modules
-            .next/cache
-          key: ${{ runner.os }}-deps-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: ${{ runner.os }}-deps-
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Tauri CLI
-        run: pnpm add -D @tauri-apps/cli
-
       - name: Build frontend
         run: pnpm run build
 
-      - name: Tauri Build and Release
+      - name: Build and Release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: v${{ github.run_number }}
-          releaseName: "Release v${{ github.run_number }}"
-          releaseBody: "See assets to download and install."
-          includeUpdaterJson: true
-          releaseDraft: false
+          tagName: "v__VERSION__"
+          releaseName: "Release v__VERSION__"
+          releaseBody: "See the assets to download and install this version."
+          releaseDraft: true
           prerelease: false
+          includeUpdaterJson: true
+          args: ${{ matrix.args }}
