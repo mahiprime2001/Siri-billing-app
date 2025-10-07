@@ -2,8 +2,7 @@ name: "Tauri Cross-Platform Auto Release"
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -16,66 +15,104 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: "macos-latest"
-            args: "--target aarch64-apple-darwin"
-          - platform: "macos-latest" 
-            args: "--target x86_64-apple-darwin"
-          - platform: "ubuntu-22.04"
-            args: ""
-          - platform: "windows-latest"
-            args: ""
-    
-    runs-on: ${{ matrix.platform }}
-    
-    steps:
-      - uses: actions/checkout@v4
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+          - platform: ubuntu-22.04
+            target: ""
+          - platform: windows-latest
+            target: ""
 
-      - name: Setup pnpm
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: 🛒 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ⚡ Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 8
 
-      - name: Setup Node.js
+      - name: ⚙️ Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
 
-      - name: Install Linux dependencies
+      - name: 🧱 Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev \
-            libappindicator3-dev librsvg2-dev patchelf libjavascriptcoregtk-4.1-dev \
-            libsoup-3.0-dev pkg-config clang
+          sudo apt-get install -y \
+            libgtk-3-dev libwebkit2gtk-4.1-dev \
+            libappindicator3-dev librsvg2-dev patchelf \
+            libjavascriptcoregtk-4.1-dev libsoup-3.0-dev \
+            pkg-config clang
 
-      - name: Setup Rust toolchain
+      - name: 🦀 Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.target }}
 
-      - name: Rust cache
+      - name: ♻️ Cache Rust
         uses: swatinem/rust-cache@v2
         with:
           workspaces: "./src-tauri -> target"
 
-      - name: Install frontend dependencies
-        run: pnpm install 
+      - name: 📦 Install frontend dependencies
+        run: pnpm install --no-frozen-lockfile
 
-      - name: Build frontend
+      - name: 🏗️ Build frontend
         run: pnpm run build
 
-      - name: Build and Release
-        uses: tauri-apps/tauri-action@v0
+      # ⬆️ Auto bump version only once (only on Ubuntu job)
+      - name: 🔢 Auto Bump Version
+        if: matrix.platform == 'ubuntu-22.04'
+        id: bump
+        uses: phips28/gh-action-bump-version@v10.1.1
+        with:
+          tag-prefix: "v"
+          bump-type: patch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 📝 Generate latest.json manually
+      - name: 🧾 Generate latest.json
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          echo "{
+            \"version\": \"$VERSION\",
+            \"notes\": \"Auto Release for version $VERSION.\",
+            \"pub_date\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\",
+            \"platforms\": {}
+          }" > latest.json
+          echo "✅ latest.json created for version $VERSION"
+
+      # 🚀 Build and release
+      - name: 🚀 Build and Publish Release
+        uses: tauri-apps/tauri-action@v0.5.7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: "v__VERSION__"
-          releaseName: "Release v__VERSION__" 
-          releaseBody: "See the assets to download and install this version."
-          releaseDraft: true
+          tagName: ${{ steps.bump.outputs.newTag || 'v__VERSION__' }}
+          releaseName: "Release ${{ steps.bump.outputs.newTag || 'v__VERSION__' }}"
+          releaseBody: "🚀 Auto-generated release for version ${{ steps.bump.outputs.newTag || 'v__VERSION__' }}."
+          releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
-          args: ${{ matrix.args }}
+          args: ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
+
+      # 📤 Upload latest.json as asset (only once)
+      - name: 📦 Upload latest.json
+        if: matrix.platform == 'ubuntu-22.04'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.bump.outputs.newTag }}
+          files: latest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
