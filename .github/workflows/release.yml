@@ -1,14 +1,9 @@
-name: "Tauri Windows Auto Release"
+name: "Tauri Windows Release (Inline Key, Secret Password)"
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch:
-
-permissions:
-  contents: write
-  actions: read
 
 jobs:
   build-and-release-windows:
@@ -23,18 +18,11 @@ jobs:
       - name: 🦀 Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: 🧱 Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: "./src-tauri -> target"
-
-      - name: 🧩 Setup pnpm
+      - name: 🧩 Setup pnpm & Node.js
         uses: pnpm/action-setup@v4
         with:
           version: 8
-
-      - name: ⚙️ Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
@@ -42,11 +30,20 @@ jobs:
       - name: 📦 Install frontend dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: ✍️ Write inline private key
+        run: |
+          cat << 'EOF' > src-tauri/signing_private.pem
+          -----BEGIN RSA PRIVATE KEY-----
+          YOUR_INLINE_PRIVATE_KEY_CONTENT_HERE
+          -----END RSA PRIVATE KEY-----
+          EOF
+        # no-env: writes file directly, avoid echoing into logs
+
       - name: 🚀 Build and Release Windows with Tauri
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }} # misuse env to hold password
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: "v__VERSION__"
@@ -55,7 +52,7 @@ jobs:
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: false
-          args: ""
+
 
   post-release-windows:
     needs: build-and-release-windows
