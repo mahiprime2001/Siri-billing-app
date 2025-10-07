@@ -1,0 +1,5 @@
+Flask
+Flask-Cors
+python-dotenv
+mysql-connector-python
+python-dateutil>=2.9.0.post0
