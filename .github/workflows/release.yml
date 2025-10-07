@@ -11,55 +11,29 @@ permissions:
   actions: read
 
 jobs:
-  calculate-version:
-    runs-on: ubuntu-22.04
-    outputs:
-      next_version: ${{ steps.calculate.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - run: sudo apt-get install -y jq
-      - id: calculate
-        run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          RANGE=${PREV_TAG:+$PREV_TAG..HEAD}
-          if git log $RANGE --pretty=%B | grep -q "BREAKING CHANGE"; then TYPE="major"
-          elif git log $RANGE --pretty=%B | grep -q "^feat:"; then TYPE="minor"
-          elif git log $RANGE --pretty=%B | grep -q "^fix:"; then TYPE="patch"
-          else TYPE="patch"; fi
-          TAURI_FILE=src-tauri/tauri.conf.json
-          OLD_VERSION=$(jq -r '.version' $TAURI_FILE)
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$OLD_VERSION"
-          case "$TYPE" in
-            major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
-            minor) MINOR=$((MINOR+1)); PATCH=0 ;;
-            patch) PATCH=$((PATCH+1)) ;;
-          esac
-          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-
-  build:
-    needs: calculate-version
-    outputs:
-      version: ${{ needs.calculate-version.outputs.next_version }}
+  build-and-release:
     strategy:
       fail-fast: false
       matrix:
         platform: [ubuntu-22.04, windows-latest, macos-latest]
     runs-on: ${{ matrix.platform }}
     env:
-      VERSION: ${{ needs.calculate-version.outputs.next_version }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'pnpm'
 
       - name: Install pnpm
         run: npm install -g pnpm
 
+      # Install Linux dependencies only for Ubuntu
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -80,69 +54,26 @@ jobs:
           key: ${{ runner.os }}-deps-${{ hashFiles('**/package-lock.json') }}
           restore-keys: ${{ runner.os }}-deps-
 
-      # Download Node.js for packaging
-      - name: Download Node.js binaries
-        run: |
-          mkdir -p src-tauri/bin/node
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            curl -fsSL https://nodejs.org/dist/v20.16.0/node-v20.16.0-linux-x64.tar.xz -o node.tar.xz
-            tar -xJf node.tar.xz --strip-components=1 -C src-tauri/bin/node
-          elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            curl -fsSL https://nodejs.org/dist/v20.16.0/node-v20.16.0-darwin-x64.tar.gz -o node.tar.gz
-            tar -xzf node.tar.gz --strip-components=1 -C src-tauri/bin/node
-          else
-            curl -fsSL https://nodejs.org/dist/v20.16.0/node-v20.16.0-win-x64.zip -o node.zip
-            unzip -q node.zip -d src-tauri/bin/node
-          fi
+      - name: Install frontend deps
+        run: pnpm install --frozen-lockfile
 
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run build
-      - run: npx @tauri-apps/cli build
+      - name: Install Tauri CLI
+        run: pnpm add -D @tauri-apps/cli
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tauri-${{ matrix.platform }}
-          path: src-tauri/target/release/bundle/
+      - name: Build frontend
+        run: pnpm run build
 
-  bump-and-release:
-    needs: build
-    runs-on: ubuntu-22.04
-    if: success()
-    env:
-      VERSION: ${{ needs.build.outputs.version }}
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Safety check for VERSION
-        run: test -n "$VERSION"
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Update version in configs
-        run: |
-          git pull origin main
-          jq ".version=\"$VERSION\"" package.json > tmp.json && mv tmp.json package.json
-          jq ".version=\"$VERSION\"" src-tauri/tauri.conf.json > tmp2.json && mv tmp2.json src-tauri/tauri.conf.json
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json src-tauri/tauri.conf.json
-          git commit -m "chore: bump version to $VERSION [skip ci]" || echo "No changes"
-          git tag -d v$VERSION || true
-          git push origin :refs/tags/v$VERSION || true
-          git tag v$VERSION
-          git push origin main --tags
-
-      - name: Create GitHub Release
-        run: |
-          gh release create v$VERSION artifacts/**/* \
-            --title "Release v$VERSION" \
-            --notes "Automated release v$VERSION"
+      # Build, sign, and release using tauri-action
+      - name: Tauri Build and Release
+        uses: tauri-apps/tauri-action@v0
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: v${{ github.run_number }}
+          releaseName: "Release v${{ github.run_number }}"
+          releaseBody: "See assets to download and install."
+          includeUpdaterJson: true
+          releaseDraft: false
+          prerelease: false
