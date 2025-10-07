@@ -38,16 +38,16 @@ jobs:
       # Check and fix workspace configuration
       - name: 🔧 Check pnpm workspace configuration
         run: |
-          if [ -f "pnpm-workspace.yaml" ] || [ -f "pnpm-workspace.yml" ]; then
-            echo "Workspace file exists, checking configuration..."
-            if ! pnpm list --depth=0 > /dev/null 2>&1; then
-              echo "Creating minimal workspace configuration..."
-              echo "packages:" > pnpm-workspace.yaml
-              echo "  - '.'" >> pnpm-workspace.yaml
-            fi
-          else
-            echo "No workspace configuration found, proceeding with single package setup..."
-          fi
+          if (Test-Path "pnpm-workspace.yaml" -or Test-Path "pnpm-workspace.yml") {
+            Write-Host "Workspace file exists, checking configuration..."
+            pnpm list --depth=0 | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "Creating minimal workspace configuration..."
+              Set-Content -Path "pnpm-workspace.yaml" -Value "packages:`n  - '.'"
+            }
+          } else {
+            Write-Host "No workspace configuration found, proceeding with single package setup..."
+          }
 
       - name: ⚙️ Setup Node.js
         uses: actions/setup-node@v4
