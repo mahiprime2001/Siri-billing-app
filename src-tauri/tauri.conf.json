@@ -30,6 +30,7 @@
     }
   },
   "bundle": {
+    "createUpdaterArtifacts": true ,
     "active": true,
     "targets": "all",
     "icon": [
@@ -60,9 +61,9 @@
       "active": true,
       "dialog": true,
       "endpoints": [
-        "https://your-update-server.com/api/updater"
+        "https://your-update-server.com/api/updater/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQzOTQ1MzNGRkQ5OTI0ODgKUldTSUpKbjlQMU9VMCtMREpKS0ZJd2o5ZkREbEtLQVNsZVQvak9POXJiQUtrM1FxVmhGSDY3TU8K"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMxMUE0NzI2MEIxOUMzN0IKUldSN3d4a0xKa2NhTVp5SGppUkNMN2J5cXRGY3hCWCtyOVlocnFnWkszazRYV0ZWTlVZdlc5ZmwK"
     }
   }
 }
