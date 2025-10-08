@@ -30,20 +30,18 @@ jobs:
       - name: 📦 Install frontend dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: ✍️ Write inline private key
+      - name: ✍️ Write inline private key (PowerShell here-string)
         run: |
           Set-Content -Path "src-tauri\signing_private.pem" -Value @"
-          -----BEGIN RSA PRIVATE KEY-----
-          dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWduIGVuY3J5cHRlZCBzZWNyZXQga2V5ClJXUlRZMEl5TGtjRWljNldBemVUMnU2MjIxUTFUc29xMGVuU1dOUFFzdWN5MXQ1cUEzQUFBQkFBQUFBQUFBQUFBQUlBQUFBQXA4VEFJY0hXSDl2SnNvM2w3TGFDWm5YY1ljbitsNWcySWF4bTB4Q3kyMWZJZmcvTzkvN01kR21UZmRzUS9YOHlaQ0ErR2hZVTF1bE1KWU1VWVRtVDZLa0o2ei83UHU1Y2swT09VMEZ3OGxVUlNydUVEMEtKRFZBNnd2K2p0a2Y4bk5RRHZiT2ZVWHc9Cg==
-          -----END RSA PRIVATE KEY-----
-          "@
-        # no-env: writes file directly, avoid echoing into logs
+              -----BEGIN RSA PRIVATE KEY-----
+              dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWduIGVuY3J5cHRlZCBzZWNyZXQga2V5ClJXUlRZMEl5TGtjRWljNldBemVUMnU2MjIxUTFUc29xMGVuU1dOUFFzdWN5MXQ1cUEzQUFBQkFBQUFBQUFBQUFBQUlBQUFBQXA4VEFJY0hXSDl2SnNvM2w3TGFDWm5YY1ljbitsNWcySWF4bTB4Q3kyMWZJZmcvTzkvN01kR21UZmRzUS9YOHlaQ0ErR2hZVTF1bE1KWU1VWVRtVDZLa0o2ei83UHU1Y2swT09VMEZ3OGxVUlNydUVEMEtKRFZBNnd2K2p0a2Y4bk5RRHZiT2ZVWHc9Cg==
+              -----END RSA PRIVATE KEY-----
+              "@
 
       - name: 🚀 Build and Release Windows with Tauri
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }} # misuse env to hold password
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: "v__VERSION__"
@@ -52,7 +50,6 @@ jobs:
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: false
-
 
   post-release-windows:
     needs: build-and-release-windows
@@ -71,7 +68,7 @@ jobs:
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/Siri Billing App_${VERSION}_x64-setup.exe"
           SIG_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/Siri Billing App_${VERSION}_x64-setup.exe.sig"
-          cat <<EOF > latest.json
+          cat <<EOF > latest.json 
           {
             "version": "${VERSION}",
             "date": "${DATE}",
