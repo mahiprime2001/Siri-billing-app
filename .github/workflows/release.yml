@@ -67,23 +67,27 @@ jobs:
         run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
       - name: 🧾 Create latest.json
+        shell: pwsh
         run: |
-          VERSION=${{ steps.get_version.outputs.version }}
-          DATE=$(Get-Date -Format s)
-          URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/Siri Billing App_${VERSION}_x64-setup.exe"
-          SIG_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/Siri Billing App_${VERSION}_x64-setup.exe.sig"
+          $Version = "${{ steps.get_version.outputs.version }}"
+          $Date = Get-Date -Format s
+          $URL = "https://github.com/${{ github.repository }}/releases/download/v$Version/Siri Billing App_${Version}_x64-setup.exe"
+          $SIG_URL = "https://github.com/${{ github.repository }}/releases/download/v$Version/Siri Billing App_${Version}_x64-setup.exe.sig"
+
           $latestJson = @"
-            {
-              "version": "${VERSION}",
-              "date": "${DATE}",
-              "notes": "Windows release ${VERSION}",
-              "platform": {
-                "windows": {
-                  "url": "${URL}",
-                  "signature": "${SIG_URL}"
-                }
+          {
+            "version": "$Version",
+            "date": "$Date",
+            "notes": "Windows release $Version",
+            "platform": {
+              "windows": {
+                "url": "$URL",
+                "signature": "$SIG_URL"
               }
-            }"@
+            }
+          }
+          "@
+
           $latestJson | Out-File -Encoding UTF8 latest.json
 
       - name: 📤 Upload all release artifacts dynamically
