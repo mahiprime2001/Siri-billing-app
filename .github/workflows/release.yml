@@ -1,4 +1,4 @@
-name: "Tauri Windows Release (Dynamic Upload)"
+name: "Tauri Windows Release (Dynamic Upload with Auto Release)"
 
 on:
   push:
@@ -90,12 +90,23 @@ jobs:
 
           $latestJson | Out-File -Encoding UTF8 latest.json
 
-      - name: 📤 Upload all release artifacts dynamically
+      - name: 📤 Upload all release artifacts dynamically (auto-create release)
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh auth setup-git
+
+          $Version = "${{ steps.get_version.outputs.version }}"
+
+          # Check if release exists
+          try {
+            gh release view "v$Version" -R $env:GITHUB_REPOSITORY -q . > $null
+            Write-Host "Release v$Version already exists."
+          } catch {
+            Write-Host "Release v$Version not found, creating it..."
+            gh release create "v$Version" --title "Windows Release v$Version" --notes "Automatic release from workflow" -R $env:GITHUB_REPOSITORY
+          }
 
           # Folders containing build artifacts
           $folders = @(
@@ -107,10 +118,10 @@ jobs:
             if (Test-Path $folder) {
               Get-ChildItem -Path $folder -File | ForEach-Object {
                 Write-Host "Uploading $($_.FullName)..."
-                gh release upload "v${{ steps.get_version.outputs.version }}" $_.FullName --clobber
+                gh release upload "v$Version" $_.FullName --clobber -R $env:GITHUB_REPOSITORY
               }
             }
           }
 
           # Upload latest.json as well
-          gh release upload "v${{ steps.get_version.outputs.version }}" latest.json --clobber
+          gh release upload "v$Version" latest.json --clobber -R $env:GITHUB_REPOSITORY
