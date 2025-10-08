@@ -1,10 +1,10 @@
-name: "Tauri Windows Release (Dynamic Upload with Auto Release)"
+name: "Tauri Windows Release (Tag-Based, Dynamic Upload)"
 
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:
+    tags:
+      - 'v*'   # Trigger only on tags like v0.1.0
+  workflow_dispatch: # Optional: allow manual run
 
 permissions:
   contents: write
@@ -48,8 +48,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: "v__VERSION__"
-          releaseName: "Windows Release v__VERSION__"
+          tagName: "${GITHUB_REF#refs/tags/}"
+          releaseName: "Windows Release ${GITHUB_REF#refs/tags/}"
           releaseBody: "Windows installer and signature"
           releaseDraft: false
           prerelease: false
@@ -62,14 +62,13 @@ jobs:
       - name: 🛒 Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🔢 Get tag version
-        id: get_version
-        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      - name: 🔢 Get version from tag
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
 
       - name: 🧾 Create latest.json
         shell: pwsh
         run: |
-          $Version = "${{ steps.get_version.outputs.version }}"
+          $Version = $env:VERSION
           $Date = Get-Date -Format s
           $URL = "https://github.com/${{ github.repository }}/releases/download/v$Version/Siri Billing App_${Version}_x64-setup.exe"
           $SIG_URL = "https://github.com/${{ github.repository }}/releases/download/v$Version/Siri Billing App_${Version}_x64-setup.exe.sig"
@@ -98,10 +97,6 @@ jobs:
           gh auth setup-git
 
           $Version = $env:VERSION
-
-          if (-not $Version) {
-            throw "VERSION is empty. Make sure the workflow is triggered by a tag push."
-          }
 
           # Check if release exists
           try {
