@@ -1,9 +1,10 @@
-name: "Tauri Windows Release (Secret Key, Secret Password)"
+name: "Tauri Windows Release (Dynamic Upload)"
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -17,7 +18,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 🪟 Install Windows dependencies
-        run: choco install -y wixtoolset nsis
+        run: choco install -y wixtoolset nsis gh
 
       - name: 🦀 Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -40,7 +41,7 @@ jobs:
           echo "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" >> src-tauri/signing_private.pem
           echo "-----END PRIVATE KEY-----" >> src-tauri/signing_private.pem
 
-      - name: 🚀 Build and Release Windows with Tauri
+      - name: 🚀 Build Windows release with Tauri
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -56,7 +57,7 @@ jobs:
 
   post-release-windows:
     needs: build-and-release-windows
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: 🛒 Checkout repository
         uses: actions/checkout@v4
@@ -68,29 +69,45 @@ jobs:
       - name: 🧾 Create latest.json
         run: |
           VERSION=${{ steps.get_version.outputs.version }}
-          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          DATE=$(Get-Date -Format s)
           URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/Siri Billing App_${VERSION}_x64-setup.exe"
           SIG_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/Siri Billing App_${VERSION}_x64-setup.exe.sig"
-          cat <<EOF > latest.json
-          {
-            "version": "${VERSION}",
-            "date": "${DATE}",
-            "notes": "Windows release ${VERSION}",
-            "platform": {
-              "windows": {
-                "url": "${URL}",
-                "signature": "${SIG_URL}"
+          $latestJson = @"
+            {
+              "version": "${VERSION}",
+              "date": "${DATE}",
+              "notes": "Windows release ${VERSION}",
+              "platform": {
+                "windows": {
+                  "url": "${URL}",
+                  "signature": "${SIG_URL}"
+                }
+              }
+            }
+            "@
+          $latestJson | Out-File -Encoding UTF8 latest.json
+
+      - name: 📤 Upload all release artifacts dynamically
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh auth setup-git
+
+          # Folders containing build artifacts
+          $folders = @(
+            "src-tauri/target/release/bundle/msi",
+            "src-tauri/target/release/bundle/nsis"
+          )
+
+          foreach ($folder in $folders) {
+            if (Test-Path $folder) {
+              Get-ChildItem -Path $folder -File | ForEach-Object {
+                Write-Host "Uploading $($_.FullName)..."
+                gh release upload "v${{ steps.get_version.outputs.version }}" $_.FullName --clobber
               }
             }
           }
-          EOF
 
-      - name: 📤 Upload latest.json to Release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: latest.json
-          asset_name: latest.json
-          tag: v${{ steps.get_version.outputs.version }}
-          overwrite: true
-          body: "Tauri Windows latest.json metadata file"
+          # Upload latest.json as well
+          gh release upload "v${{ steps.get_version.outputs.version }}" latest.json --clobber
