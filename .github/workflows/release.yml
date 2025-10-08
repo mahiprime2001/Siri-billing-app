@@ -83,8 +83,7 @@ jobs:
                   "signature": "${SIG_URL}"
                 }
               }
-            }
-            "@
+            }"@
           $latestJson | Out-File -Encoding UTF8 latest.json
 
       - name: 📤 Upload all release artifacts dynamically
