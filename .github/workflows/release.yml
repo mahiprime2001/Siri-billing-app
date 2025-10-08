@@ -1,9 +1,9 @@
-name: "Tauri Windows Release (Auto Tag + Dynamic Upload)"
+name: "Tauri Windows Release (Tag-Based, Reliable)"
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'   # Trigger only on tags like v0.1.0
   workflow_dispatch:
 
 permissions:
@@ -41,24 +41,8 @@ jobs:
           echo "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" >> src-tauri/signing_private.pem
           echo "-----END PRIVATE KEY-----" >> src-tauri/signing_private.pem
 
-      - name: 🔖 Determine version
-        id: version
-        shell: pwsh
-        run: |
-          if ($GITHUB_REF -like "refs/tags/*") {
-            $Version = $GITHUB_REF -replace 'refs/tags/', ''
-          } else {
-            # Auto-generate version from timestamp
-            $Version = "v" + (Get-Date -Format "yyyy.MM.dd.HHmm")
-            Write-Host "Auto-generated version: $Version"
-
-            # Create Git tag
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git tag $Version
-            git push origin $Version
-          }
-          echo "VERSION=$Version" >> $env:GITHUB_ENV
+      - name: 🔖 Set version from tag
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
 
       - name: 🚀 Build Windows release with Tauri
         uses: tauri-apps/tauri-action@v0
@@ -105,7 +89,7 @@ jobs:
 
           $latestJson | Out-File -Encoding UTF8 latest.json
 
-      - name: 📤 Upload all release artifacts dynamically (auto-create release)
+      - name: 📤 Upload all release artifacts dynamically
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -113,11 +97,6 @@ jobs:
           gh auth setup-git
 
           $Version = $env:VERSION
-
-          if (-not $Version) {
-              throw "VERSION is empty. Make sure auto-tagging ran correctly."
-          }
-
           Write-Host "Using release tag: $Version"
 
           # Ensure the release exists
