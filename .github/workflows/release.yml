@@ -36,7 +36,7 @@ jobs:
           -----BEGIN RSA PRIVATE KEY-----
           dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWduIGVuY3J5cHRlZCBzZWNyZXQga2V5ClJXUlRZMEl5TGtjRWljNldBemVUMnU2MjIxUTFUc29xMGVuU1dOUFFzdWN5MXQ1cUEzQUFBQkFBQUFBQUFBQUFBQUlBQUFBQXA4VEFJY0hXSDl2SnNvM2w3TGFDWm5YY1ljbitsNWcySWF4bTB4Q3kyMWZJZmcvTzkvN01kR21UZmRzUS9YOHlaQ0ErR2hZVTF1bE1KWU1VWVRtVDZLa0o2ei83UHU1Y2swT09VMEZ3OGxVUlNydUVEMEtKRFZBNnd2K2p0a2Y4bk5RRHZiT2ZVWHc9Cg==
           -----END RSA PRIVATE KEY-----
-          "@"
+          "@
         # no-env: writes file directly, avoid echoing into logs
 
       - name: 🚀 Build and Release Windows with Tauri
