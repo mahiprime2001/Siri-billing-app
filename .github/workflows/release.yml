@@ -97,11 +97,15 @@ jobs:
         run: |
           gh auth setup-git
 
-          $Version = "${{ steps.get_version.outputs.version }}"
+          $Version = $env:VERSION
+
+          if (-not $Version) {
+            throw "VERSION is empty. Make sure the workflow is triggered by a tag push."
+          }
 
           # Check if release exists
           try {
-            gh release view "v$Version" -R $env:GITHUB_REPOSITORY -q . > $null
+            gh release view "v$Version" -R $env:GITHUB_REPOSITORY > $null
             Write-Host "Release v$Version already exists."
           } catch {
             Write-Host "Release v$Version not found, creating it..."
