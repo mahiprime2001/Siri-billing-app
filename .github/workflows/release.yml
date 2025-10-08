@@ -1,9 +1,10 @@
-name: "Tauri Windows Release (Secret Key, Secret Password)"
+name: "Tauri Windows Release (Private Key Signing)"
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   build-and-release-windows:
@@ -31,14 +32,22 @@ jobs:
       - name: 📦 Install frontend dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: 🧾 Decode base64 private key from Secret and write to file
+      # Decode and export the private key
+      - name: 🔐 Decode TAURI_SIGNING_PRIVATE_KEY
         shell: pwsh
         run: |
           Write-Host "🔐 Decoding private key..."
           $decoded = [System.Convert]::FromBase64String($env:TAURI_SIGNING_PRIVATE_KEY)
           New-Item -ItemType Directory -Force -Path "src-tauri" | Out-Null
-          [System.IO.File]::WriteAllBytes("src-tauri/signing_private.pem", $decoded)
-          Write-Host "✅ Private key written to src-tauri/signing_private.pem"
+          $pemPath = "src-tauri/signing_private.pem"
+          [System.IO.File]::WriteAllBytes($pemPath, $decoded)
+          Write-Host "✅ Private key written to $pemPath"
+
+          # Also expose the decoded PEM contents for Tauri env
+          $keyContent = Get-Content $pemPath -Raw
+          echo "TAURI_SIGNING_PRIVATE_KEY<<EOF" >> $env:GITHUB_ENV
+          echo "$keyContent" >> $env:GITHUB_ENV
+          echo "EOF" >> $env:GITHUB_ENV
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
 
@@ -47,6 +56,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.TAURI_SIGNING_PRIVATE_KEY }}
         with:
           tagName: "v__VERSION__"
           releaseName: "Windows Release v__VERSION__"
