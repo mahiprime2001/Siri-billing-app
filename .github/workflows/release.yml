@@ -1,10 +1,10 @@
-name: "Tauri Windows Release (Tag-Based, Dynamic Upload)"
+name: "Tauri Windows Release (Auto Tag + Dynamic Upload)"
 
 on:
   push:
-    tags:
-      - 'v*'   # Trigger only on tags like v0.1.0
-  workflow_dispatch: # Optional: allow manual run
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -41,6 +41,25 @@ jobs:
           echo "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" >> src-tauri/signing_private.pem
           echo "-----END PRIVATE KEY-----" >> src-tauri/signing_private.pem
 
+      - name: 🔖 Determine version
+        id: version
+        shell: pwsh
+        run: |
+          if ($GITHUB_REF -like "refs/tags/*") {
+            $Version = $GITHUB_REF -replace 'refs/tags/', ''
+          } else {
+            # Auto-generate version from timestamp
+            $Version = "v" + (Get-Date -Format "yyyy.MM.dd.HHmm")
+            Write-Host "Auto-generated version: $Version"
+
+            # Create Git tag
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag $Version
+            git push origin $Version
+          }
+          echo "VERSION=$Version" >> $env:GITHUB_ENV
+
       - name: 🚀 Build Windows release with Tauri
         uses: tauri-apps/tauri-action@v0
         env:
@@ -48,8 +67,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: "${GITHUB_REF#refs/tags/}"
-          releaseName: "Windows Release ${GITHUB_REF#refs/tags/}"
+          tagName: "${{ env.VERSION }}"
+          releaseName: "Windows Release ${{ env.VERSION }}"
           releaseBody: "Windows installer and signature"
           releaseDraft: false
           prerelease: false
@@ -62,16 +81,13 @@ jobs:
       - name: 🛒 Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🔢 Get version from tag
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-
       - name: 🧾 Create latest.json
         shell: pwsh
         run: |
           $Version = $env:VERSION
           $Date = Get-Date -Format s
-          $URL = "https://github.com/${{ github.repository }}/releases/download/v$Version/Siri Billing App_${Version}_x64-setup.exe"
-          $SIG_URL = "https://github.com/${{ github.repository }}/releases/download/v$Version/Siri Billing App_${Version}_x64-setup.exe.sig"
+          $URL = "https://github.com/${{ github.repository }}/releases/download/$Version/Siri Billing App_${Version}_x64-setup.exe"
+          $SIG_URL = "https://github.com/${{ github.repository }}/releases/download/$Version/Siri Billing App_${Version}_x64-setup.exe.sig"
 
           $latestJson = @"
           {
@@ -100,11 +116,11 @@ jobs:
 
           # Check if release exists
           try {
-            gh release view "v$Version" -R $env:GITHUB_REPOSITORY > $null
-            Write-Host "Release v$Version already exists."
+            gh release view "$Version" -R $env:GITHUB_REPOSITORY > $null
+            Write-Host "Release $Version already exists."
           } catch {
-            Write-Host "Release v$Version not found, creating it..."
-            gh release create "v$Version" --title "Windows Release v$Version" --notes "Automatic release from workflow" -R $env:GITHUB_REPOSITORY
+            Write-Host "Release $Version not found, creating it..."
+            gh release create "$Version" --title "Windows Release $Version" --notes "Automatic release from workflow" -R $env:GITHUB_REPOSITORY
           }
 
           # Folders containing build artifacts
@@ -117,10 +133,10 @@ jobs:
             if (Test-Path $folder) {
               Get-ChildItem -Path $folder -File | ForEach-Object {
                 Write-Host "Uploading $($_.FullName)..."
-                gh release upload "v$Version" $_.FullName --clobber -R $env:GITHUB_REPOSITORY
+                gh release upload "$Version" $_.FullName --clobber -R $env:GITHUB_REPOSITORY
               }
             }
           }
 
           # Upload latest.json as well
-          gh release upload "v$Version" latest.json --clobber -R $env:GITHUB_REPOSITORY
+          gh release upload "$Version" latest.json --clobber -R $env:GITHUB_REPOSITORY
