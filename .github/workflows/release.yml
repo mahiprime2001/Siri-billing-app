@@ -8,6 +8,7 @@ on:
 jobs:
   build-and-release-windows:
     runs-on: windows-latest
+
     steps:
       - name: 🛒 Checkout code
         uses: actions/checkout@v4
@@ -30,9 +31,14 @@ jobs:
       - name: 📦 Install frontend dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Decode base64 private key from Secret and write to file
+      - name: 🧾 Decode base64 private key from Secret and write to file
+        shell: pwsh
         run: |
-          echo "$env:TAURI_SIGNING_PRIVATE_KEY" | base64 --decode > src-tauri/signing_private.pem
+          Write-Host "🔐 Decoding private key..."
+          $decoded = [System.Convert]::FromBase64String($env:TAURI_SIGNING_PRIVATE_KEY)
+          New-Item -ItemType Directory -Force -Path "src-tauri" | Out-Null
+          [System.IO.File]::WriteAllBytes("src-tauri/signing_private.pem", $decoded)
+          Write-Host "✅ Private key written to src-tauri/signing_private.pem"
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
 
@@ -52,6 +58,7 @@ jobs:
   post-release-windows:
     needs: build-and-release-windows
     runs-on: ubuntu-latest
+
     steps:
       - name: 🛒 Checkout repository
         uses: actions/checkout@v4
@@ -67,18 +74,18 @@ jobs:
           URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/Siri Billing App_${VERSION}_x64-setup.exe"
           SIG_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/Siri Billing App_${VERSION}_x64-setup.exe.sig"
           cat <<EOF > latest.json
-              {
-                "version": "${VERSION}",
-                "date": "${DATE}",
-                "notes": "Windows release ${VERSION}",
-                "platform": {
-                  "windows": {
-                    "url": "${URL}",
-                    "signature": "${SIG_URL}"
-                  }
-                }
+          {
+            "version": "${VERSION}",
+            "date": "${DATE}",
+            "notes": "Windows release ${VERSION}",
+            "platform": {
+              "windows": {
+                "url": "${URL}",
+                "signature": "${SIG_URL}"
               }
-              EOF
+            }
+          }
+          EOF
 
       - name: 📤 Upload latest.json to Release
         uses: softprops/action-upload-release-asset@v1
