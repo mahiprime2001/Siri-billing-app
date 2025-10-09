@@ -42,14 +42,7 @@ jobs:
           echo "-----END PRIVATE KEY-----" >> src-tauri/signing_private.pem
 
       - name: 🔖 Set version from tag
-        shell: pwsh
-        run: |
-          if ($env:GITHUB_REF -match 'refs/tags/(.*)$') {
-              $version = $matches[1]
-              echo "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          } else {
-              throw "Not a tag push - invalid GITHUB_REF: $env:GITHUB_REF"
-          }
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
 
       - name: 🚀 Build Windows release with Tauri
         uses: tauri-apps/tauri-action@v0
