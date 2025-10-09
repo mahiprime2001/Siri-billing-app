@@ -81,13 +81,13 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: "${{ env.VERSION }}"
-          releaseName: "Windows Release ${!!env.VERSION}"
+          releaseName: "Windows Release ${{ env.VERSION }}"
           releaseBody: "Windows installer and signature"
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: false
 
-      # 7️⃣ Create latest.json for updater (signature is file CONTENT, not URL)
+      # 7️⃣ Create latest.json for updater (embed signature content)
       - name: 🧾 Generate latest.json
         shell: pwsh
         run: |
@@ -106,14 +106,14 @@ jobs:
 
           $sigPath = "$($exe.FullName).sig"
           if (-not (Test-Path $sigPath)) {
-            # Fallback: grab the newest .sig if the name pattern differs
-            $sigPath = (Get-ChildItem -Path $nsisDir -Filter *.sig -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+            $sig = Get-ChildItem -Path $nsisDir -Filter *.sig -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($sig) { $sigPath = $sig.FullName }
           }
           if (-not (Test-Path $sigPath)) { throw "No .sig found in $nsisDir" }
 
           $sigContent = Get-Content -Path $sigPath -Raw
 
-          # URL-encode the asset filename for release download URL
+          # URL-encode asset name for release download URL
           $assetNameEncoded = [System.Uri]::EscapeDataString($exe.Name)
           $assetUrl = "https://github.com/$repo/releases/download/$version/$assetNameEncoded"
 
@@ -167,22 +167,27 @@ jobs:
           # Upload latest.json
           gh release upload $version latest.json --clobber -R $env:GITHUB_REPOSITORY
 
-      # 9️⃣ Update tauri.conf.json version (ensure nested path exists)
+      # 9️⃣ Update tauri.conf.json version (robust: hashtable path)
       - name: 🔄 Update tauri.conf.json version
         shell: pwsh
         run: |
           $configPath = "src-tauri/tauri.conf.json"
-          $config = Get-Content $configPath -Raw | ConvertFrom-Json
 
-          # Ensure 'package' exists as an object
-          if (-not $config.PSObject.Properties['package']) {
-            Add-Member -InputObject $config -MemberType NoteProperty -Name package -Value ([PSCustomObject]@{})
+          # Parse as hashtable so nested keys can be created safely
+          $config = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
+
+          if (-not $config.ContainsKey('package') -or $null -eq $config['package']) {
+            $config['package'] = @{}
           }
 
-          # Set version without leading 'v'
-          $config.package.version = ("${{ env.VERSION }}" -replace '^v','')
+          if (-not ($config['package'] -is [hashtable])) {
+            # Coerce to hashtable if it came back as a psobject or other type
+            $config['package'] = @{}
+          }
 
-          # Write back
+          $ver = ("${{ env.VERSION }}" -replace '^v','')
+          $config['package']['version'] = $ver
+
           $config | ConvertTo-Json -Depth 10 | Out-File $configPath -Encoding UTF8
 
           git add $configPath
