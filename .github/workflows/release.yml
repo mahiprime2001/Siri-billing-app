@@ -1,18 +1,47 @@
-name: "Tauri Windows Release (Tag-Based, Reliable)"
+name: "Tauri Windows Release (Auto Tag + Push-Based)"
 
 on:
   push:
-    tags:
-      - 'v*'   # Trigger only on tags like v0.1.0
-  workflow_dispatch:
+    branches:
+      - main    # 👈 runs on every push to main branch
+  workflow_dispatch: # allows manual runs too
 
 permissions:
   contents: write
   packages: write
 
 jobs:
+  auto-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.create_tag.outputs.version }}
+    steps:
+      - name: 🛒 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🏷️ Auto-increment version tag
+        id: create_tag
+        run: |
+          # Find latest tag or default to v0.1.0
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.1.0")
+          echo "Current tag: $TAG"
+
+          # Extract version numbers
+          BASE=${TAG#v}
+          IFS='.' read -r major minor patch <<< "$BASE"
+          patch=$((patch + 1))
+          NEW_TAG="v$major.$minor.$patch"
+
+          echo "New tag: $NEW_TAG"
+          git tag $NEW_TAG
+          git push origin $NEW_TAG
+          echo "version=$NEW_TAG" >> $GITHUB_OUTPUT
+
   build-and-release-windows:
+    needs: auto-tag
     runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.auto-tag.outputs.version }}
     steps:
       - name: 🛒 Checkout code
         uses: actions/checkout@v4
@@ -41,9 +70,6 @@ jobs:
           echo "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" >> src-tauri/signing_private.pem
           echo "-----END PRIVATE KEY-----" >> src-tauri/signing_private.pem
 
-      - name: 🔖 Set version from tag
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-
       - name: 🚀 Build Windows release with Tauri
         uses: tauri-apps/tauri-action@v0
         env:
@@ -53,7 +79,7 @@ jobs:
         with:
           tagName: "${{ env.VERSION }}"
           releaseName: "Windows Release ${{ env.VERSION }}"
-          releaseBody: "Windows installer and signature"
+          releaseBody: "Automatic Windows release"
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: false
@@ -61,6 +87,8 @@ jobs:
   post-release-windows:
     needs: build-and-release-windows
     runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.auto-tag.outputs.version }}
     steps:
       - name: 🛒 Checkout repository
         uses: actions/checkout@v4
@@ -71,7 +99,7 @@ jobs:
           $Version = $env:VERSION
           $Date = Get-Date -Format s
           $URL = "https://github.com/${{ github.repository }}/releases/download/$Version/Siri Billing App_${Version}_x64-setup.exe"
-          $SIG_URL = "https://github.com/${{ github.repository }}/releases/download/$Version/Siri Billing App_${Version}_x64-setup.exe.sig"
+          $SIG_URL = "$URL.sig"
 
           $latestJson = @"
           {
@@ -89,31 +117,15 @@ jobs:
 
           $latestJson | Out-File -Encoding UTF8 latest.json
 
-      - name: 📤 Upload all release artifacts dynamically
+      - name: 📤 Upload artifacts & latest.json
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh auth setup-git
-
           $Version = $env:VERSION
-          Write-Host "Using release tag: $Version"
+          Write-Host "Uploading assets for version $Version..."
 
-          # Ensure the release exists
-          $releaseExists = $false
-          try {
-              gh release view "$Version" -R $env:GITHUB_REPOSITORY | Out-Null
-              $releaseExists = $true
-          } catch {
-              Write-Host "Release $Version does not exist yet."
-          }
-
-          if (-not $releaseExists) {
-              Write-Host "Creating release $Version..."
-              gh release create "$Version" --title "Windows Release $Version" --notes "Automatic release from workflow" -R $env:GITHUB_REPOSITORY
-          }
-
-          # Upload all artifacts
           $folders = @(
               "src-tauri/target/release/bundle/msi",
               "src-tauri/target/release/bundle/nsis"
@@ -128,5 +140,4 @@ jobs:
               }
           }
 
-          # Upload latest.json
           gh release upload "$Version" latest.json --clobber -R $env:GITHUB_REPOSITORY
