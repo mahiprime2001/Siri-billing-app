@@ -1,28 +1,68 @@
-name: "Tauri Windows Auto Release"
+name: "Tauri Windows Release (Auto Tag + Push-Based)"
 
 on:
   push:
     branches:
-      - main
-  workflow_dispatch:
+      - main   # Run every push to main
+  workflow_dispatch: # Allow manual trigger too
 
 permissions:
   contents: write
   packages: write
 
 jobs:
-  build-and-release-windows:
-    runs-on: windows-latest
+  auto-tag:
+    runs-on: ubuntu-latest
     outputs:
-      VERSION: ${{ steps.set_version.outputs.VERSION }}
+      version: ${{ steps.create_tag.outputs.version }}
+    steps:
+      - name: 🛒 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🏷️ Auto-increment version tag (Safe)
+        id: create_tag
+        run: |
+          # Get the latest tag or default to v0.1.0
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.1.0")
+          echo "Current tag: $TAG"
+
+          BASE=${TAG#v}
+          IFS='.' read -r major minor patch <<< "$BASE"
+
+          # Find next available tag up to 20 increments
+          for i in $(seq 1 20); do
+            NEXT_TAG="v$major.$minor.$((patch + i))"
+            if ! git ls-remote --tags origin | grep -q "refs/tags/$NEXT_TAG"; then
+              NEW_TAG=$NEXT_TAG
+              break
+            fi
+          done
+
+          if [ -z "$NEW_TAG" ]; then
+            echo "❌ Could not find next free tag (too many existing)."
+            exit 1
+          fi
+
+          echo "✅ New tag: $NEW_TAG"
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git tag $NEW_TAG
+          git push origin $NEW_TAG
+          echo "version=$NEW_TAG" >> $GITHUB_OUTPUT
+
+  build-and-release-windows:
+    needs: auto-tag
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.auto-tag.outputs.version }}
     steps:
       - name: 🛒 Checkout code
         uses: actions/checkout@v4
 
-      - name: 🪟 Install dependencies
+      - name: 🪟 Install Windows dependencies
         run: choco install -y wixtoolset nsis gh
 
-      - name: 🦀 Setup Rust
+      - name: 🦀 Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: 🧩 Setup pnpm & Node.js
@@ -36,32 +76,6 @@ jobs:
 
       - name: 📦 Install frontend dependencies
         run: pnpm install --no-frozen-lockfile
-
-      # --- AUTO TAGGING ---
-      - name: 🔖 Auto-bump version tag
-        id: set_version
-        shell: pwsh
-        run: |
-          $prefix = "v"
-          $tags = git tag --sort=-v:refname | Where-Object { $_ -match "^$prefix\d+\.\d+\.\d+$" }
-          if ($tags.Count -eq 0) {
-              $newVersion = "${prefix}0.1.0"
-          } else {
-              $latestTag = $tags[0]
-              Write-Host "Latest tag: $latestTag"
-              $parts = $latestTag.TrimStart($prefix) -split '\.'
-              $parts[2] = [int]$parts[2] + 1
-              $newVersion = "$prefix$($parts -join '.')"
-          }
-
-          Write-Host "New tag: $newVersion"
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git tag $newVersion
-          git push origin $newVersion
-
-          echo "VERSION=$newVersion" >> $env:GITHUB_ENV
-          echo "VERSION=$newVersion" >> $env:GITHUB_OUTPUT
 
       - name: 🗝️ Write raw private key to file
         run: |
@@ -78,7 +92,7 @@ jobs:
         with:
           tagName: "${{ env.VERSION }}"
           releaseName: "Windows Release ${{ env.VERSION }}"
-          releaseBody: "Windows installer and signature"
+          releaseBody: "Automatic Windows release"
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: false
@@ -86,24 +100,19 @@ jobs:
   post-release-windows:
     needs: build-and-release-windows
     runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.auto-tag.outputs.version }}
     steps:
       - name: 🛒 Checkout repository
         uses: actions/checkout@v4
-
-      - name: ⚙️ Setup GitHub CLI
-        run: choco install -y gh
-
-      - name: 🔁 Restore VERSION
-        run: echo "VERSION=${{ needs.build-and-release-windows.outputs.VERSION }}" >> $env:GITHUB_ENV
 
       - name: 🧾 Create latest.json
         shell: pwsh
         run: |
           $Version = $env:VERSION
-          if (-not $Version) { throw "VERSION is empty!" }
           $Date = Get-Date -Format s
           $URL = "https://github.com/${{ github.repository }}/releases/download/$Version/Siri Billing App_${Version}_x64-setup.exe"
-          $SIG_URL = "https://github.com/${{ github.repository }}/releases/download/$Version/Siri Billing App_${Version}_x64-setup.exe.sig"
+          $SIG_URL = "$URL.sig"
 
           $latestJson = @"
           {
@@ -121,29 +130,14 @@ jobs:
 
           $latestJson | Out-File -Encoding UTF8 latest.json
 
-      - name: 📤 Upload release artifacts
+      - name: 📤 Upload all release artifacts
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh auth setup-git
           $Version = $env:VERSION
-          Write-Host "Uploading assets for release: $Version"
-
-          # Retry until release appears
-          $maxRetries = 5
-          $delay = 5
-          for ($i=1; $i -le $maxRetries; $i++) {
-              try {
-                  gh release view "$Version" -R $env:GITHUB_REPOSITORY | Out-Null
-                  Write-Host "✅ Release $Version found."
-                  break
-              } catch {
-                  if ($i -eq $maxRetries) { throw "❌ Release $Version not found after $maxRetries attempts." }
-                  Write-Host "⏳ Waiting for release to appear..."
-                  Start-Sleep -Seconds $delay
-              }
-          }
+          Write-Host "📦 Uploading release assets for $Version..."
 
           $folders = @(
               "src-tauri/target/release/bundle/msi",
@@ -153,7 +147,7 @@ jobs:
           foreach ($folder in $folders) {
               if (Test-Path $folder) {
                   Get-ChildItem -Path $folder -File | ForEach-Object {
-                      Write-Host "Uploading $($_.FullName)..."
+                      Write-Host "➡️ Uploading $($_.FullName)..."
                       gh release upload "$Version" $_.FullName --clobber -R $env:GITHUB_REPOSITORY
                   }
               }
