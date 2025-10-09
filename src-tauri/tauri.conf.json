@@ -3,7 +3,6 @@
   "productName": "Siri Billing App",
   "version": "0.1.0",
   "identifier": "com.SiriBillingApp.dev",
-  
   "build": {
     "frontendDist": "../out",
     "devUrl": "http://localhost:3000",
@@ -26,11 +25,13 @@
     ],
     "security": {
       "csp": null,
-      "capabilities": ["main-capability"]
+      "capabilities": [
+        "main-capability"
+      ]
     }
   },
   "bundle": {
-    "createUpdaterArtifacts": true ,
+    "createUpdaterArtifacts": true,
     "active": true,
     "targets": "all",
     "icon": [
@@ -65,5 +66,8 @@
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMxMUE0NzI2MEIxOUMzN0IKUldSN3d4a0xKa2NhTVp5SGppUkNMN2J5cXRGY3hCWCtyOVlocnFnWkszazRYV0ZWTlVZdlc5ZmwK"
     }
+  },
+  "package": {
+    "version": "0.1.0"
   }
 }
