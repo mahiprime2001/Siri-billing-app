@@ -1,9 +1,9 @@
-name: "Tauri Windows Release (Tag-Based, Reliable)"
+name: "Tauri Windows Auto Release"
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -19,10 +19,10 @@ jobs:
       - name: 🛒 Checkout code
         uses: actions/checkout@v4
 
-      - name: 🪟 Install Windows dependencies
+      - name: 🪟 Install dependencies
         run: choco install -y wixtoolset nsis gh
 
-      - name: 🦀 Setup Rust toolchain
+      - name: 🦀 Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: 🧩 Setup pnpm & Node.js
@@ -37,17 +37,37 @@ jobs:
       - name: 📦 Install frontend dependencies
         run: pnpm install --no-frozen-lockfile
 
+      # --- AUTO TAGGING ---
+      - name: 🔖 Auto-bump version tag
+        id: set_version
+        shell: pwsh
+        run: |
+          $prefix = "v"
+          $tags = git tag --sort=-v:refname | Where-Object { $_ -match "^$prefix\d+\.\d+\.\d+$" }
+          if ($tags.Count -eq 0) {
+              $newVersion = "${prefix}0.1.0"
+          } else {
+              $latestTag = $tags[0]
+              Write-Host "Latest tag: $latestTag"
+              $parts = $latestTag.TrimStart($prefix) -split '\.'
+              $parts[2] = [int]$parts[2] + 1
+              $newVersion = "$prefix$($parts -join '.')"
+          }
+
+          Write-Host "New tag: $newVersion"
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag $newVersion
+          git push origin $newVersion
+
+          echo "VERSION=$newVersion" >> $env:GITHUB_ENV
+          echo "VERSION=$newVersion" >> $env:GITHUB_OUTPUT
+
       - name: 🗝️ Write raw private key to file
         run: |
           echo "-----BEGIN PRIVATE KEY-----" > src-tauri/signing_private.pem
           echo "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" >> src-tauri/signing_private.pem
           echo "-----END PRIVATE KEY-----" >> src-tauri/signing_private.pem
-
-      - name: 🔖 Set version from tag
-        id: set_version
-        run: |
-          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
       - name: 🚀 Build Windows release with Tauri
         uses: tauri-apps/tauri-action@v0
@@ -101,17 +121,16 @@ jobs:
 
           $latestJson | Out-File -Encoding UTF8 latest.json
 
-      - name: 📤 Upload all release artifacts dynamically
+      - name: 📤 Upload release artifacts
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh auth setup-git
-
           $Version = $env:VERSION
-          Write-Host "Checking for release: $Version"
+          Write-Host "Uploading assets for release: $Version"
 
-          # Retry logic: Wait for release to appear
+          # Retry until release appears
           $maxRetries = 5
           $delay = 5
           for ($i=1; $i -le $maxRetries; $i++) {
@@ -121,7 +140,7 @@ jobs:
                   break
               } catch {
                   if ($i -eq $maxRetries) { throw "❌ Release $Version not found after $maxRetries attempts." }
-                  Write-Host "⏳ Release not found yet. Retrying in $delay seconds..."
+                  Write-Host "⏳ Waiting for release to appear..."
                   Start-Sleep -Seconds $delay
               }
           }
