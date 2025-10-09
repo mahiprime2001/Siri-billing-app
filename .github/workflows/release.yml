@@ -3,8 +3,8 @@ name: "Tauri Windows Release (Auto Tag + Push-Based)"
 on:
   push:
     branches:
-      - main    # 👈 runs on every push to main branch
-  workflow_dispatch: # allows manual runs too
+      - main   # Run every push to main
+  workflow_dispatch: # Allow manual trigger too
 
 permissions:
   contents: write
@@ -19,20 +19,33 @@ jobs:
       - name: 🛒 Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🏷️ Auto-increment version tag
+      - name: 🏷️ Auto-increment version tag (Safe)
         id: create_tag
         run: |
-          # Find latest tag or default to v0.1.0
+          # Get the latest tag or default to v0.1.0
           TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.1.0")
           echo "Current tag: $TAG"
 
-          # Extract version numbers
           BASE=${TAG#v}
           IFS='.' read -r major minor patch <<< "$BASE"
-          patch=$((patch + 1))
-          NEW_TAG="v$major.$minor.$patch"
 
-          echo "New tag: $NEW_TAG"
+          # Find next available tag up to 20 increments
+          for i in $(seq 1 20); do
+            NEXT_TAG="v$major.$minor.$((patch + i))"
+            if ! git ls-remote --tags origin | grep -q "refs/tags/$NEXT_TAG"; then
+              NEW_TAG=$NEXT_TAG
+              break
+            fi
+          done
+
+          if [ -z "$NEW_TAG" ]; then
+            echo "❌ Could not find next free tag (too many existing)."
+            exit 1
+          fi
+
+          echo "✅ New tag: $NEW_TAG"
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
           git tag $NEW_TAG
           git push origin $NEW_TAG
           echo "version=$NEW_TAG" >> $GITHUB_OUTPUT
@@ -117,14 +130,14 @@ jobs:
 
           $latestJson | Out-File -Encoding UTF8 latest.json
 
-      - name: 📤 Upload artifacts & latest.json
+      - name: 📤 Upload all release artifacts
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh auth setup-git
           $Version = $env:VERSION
-          Write-Host "Uploading assets for version $Version..."
+          Write-Host "📦 Uploading release assets for $Version..."
 
           $folders = @(
               "src-tauri/target/release/bundle/msi",
@@ -134,7 +147,7 @@ jobs:
           foreach ($folder in $folders) {
               if (Test-Path $folder) {
                   Get-ChildItem -Path $folder -File | ForEach-Object {
-                      Write-Host "Uploading $($_.FullName)..."
+                      Write-Host "➡️ Uploading $($_.FullName)..."
                       gh release upload "$Version" $_.FullName --clobber -R $env:GITHUB_REPOSITORY
                   }
               }
