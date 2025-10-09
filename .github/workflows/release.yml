@@ -33,13 +33,14 @@ jobs:
           npm install -g yarn
           yarn install
 
-      # 4️⃣ Write raw private key as PEM (Option 1)
+      # 4️⃣ Write raw private key as PEM (Fixed Multiline Handling)
       - name: 🗝️ Write private key to PEM file
         shell: pwsh
         run: |
-          $Key = "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}"
+          # Convert literal \n to newlines for PEM format
+          $Key = "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" -replace '\\n', "`n"
           $KeyPath = "src-tauri/signing_private.pem"
-          Set-Content -Path $KeyPath -Value "-----BEGIN PRIVATE KEY-----`n$Key`n-----END PRIVATE KEY-----"
+          Set-Content -Path $KeyPath -Value $Key
           echo "TAURI_SIGNING_PRIVATE_KEY=$(Get-Content $KeyPath -Raw)" >> $env:GITHUB_ENV
 
       # 5️⃣ Auto-increment tag/version
