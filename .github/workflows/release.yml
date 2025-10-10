@@ -1,4 +1,4 @@
-name: "Tauri Windows Release (Dynamic, Auto Version, PEM Fix)"
+name: "Tauri Windows Release (Dynamic, Auto Version, PEM Fix + Latest Tag)"
 
 on:
   push:
@@ -95,7 +95,6 @@ jobs:
           $pubDate = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
           $repo = $env:GITHUB_REPOSITORY
 
-          # Locate NSIS artifacts
           $nsisDir = "src-tauri/target/release/bundle/nsis"
           if (-not (Test-Path $nsisDir)) {
             throw "NSIS bundle directory not found: $nsisDir"
@@ -112,12 +111,9 @@ jobs:
           if (-not (Test-Path $sigPath)) { throw "No .sig found in $nsisDir" }
 
           $sigContent = Get-Content -Path $sigPath -Raw
-
-          # URL-encode asset name for release download URL
           $assetNameEncoded = [System.Uri]::EscapeDataString($exe.Name)
           $assetUrl = "https://github.com/$repo/releases/download/$version/$assetNameEncoded"
 
-          # Tauri static latest.json format with signature CONTENT
           $latestJson = @{
             version   = $version
             notes     = "Windows release $version"
@@ -142,7 +138,6 @@ jobs:
 
           $version = "${{ env.VERSION }}"
 
-          # Ensure release exists
           try {
             gh release view $version -R $env:GITHUB_REPOSITORY | Out-Null
           } catch {
@@ -150,7 +145,6 @@ jobs:
             gh release create $version --title "Windows Release $version" --notes "Automated release from workflow" -R $env:GITHUB_REPOSITORY
           }
 
-          # Upload MSI and NSIS artifacts if present
           $folders = @(
               "src-tauri/target/release/bundle/msi",
               "src-tauri/target/release/bundle/nsis"
@@ -164,16 +158,54 @@ jobs:
               }
           }
 
-          # Upload latest.json
           gh release upload $version latest.json --clobber -R $env:GITHUB_REPOSITORY
 
-      # 9️⃣ Update tauri.conf.json version (robust: hashtable path)
+      # 8.1️⃣ Create or update 'latest' release tag
+      - name: 🏷️ Update 'latest' release tag
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${{ env.VERSION }}"
+          $repo = $env:GITHUB_REPOSITORY
+
+          Write-Host "Updating 'latest' tag to point to $version..."
+
+          git tag -d latest 2>$null
+          git push origin :refs/tags/latest 2>$null
+
+          git tag latest
+          git push origin latest
+
+          try {
+            gh release view latest -R $repo | Out-Null
+            Write-Host "Updating existing 'latest' release..."
+            gh release edit latest --tag latest --latest --title "Latest Release ($version)" --notes "Auto-synced with $version" -R $repo
+          } catch {
+            Write-Host "Creating new 'latest' release..."
+            gh release create latest --title "Latest Release ($version)" --notes "Auto-synced with $version" --latest -R $repo
+          }
+
+          $folders = @(
+              "src-tauri/target/release/bundle/msi",
+              "src-tauri/target/release/bundle/nsis"
+          )
+          foreach ($folder in $folders) {
+              if (Test-Path $folder) {
+                  Get-ChildItem -Path $folder -File | ForEach-Object {
+                      Write-Host "Uploading to 'latest': $($_.FullName)..."
+                      gh release upload latest $_.FullName --clobber -R $repo
+                  }
+              }
+          }
+
+          gh release upload latest latest.json --clobber -R $repo
+
+      # 9️⃣ Update tauri.conf.json version
       - name: 🔄 Update tauri.conf.json version
         shell: pwsh
         run: |
           $configPath = "src-tauri/tauri.conf.json"
-
-          # Parse as hashtable so nested keys can be created safely
           $config = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
 
           if (-not $config.ContainsKey('package') -or $null -eq $config['package']) {
@@ -181,7 +213,6 @@ jobs:
           }
 
           if (-not ($config['package'] -is [hashtable])) {
-            # Coerce to hashtable if it came back as a psobject or other type
             $config['package'] = @{}
           }
 
