@@ -1,4 +1,4 @@
-name: "Tauri Windows Release (v2 Auto Version, Latest Tag, PEM Fix)"
+name: "🚀 Tauri Windows Auto Release"
 
 on:
   push:
@@ -11,178 +11,39 @@ permissions:
   actions: read
 
 jobs:
-  release:
+  build-and-release-windows:
     runs-on: windows-latest
 
     steps:
-      # 1️⃣ Checkout
-      - name: 🛒 Checkout repository
+      - name: 🛒 Checkout code
         uses: actions/checkout@v4
 
-      # 2️⃣ Setup Node.js & Rust
-      - name: ⚙️ Setup Node.js
-        uses: actions/setup-node@v4
+      - name: 🪟 Install Windows dependencies
+        run: |
+          choco install -y nodejs python rust git
+          rustup default stable
+          rustup target add x86_64-pc-windows-msvc
+
+      - name: 📦 Install project dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: 🏗️ Build Tauri app
+        run: yarn tauri build
+
+      - name: 🧾 Get version tag
+        id: get_version
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          echo "version=v$version" >> $env:GITHUB_OUTPUT
+
+      - name: 🏷️ Create GitHub release (latest)
+        uses: softprops/action-gh-release@v1
         with:
-          node-version: 20
-
-      - name: 🦀 Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      # 3️⃣ Install dependencies
-      - name: 📦 Install dependencies
-        run: |
-          npm install -g yarn
-          yarn install
-
-      # 4️⃣ Write raw private key as PEM (handles \n correctly)
-      - name: 🗝️ Write private key to PEM file
-        shell: pwsh
-        run: |
-          $Key = "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" -replace '\\n', "`n"
-          $KeyPath = "src-tauri/signing_private.pem"
-          Set-Content -Path $KeyPath -Value $Key -Encoding UTF8
-          echo "TAURI_SIGNING_PRIVATE_KEY=$(Get-Content $KeyPath -Raw)" >> $env:GITHUB_ENV
-
-      # 5️⃣ Auto-increment tag/version
-      - name: 🔖 Auto increment version tag
-        id: version
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $tags = git tag --list | Sort-Object { [version]($_ -replace '^v', '') } -Descending
-          if ($tags.Length -eq 0) {
-            $newTag = "v0.1.0"
-          } else {
-            $latestTag = $tags[0]
-            Write-Host "Current tag: $latestTag"
-            $version = [version]($latestTag -replace '^v', '')
-            $newVersion = [version]::new($version.Major, $version.Minor, $version.Build + 1)
-            $newTag = "v$($newVersion.ToString())"
-          }
-
-          Write-Host "New tag: $newTag"
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-
-          git tag -d $newTag 2>$null
-          git push origin :refs/tags/$newTag 2>$null
-          git tag $newTag
-          git push origin $newTag
-
-          echo "VERSION=$newTag" >> $env:GITHUB_ENV
-
-      # 6️⃣ Build the Tauri app
-      - name: 🚀 Build Windows release with Tauri
-        uses: tauri-apps/tauri-action@v0
+          tag_name: latest
+          name: "Siri Billing App Latest Release"
+          draft: false
+          prerelease: false
+          files: |
+            src-tauri/target/release/bundle/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ env.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: "${{ env.VERSION }}"
-          releaseName: "Windows Release ${{ env.VERSION }}"
-          releaseBody: "Windows installer and signature"
-          releaseDraft: false
-          prerelease: false
-          includeUpdaterJson: false
-
-      # 7️⃣ Generate latest.json (points to 'latest' release)
-      - name: 🧾 Generate latest.json
-        shell: pwsh
-        run: |
-          $version = "${{ env.VERSION }}"
-          $pubDate = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
-          $repo = $env:GITHUB_REPOSITORY
-
-          $nsisDir = "src-tauri/target/release/bundle/nsis"
-          if (-not (Test-Path $nsisDir)) {
-            throw "NSIS bundle directory not found: $nsisDir"
-          }
-
-          $exe = Get-ChildItem -Path $nsisDir -Filter *.exe -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $exe) { throw "No NSIS .exe found in $nsisDir" }
-
-          $sigPath = "$($exe.FullName).sig"
-          if (-not (Test-Path $sigPath)) {
-            $sig = Get-ChildItem -Path $nsisDir -Filter *.sig -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            if ($sig) { $sigPath = $sig.FullName }
-          }
-          if (-not (Test-Path $sigPath)) { throw "No .sig found in $nsisDir" }
-
-          $sigContent = Get-Content -Path $sigPath -Raw
-          $assetNameEncoded = [System.Uri]::EscapeDataString($exe.Name)
-          $assetUrl = "https://github.com/$repo/releases/download/latest/$assetNameEncoded"
-
-          $latestJson = @{
-            version   = $version
-            notes     = "Windows release $version"
-            pub_date  = $pubDate
-            platforms = @{
-              "windows-x86_64" = @{
-                url       = $assetUrl
-                signature = $sigContent
-              }
-            }
-          } | ConvertTo-Json -Depth 6
-
-          $latestJson | Out-File -FilePath latest.json -Encoding UTF8
-
-      # 8️⃣ Upload artifacts and update 'latest' release
-      - name: 📤 Upload release assets
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh auth setup-git
-          $version = "${{ env.VERSION }}"
-
-          # ensure versioned release exists
-          try {
-            gh release view $version -R $env:GITHUB_REPOSITORY | Out-Null
-          } catch {
-            Write-Host "Creating release $version..."
-            gh release create $version --title "Windows Release $version" --notes "Automated release" -R $env:GITHUB_REPOSITORY
-          }
-
-          $folders = @(
-            "src-tauri/target/release/bundle/msi",
-            "src-tauri/target/release/bundle/nsis"
-          )
-          foreach ($folder in $folders) {
-            if (Test-Path $folder) {
-              Get-ChildItem -Path $folder -File | ForEach-Object {
-                Write-Host "Uploading $($_.FullName)..."
-                gh release upload $version $_.FullName --clobber -R $env:GITHUB_REPOSITORY
-              }
-            }
-          }
-
-          gh release upload $version latest.json --clobber -R $env:GITHUB_REPOSITORY
-
-          # update or recreate 'latest' tag/release
-          git tag -f latest
-          git push origin :refs/tags/latest
-          git push origin latest
-
-          if (!(gh release view latest -R $env:GITHUB_REPOSITORY)) {
-            gh release create latest --title "Latest Windows Release" --notes "Auto-synced with $version" -R $env:GITHUB_REPOSITORY
-          }
-
-          # sync latest release assets
-          gh release upload latest latest.json --clobber -R $env:GITHUB_REPOSITORY
-
-      # 9️⃣ Update tauri.conf.json version (Tauri v2)
-      - name: 🔄 Update tauri.conf.json version (Tauri v2)
-        shell: pwsh
-        run: |
-          $configPath = "src-tauri/tauri.conf.json"
-          $config = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
-
-          $ver = ("${{ env.VERSION }}" -replace '^v','')
-          $config['version'] = $ver
-
-          $config | ConvertTo-Json -Depth 10 | Out-File $configPath -Encoding UTF8
-
-          git add $configPath
-          git commit -m "🔄 Update Tauri version to ${{ env.VERSION }}" || echo "No changes to commit"
-          git push origin main || echo "No changes to push"
