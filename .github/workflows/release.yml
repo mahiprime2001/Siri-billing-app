@@ -15,9 +15,18 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # 1️⃣ Checkout repository
+      # 1️⃣ Checkout repository with full history + tags
       - name: 🛒 Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      # Optional: belt-and-suspenders to ensure all tags are present
+      - name: 🔄 Ensure tags present
+        shell: pwsh
+        run: |
+          git fetch --tags --force
 
       # 2️⃣ Setup Node.js & Rust
       - name: ⚙️ Setup Node.js
@@ -47,6 +56,10 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+
+          # Ensure remote tags are visible
+          git fetch --tags --force
+
           $tags = git tag --list | Sort-Object { [version]($_ -replace '^v', '') } -Descending
           if ($tags.Length -eq 0) {
             $newTag = "v0.1.0"
@@ -62,6 +75,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
+          # Recreate tag safely
           git tag -d $newTag 2>$null
           git push origin :refs/tags/$newTag 2>$null
           git tag $newTag
@@ -78,10 +92,12 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TAURI_ENV_TARGET_TRIPLE: x86_64-pc-windows-msvc
         run: |
-          # Use exact backend filename (remove target triple from name)
           $configPath = "src-tauri/tauri.conf.json"
           $config = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
+
+          # Ensure correct externalBin for MSVC backend
           $config['bundle']['externalBin'] = @("binaries/Siribilling-backend")
+
           $config | ConvertTo-Json -Depth 10 | Out-File $configPath -Encoding UTF8
 
           yarn tauri build
@@ -90,6 +106,8 @@ jobs:
       - name: 🧾 Generate latest.json
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
+
           $version = "${{ env.VERSION }}"
           $pubDate = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
           $repo = $env:GITHUB_REPOSITORY
@@ -107,7 +125,10 @@ jobs:
           $sigContent = Get-Content -Path $sig.FullName -Raw
 
           $assetNameEncoded = [System.Uri]::EscapeDataString($exe.Name)
-          $assetUrl = "https://github.com/$repo/releases/download/latest/$assetNameEncoded"
+
+          # IMPORTANT: point to the versioned release asset to ensure availability
+          $cleanVersion = $version
+          $assetUrl = "https://github.com/$repo/releases/download/$cleanVersion/$assetNameEncoded"
 
           $latestJson = @{
             version   = $version
@@ -123,20 +144,25 @@ jobs:
 
           $latestJson | Out-File -FilePath latest.json -Encoding UTF8
 
-      # 8️⃣ Upload all artifacts (MSI, EXE, SIG, ZIP, latest.json)
-      - name: 📤 Upload release assets
+      # 8️⃣ Create release and upload all artifacts (MSI, EXE, SIG, ZIP, latest.json)
+      - name: 📤 Create release and upload assets
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh auth setup-git
+          $ErrorActionPreference = "Stop"
+
+          # Validate gh auth context
+          gh auth status
+          if ($LASTEXITCODE -ne 0) { throw "GitHub CLI auth failed" }
+
           $version = "${{ env.VERSION }}"
 
-          # Ensure release exists
-          try {
-            gh release view $version -R $env:GITHUB_REPOSITORY | Out-Null
-          } catch {
-            gh release create $version --title "Windows Release $version" --notes "Automated release" -R $env:GITHUB_REPOSITORY
+          # Ensure release exists (check exit code, not try/catch)
+          gh release view $version -R $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $version --title "Windows Release $version" --notes "Automated release" --verify-tag -R $env:GITHUB_REPOSITORY
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create release $version" }
           }
 
           $folders = @(
@@ -149,26 +175,34 @@ jobs:
               Get-ChildItem -Path $folder -File | ForEach-Object {
                 Write-Host "Uploading $($_.FullName)..."
                 gh release upload $version $_.FullName --clobber -R $env:GITHUB_REPOSITORY
+                if ($LASTEXITCODE -ne 0) { throw "Failed to upload $($_.Name) to $version" }
               }
             }
           }
 
-          # Upload latest.json
+          # Upload latest.json to the versioned release
           gh release upload $version latest.json --clobber -R $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw "Failed to upload latest.json to $version" }
 
-          # Update 'latest' tag/release
+          # Update 'latest' tag/release and attach latest.json
           git tag -f latest
           git push origin :refs/tags/latest
           git push origin latest
-          if (!(gh release view latest -R $env:GITHUB_REPOSITORY)) {
+
+          gh release view latest -R $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) {
             gh release create latest --title "Latest Windows Release" --notes "Auto-synced with $version" -R $env:GITHUB_REPOSITORY
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create 'latest' release" }
           }
+
           gh release upload latest latest.json --clobber -R $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw "Failed to upload latest.json to 'latest' release" }
 
       # 9️⃣ Update Tauri version in tauri.conf.json (Tauri v2)
       - name: 🔄 Update tauri.conf.json version
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           $configPath = "src-tauri/tauri.conf.json"
           $config = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
           $ver = ("${{ env.VERSION }}" -replace '^v','')
