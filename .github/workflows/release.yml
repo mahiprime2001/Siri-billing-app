@@ -50,7 +50,7 @@ jobs:
           Set-Content -Path $KeyPath -Value $Key -Encoding UTF8
           echo "TAURI_SIGNING_PRIVATE_KEY=$(Get-Content $KeyPath -Raw)" >> $env:GITHUB_ENV
 
-      # 5️⃣ Auto-increment version tag (SemVer-only, ignore "latest")
+      # 5️⃣ Auto-increment version tag (SemVer-only, ignore non-SemVer like 'latest')
       - name: 🔖 Auto increment version tag
         id: version
         shell: pwsh
@@ -61,7 +61,7 @@ jobs:
           git fetch --tags --force
 
           # Use Git's native semver sort and filter to SemVer triplets only
-          # Patterns are shell wildcards (fnmatch), so '.' matches a literal dot
+          # vX.Y.Z pattern so we don't parse non-version tags like 'latest'
           $latestTag = (git tag --list "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | Select-Object -First 1)
 
           if ([string]::IsNullOrWhiteSpace($latestTag)) {
@@ -74,15 +74,15 @@ jobs:
             $newTag = "v$($newVersion.ToString())"
           }
 
-          Write-Host "New tag: $newTag"
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-
-          # Recreate tag safely
-          git tag -d $newTag 2>$null
-          git push origin :refs/tags/$newTag 2>$null
-          git tag $newTag
-          git push origin $newTag
+          # If the new tag already exists, keep it immutable; otherwise create and push it
+          if (git rev-parse -q --verify "refs/tags/$newTag" *> $null) {
+            Write-Host "Tag $newTag already exists; skipping creation."
+          } else {
+            git config user.name "github-actions"
+            git config user.email "github-actions@github.com"
+            git tag $newTag
+            git push origin $newTag
+          }
 
           echo "VERSION=$newTag" >> $env:GITHUB_ENV
 
@@ -157,7 +157,7 @@ jobs:
 
           $version = "${{ env.VERSION }}"
 
-          # Ensure release exists
+          # Ensure versioned release exists (no tag deletion)
           gh release view $version -R $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -ne 0) {
             gh release create $version --title "Windows Release $version" --notes "Automated release" --verify-tag -R $env:GITHUB_REPOSITORY
@@ -183,17 +183,21 @@ jobs:
           gh release upload $version latest.json --clobber -R $env:GITHUB_REPOSITORY
           if ($LASTEXITCODE -ne 0) { throw "Failed to upload latest.json to $version" }
 
-          # Update 'latest' tag/release and attach latest.json
-          git tag -f latest
-          git push origin :refs/tags/latest
-          git push origin latest
-
+          # Maintain a persistent 'latest' release WITHOUT re-tagging on every run
           gh release view latest -R $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -ne 0) {
-            gh release create latest --title "Latest Windows Release" --notes "Auto-synced with $version" -R $env:GITHUB_REPOSITORY
+            # Create 'latest' tag only if it's missing, and only once
+            git rev-parse -q --verify "refs/tags/latest" *> $null
+            if ($LASTEXITCODE -ne 0) {
+              git tag -a latest -m "Persistent latest marker"
+              git push origin latest
+            }
+
+            gh release create latest --title "Latest Windows Release" --notes "Auto-synced" -R $env:GITHUB_REPOSITORY
             if ($LASTEXITCODE -ne 0) { throw "Failed to create 'latest' release" }
           }
 
+          # Always refresh latest.json in the 'latest' release
           gh release upload latest latest.json --clobber -R $env:GITHUB_REPOSITORY
           if ($LASTEXITCODE -ne 0) { throw "Failed to upload latest.json to 'latest' release" }
 
