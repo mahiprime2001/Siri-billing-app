@@ -45,6 +45,7 @@ jobs:
       - name: 🗝️ Write private key to PEM file
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           $Key = "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" -replace '\\n', "`n"
           $KeyPath = "src-tauri/signing_private.pem"
           Set-Content -Path $KeyPath -Value $Key -Encoding UTF8
@@ -57,11 +58,9 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          # Ensure remote tags are visible
           git fetch --tags --force
 
-          # Use Git's native semver sort and filter to SemVer triplets only
-          # vX.Y.Z pattern so we don't parse non-version tags like 'latest'
+          # Use Git's semver sort; filter to vX.Y.Z only
           $latestTag = (git tag --list "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | Select-Object -First 1)
 
           if ([string]::IsNullOrWhiteSpace($latestTag)) {
@@ -74,7 +73,7 @@ jobs:
             $newTag = "v$($newVersion.ToString())"
           }
 
-          # If the new tag already exists, keep it immutable; otherwise create and push it
+          # Create and push only if absent; never delete or force-move tags
           if (git rev-parse -q --verify "refs/tags/$newTag" *> $null) {
             Write-Host "Tag $newTag already exists; skipping creation."
           } else {
@@ -86,7 +85,18 @@ jobs:
 
           echo "VERSION=$newTag" >> $env:GITHUB_ENV
 
-      # 6️⃣ Build Tauri App (Windows MSVC backend)
+      # 6️⃣ Compute Windows-safe app version (MSI ProductVersion)
+      - name: 📌 Compute SAFE_VERSION for MSI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $run = [int]$env:GITHUB_RUN_NUMBER
+          if ($run -gt 65535) { $run = 65535 }
+          $safeVersion = "1.0.$run"
+          echo "SAFE_VERSION=$safeVersion" >> $env:GITHUB_ENV
+          Write-Host "SAFE_VERSION=$safeVersion"
+
+      # 7️⃣ Build Tauri App (Windows MSVC backend)
       - name: 🚀 Build Windows release with Tauri
         shell: pwsh
         env:
@@ -95,23 +105,27 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TAURI_ENV_TARGET_TRIPLE: x86_64-pc-windows-msvc
         run: |
+          $ErrorActionPreference = "Stop"
+
+          # Update config: externalBin and Windows-safe version
           $configPath = "src-tauri/tauri.conf.json"
           $config = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
 
-          # Ensure correct externalBin for MSVC backend
           $config['bundle']['externalBin'] = @("binaries/Siribilling-backend")
+          $config['version'] = "${{ env.SAFE_VERSION }}"
 
           $config | ConvertTo-Json -Depth 10 | Out-File $configPath -Encoding UTF8
 
           yarn tauri build
 
-      # 7️⃣ Generate latest.json for updater (points to versioned asset)
+      # 8️⃣ Generate latest.json for updater (use SAFE_VERSION)
       - name: 🧾 Generate latest.json
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
-          $version = "${{ env.VERSION }}"
+          $tagVersion = "${{ env.VERSION }}"            # e.g. v1.2.3 (for asset path)
+          $appVersion = "${{ env.SAFE_VERSION }}"       # e.g. 1.0.1234 (for updater compare)
           $pubDate = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
           $repo = $env:GITHUB_REPOSITORY
 
@@ -128,11 +142,11 @@ jobs:
           $sigContent = Get-Content -Path $sig.FullName -Raw
 
           $assetNameEncoded = [System.Uri]::EscapeDataString($exe.Name)
-          $assetUrl = "https://github.com/$repo/releases/download/$version/$assetNameEncoded"
+          $assetUrl = "https://github.com/$repo/releases/download/$tagVersion/$assetNameEncoded"
 
           $latestJson = @{
-            version   = $version
-            notes     = "Windows release $version"
+            version   = $appVersion
+            notes     = "Windows release $tagVersion"
             pub_date  = $pubDate
             platforms = @{
               "windows-x86_64" = @{
@@ -144,7 +158,7 @@ jobs:
 
           $latestJson | Out-File -FilePath latest.json -Encoding UTF8
 
-      # 8️⃣ Create release and upload all artifacts (fail fast on gh errors)
+      # 9️⃣ Create release and upload all artifacts (fail fast on gh errors)
       - name: 📤 Create release and upload assets
         shell: pwsh
         env:
@@ -157,7 +171,7 @@ jobs:
 
           $version = "${{ env.VERSION }}"
 
-          # Ensure versioned release exists (no tag deletion)
+          # Ensure versioned release exists
           gh release view $version -R $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -ne 0) {
             gh release create $version --title "Windows Release $version" --notes "Automated release" --verify-tag -R $env:GITHUB_REPOSITORY
@@ -186,7 +200,6 @@ jobs:
           # Maintain a persistent 'latest' release WITHOUT re-tagging on every run
           gh release view latest -R $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -ne 0) {
-            # Create 'latest' tag only if it's missing, and only once
             git rev-parse -q --verify "refs/tags/latest" *> $null
             if ($LASTEXITCODE -ne 0) {
               git tag -a latest -m "Persistent latest marker"
@@ -197,20 +210,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Failed to create 'latest' release" }
           }
 
-          # Always refresh latest.json in the 'latest' release
           gh release upload latest latest.json --clobber -R $env:GITHUB_REPOSITORY
           if ($LASTEXITCODE -ne 0) { throw "Failed to upload latest.json to 'latest' release" }
 
-      # 9️⃣ Update Tauri version in tauri.conf.json (Tauri v2)
-      - name: 🔄 Update tauri.conf.json version
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $configPath = "src-tauri/tauri.conf.json"
-          $config = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
-          $ver = ("${{ env.VERSION }}" -replace '^v','')
-          $config['version'] = $ver
-          $config | ConvertTo-Json -Depth 10 | Out-File $configPath -Encoding UTF8
-          git add $configPath
-          git commit -m "🔄 Update Tauri version to ${{ env.VERSION }}" || echo "No changes to commit"
-          git push origin main || echo "No changes to push"
+      # 🔟 Update Tauri version in tauri.conf.json is already done pre-build using SAFE_VERSION
+
