@@ -20,9 +20,17 @@ yarn-error.log*
 !.env*
 !backend/.env
 
+/backend/dist
+/backend/build
+
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/logs
+
+private.key
+private.key.pub
