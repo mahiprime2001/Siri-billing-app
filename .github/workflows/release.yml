@@ -1,4 +1,4 @@
-name: "Tauri Windows Release (Auto Version, PEM Fix, Latest, v2 Config)"
+name: "Tauri Windows Release (Dynamic, Auto Version, PEM Fix)"
 
 on:
   push:
@@ -132,7 +132,7 @@ jobs:
 
           $latestJson | Out-File -FilePath latest.json -Encoding UTF8
 
-      # 8️⃣ Upload all artifacts dynamically (create as Latest if missing)
+      # 8️⃣ Upload all artifacts dynamically
       - name: 📤 Upload release assets
         shell: pwsh
         env:
@@ -142,16 +142,12 @@ jobs:
 
           $version = "${{ env.VERSION }}"
 
-          # Ensure release exists; create as Latest if missing
+          # Ensure release exists
           try {
             gh release view $version -R $env:GITHUB_REPOSITORY | Out-Null
           } catch {
             Write-Host "Release $version does not exist, creating..."
-            gh release create $version `
-              --title "Windows Release $version" `
-              --notes "Automated release from workflow" `
-              --latest `
-              -R $env:GITHUB_REPOSITORY
+            gh release create $version --title "Windows Release $version" --notes "Automated release from workflow" -R $env:GITHUB_REPOSITORY
           }
 
           # Upload MSI and NSIS artifacts if present
@@ -171,27 +167,26 @@ jobs:
           # Upload latest.json
           gh release upload $version latest.json --clobber -R $env:GITHUB_REPOSITORY
 
-      # 9️⃣ Ensure release is Latest and Published
-      - name: ✅ Mark release as Latest and publish
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $version = "${{ env.VERSION }}"
-          gh release edit $version --latest --draft=false --prerelease=false -R $env:GITHUB_REPOSITORY
-
-      # 🔟 Update tauri.conf.json version (Tauri v2: root-level "version")
+      # 9️⃣ Update tauri.conf.json version (robust: hashtable path)
       - name: 🔄 Update tauri.conf.json version
         shell: pwsh
         run: |
           $configPath = "src-tauri/tauri.conf.json"
 
-          # Parse as hashtable so nested keys can be created safely if needed
+          # Parse as hashtable so nested keys can be created safely
           $config = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
 
-          # In Tauri v2, "version" is at the root of the config (not under "package")
+          if (-not $config.ContainsKey('package') -or $null -eq $config['package']) {
+            $config['package'] = @{}
+          }
+
+          if (-not ($config['package'] -is [hashtable])) {
+            # Coerce to hashtable if it came back as a psobject or other type
+            $config['package'] = @{}
+          }
+
           $ver = ("${{ env.VERSION }}" -replace '^v','')
-          $config['version'] = $ver
+          $config['package']['version'] = $ver
 
           $config | ConvertTo-Json -Depth 10 | Out-File $configPath -Encoding UTF8
 
