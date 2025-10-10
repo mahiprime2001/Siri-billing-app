@@ -1,4 +1,4 @@
-name: "🚀 Tauri Windows Auto Release (Tauri Version Authoritative + MSI-safe)"
+name: "🚀 Tauri Windows Auto Release (Tauri Version Authoritative)"
 
 on:
   push:
@@ -45,56 +45,30 @@ jobs:
           Set-Content -Path $KeyPath -Value $Key -Encoding UTF8
           echo "TAURI_SIGNING_PRIVATE_KEY=$(Get-Content $KeyPath -Raw)" >> $env:GITHUB_ENV
 
-      # 5️⃣ Read Tauri version and compute MSI-safe ProductVersion
-      - name: 📄 Read app version and derive MSI ProductVersion
-        id: versions
+      # 5️⃣ Read version from tauri.conf.json and validate MSI limits (255.255.65535)
+      - name: 📄 Read and validate version
+        id: tauri_version
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-
           $configPath = "src-tauri/tauri.conf.json"
           if (-not (Test-Path $configPath)) { throw "Missing $configPath" }
-
           $cfg = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
           $appVersion = $cfg['version']
           if (-not $appVersion) { throw "Missing 'version' in tauri.conf.json" }
 
-          # Parse app version
           try {
             $ver = [version]($appVersion -replace '^v','')
           } catch {
             throw "Version must be parseable as <major>.<minor>.<build>; got '$appVersion'"
           }
-
-          # If already within MSI limits, use as-is; else map deterministically.
-          # MSI limits: major<=255, minor<=255, build<=65535.
-          function Clamp($v, $max) { if ($v -lt 0) { 0 } elseif ($v -gt $max) { $max } else { $v } }
-
-          $mMajor = $ver.Major
-          $mMinor = $ver.Minor
-          $mBuild = if ($ver.Build -ge 0) { $ver.Build } else { 0 }
-
-          $withinLimits = ($mMajor -le 255 -and $mMinor -le 255 -and $mBuild -le 65535)
-          if (-not $withinLimits) {
-            # Date-style mapping: for years (>=2000), compress to 0-255 by subtracting 2000; otherwise clamp.
-            if ($ver.Major -ge 2000 -and $ver.Major -le 2255) {
-              $mMajor = $ver.Major - 2000
-            } else {
-              $mMajor = 255
-            }
-            $mMinor = Clamp $mMinor 255
-            $mBuild = Clamp $mBuild 65535
+          if ($ver.Major -gt 255 -or $ver.Minor -gt 255 -or ($ver.Build -ge 0 -and $ver.Build -gt 65535)) {
+            throw "MSI ProductVersion out of range (limits 255.255.65535). Update src-tauri/tauri.conf.json 'version' (current: $appVersion)."
           }
-
-          $msiVersion = "$mMajor.$mMinor.$mBuild"
 
           echo "APP_VERSION=$appVersion" >> $env:GITHUB_ENV
           echo "RELEASE_TAG=v$appVersion" >> $env:GITHUB_ENV
-          echo "MSI_VERSION=$msiVersion" >> $env:GITHUB_ENV
-
-          Write-Host "APP_VERSION=$appVersion"
-          Write-Host "RELEASE_TAG=v$appVersion"
-          Write-Host "MSI_VERSION=$msiVersion"
+          Write-Host "APP_VERSION=$appVersion; RELEASE_TAG=v$appVersion"
 
       # 6️⃣ Ensure tag v{APP_VERSION} exists (no deletion/force moves)
       - name: 🏷️ Ensure tag for version
@@ -111,7 +85,7 @@ jobs:
             git push origin $tag
           }
 
-      # 7️⃣ Build Tauri App (inject MSI version override, keep app version unchanged)
+      # 7️⃣ Build Tauri App (Windows MSVC backend)
       - name: 🚀 Build Windows release with Tauri
         shell: pwsh
         env:
@@ -122,20 +96,11 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
+          # Optional: ensure externalBin path if needed
           $configPath = "src-tauri/tauri.conf.json"
           $cfg = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
-
           if (-not $cfg.ContainsKey('bundle')) { $cfg['bundle'] = @{} }
-          if (-not $cfg['bundle'].ContainsKey('windows')) { $cfg['bundle']['windows'] = @{} }
-          if (-not $cfg['bundle']['windows'].ContainsKey('msi')) { $cfg['bundle']['windows']['msi'] = @{} }
-
-          # Ensure correct externalBin for MSVC backend
           $cfg['bundle']['externalBin'] = @("binaries/Siribilling-backend")
-
-          # Override MSI ProductVersion only; leave top-level 'version' as-is for app/updater.
-          # Supported by the bundler as MSI-specific version override.
-          $cfg['bundle']['windows']['msi']['version'] = "${{ env.MSI_VERSION }}"
-
           $cfg | ConvertTo-Json -Depth 20 | Out-File $configPath -Encoding UTF8
 
           yarn tauri build
