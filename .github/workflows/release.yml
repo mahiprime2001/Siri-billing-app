@@ -1,4 +1,4 @@
-name: "🚀 Tauri Windows Auto Release (MSVC Backend)"
+name: "🚀 Tauri Windows Auto Release (MSVC Backend Fixed)"
 
 on:
   push:
@@ -32,7 +32,7 @@ jobs:
       - name: 📦 Install dependencies
         run: yarn install --frozen-lockfile
 
-      # 4️⃣ Write raw private key as PEM (handles \n correctly)
+      # 4️⃣ Write raw private key as PEM
       - name: 🗝️ Write private key to PEM file
         shell: pwsh
         run: |
@@ -76,13 +76,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ env.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Force Tauri to recognize MSVC backend
           TAURI_ENV_TARGET_TRIPLE: x86_64-pc-windows-msvc
         run: |
-          # Use exact backend exe name in externalBin
+          # Use exact backend filename (remove target triple from name)
           $configPath = "src-tauri/tauri.conf.json"
           $config = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
-          $config['bundle']['externalBin'] = @("binaries/Siribilling-backend-x86_64-pc-windows-msvc.exe")
+          $config['bundle']['externalBin'] = @("binaries/Siribilling-backend")
           $config | ConvertTo-Json -Depth 10 | Out-File $configPath -Encoding UTF8
 
           yarn tauri build
