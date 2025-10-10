@@ -22,7 +22,7 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      # Optional: belt-and-suspenders to ensure all tags are present
+      # Ensure all tags exist locally
       - name: 🔄 Ensure tags present
         shell: pwsh
         run: |
@@ -50,7 +50,7 @@ jobs:
           Set-Content -Path $KeyPath -Value $Key -Encoding UTF8
           echo "TAURI_SIGNING_PRIVATE_KEY=$(Get-Content $KeyPath -Raw)" >> $env:GITHUB_ENV
 
-      # 5️⃣ Auto-increment version tag
+      # 5️⃣ Auto-increment version tag (SemVer-only, ignore "latest")
       - name: 🔖 Auto increment version tag
         id: version
         shell: pwsh
@@ -60,13 +60,16 @@ jobs:
           # Ensure remote tags are visible
           git fetch --tags --force
 
-          $tags = git tag --list | Sort-Object { [version]($_ -replace '^v', '') } -Descending
-          if ($tags.Length -eq 0) {
+          # Use Git's native semver sort and filter to SemVer triplets only
+          # Patterns are shell wildcards (fnmatch), so '.' matches a literal dot
+          $latestTag = (git tag --list "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | Select-Object -First 1)
+
+          if ([string]::IsNullOrWhiteSpace($latestTag)) {
             $newTag = "v0.1.0"
           } else {
-            $latestTag = $tags[0]
             Write-Host "Current tag: $latestTag"
-            $version = [version]($latestTag -replace '^v', '')
+            $clean = ($latestTag -replace '^v','')
+            $version = [version]$clean
             $newVersion = [version]::new($version.Major, $version.Minor, $version.Build + 1)
             $newTag = "v$($newVersion.ToString())"
           }
@@ -102,7 +105,7 @@ jobs:
 
           yarn tauri build
 
-      # 7️⃣ Generate latest.json for updater
+      # 7️⃣ Generate latest.json for updater (points to versioned asset)
       - name: 🧾 Generate latest.json
         shell: pwsh
         run: |
@@ -125,10 +128,7 @@ jobs:
           $sigContent = Get-Content -Path $sig.FullName -Raw
 
           $assetNameEncoded = [System.Uri]::EscapeDataString($exe.Name)
-
-          # IMPORTANT: point to the versioned release asset to ensure availability
-          $cleanVersion = $version
-          $assetUrl = "https://github.com/$repo/releases/download/$cleanVersion/$assetNameEncoded"
+          $assetUrl = "https://github.com/$repo/releases/download/$version/$assetNameEncoded"
 
           $latestJson = @{
             version   = $version
@@ -144,7 +144,7 @@ jobs:
 
           $latestJson | Out-File -FilePath latest.json -Encoding UTF8
 
-      # 8️⃣ Create release and upload all artifacts (MSI, EXE, SIG, ZIP, latest.json)
+      # 8️⃣ Create release and upload all artifacts (fail fast on gh errors)
       - name: 📤 Create release and upload assets
         shell: pwsh
         env:
@@ -152,13 +152,12 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          # Validate gh auth context
           gh auth status
           if ($LASTEXITCODE -ne 0) { throw "GitHub CLI auth failed" }
 
           $version = "${{ env.VERSION }}"
 
-          # Ensure release exists (check exit code, not try/catch)
+          # Ensure release exists
           gh release view $version -R $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -ne 0) {
             gh release create $version --title "Windows Release $version" --notes "Automated release" --verify-tag -R $env:GITHUB_REPOSITORY
