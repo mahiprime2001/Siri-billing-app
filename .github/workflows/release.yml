@@ -15,7 +15,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # 1️⃣ Checkout repository
+      # 1️⃣ Checkout repository (full history + tags for tagging/release)
       - name: 🛒 Checkout code
         uses: actions/checkout@v4
         with:
@@ -45,8 +45,8 @@ jobs:
           Set-Content -Path $KeyPath -Value $Key -Encoding UTF8
           echo "TAURI_SIGNING_PRIVATE_KEY=$(Get-Content $KeyPath -Raw)" >> $env:GITHUB_ENV
 
-      # 5️⃣ Read Tauri version from tauri.conf.json and ensure Windows-safe MSI mapping
-      - name: 📄 Read Tauri version
+      # 5️⃣ Read version from tauri.conf.json and validate MSI limits (255.255.65535)
+      - name: 📄 Read and validate version
         id: tauri_version
         shell: pwsh
         run: |
@@ -57,28 +57,26 @@ jobs:
           $appVersion = $cfg['version']
           if (-not $appVersion) { throw "Missing 'version' in tauri.conf.json" }
 
-          # Export authoritative version for release and updater
-          echo "APP_VERSION=$appVersion" >> $env:GITHUB_ENV
-
-          # Compute MSI-safe ProductVersion (for WiX), per 255.255.65535
+          # Parse and validate against MSI ProductVersion constraints.
           try {
             $ver = [version]($appVersion -replace '^v','')
           } catch {
-            throw "App version is not parseable as <major>.<minor>.<build>: $appVersion"
+            throw "Version must be parseable as <major>.<minor>.<build>; got '$appVersion'"
           }
-          $maj = [Math]::Min($ver.Major,255)
-          $min = [Math]::Min($ver.Minor,255)
-          $bld = if ($ver.Build -ge 0) { [Math]::Min($ver.Build,65535) } else { 0 }
-          $msiVersion = "$maj.$min.$bld"
-          echo "MSI_VERSION=$msiVersion" >> $env:GITHUB_ENV
-          Write-Host "APP_VERSION=$appVersion; MSI_VERSION=$msiVersion"
+          if ($ver.Major -gt 255 -or $ver.Minor -gt 255 -or ($ver.Build -ge 0 -and $ver.Build -gt 65535)) {
+            throw "MSI ProductVersion out of range (limits 255.255.65535). Update src-tauri/tauri.conf.json 'version' (current: $appVersion)."
+          }
 
-      # 6️⃣ Ensure tag v{APP_VERSION} exists (no deletions)
+          echo "APP_VERSION=$appVersion" >> $env:GITHUB_ENV
+          echo "RELEASE_TAG=v$appVersion" >> $env:GITHUB_ENV
+          Write-Host "APP_VERSION=$appVersion; RELEASE_TAG=v$appVersion"
+
+      # 6️⃣ Ensure tag v{APP_VERSION} exists (no deletion/force moves)
       - name: 🏷️ Ensure tag for version
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $tag = "v${{ env.APP_VERSION }}"
+          $tag = "${{ env.RELEASE_TAG }}"
           if (git rev-parse -q --verify "refs/tags/$tag" *> $null) {
             Write-Host "Tag $tag exists."
           } else {
@@ -87,7 +85,6 @@ jobs:
             git tag $tag
             git push origin $tag
           }
-          echo "RELEASE_TAG=$tag" >> $env:GITHUB_ENV
 
       # 7️⃣ Build Tauri App (Windows MSVC backend)
       - name: 🚀 Build Windows release with Tauri
@@ -100,21 +97,17 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          # Optionally ensure correct externalBin path on Windows
+          # Ensure externalBin path if needed
           $configPath = "src-tauri/tauri.conf.json"
           $cfg = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
           if (-not $cfg.ContainsKey('bundle')) { $cfg['bundle'] = @{} }
           $cfg['bundle']['externalBin'] = @("binaries/Siribilling-backend")
-
-          # Keep app/version from tauri.conf.json as the source of truth for NSIS and metadata
-          # For MSI, WiX uses numeric ProductVersion, but Tauri derives from config version;
-          # if needed, a future per-target override can be applied here.
-
           $cfg | ConvertTo-Json -Depth 10 | Out-File $configPath -Encoding UTF8
 
+          # Tauri uses the version from tauri.conf.json; keep it authoritative
           yarn tauri build
 
-      # 8️⃣ Generate latest.json (use APP_VERSION for updater; assets under RELEASE_TAG)
+      # 8️⃣ Generate latest.json (use APP_VERSION; assets under RELEASE_TAG)
       - name: 🧾 Generate latest.json
         shell: pwsh
         run: |
@@ -191,7 +184,7 @@ jobs:
           gh release upload $tag latest.json --clobber -R $env:GITHUB_REPOSITORY
           if ($LASTEXITCODE -ne 0) { throw "Failed to upload latest.json to $tag" }
 
-          # Maintain a persistent 'latest' release WITHOUT re-tagging on every run
+          # Maintain a persistent 'latest' release WITHOUT re-tagging each run
           gh release view latest -R $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -ne 0) {
             git rev-parse -q --verify "refs/tags/latest" *> $null
