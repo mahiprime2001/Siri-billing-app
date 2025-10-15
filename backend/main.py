@@ -35,8 +35,15 @@ RETURNS_FILE = os.path.join(BASE_DIR, 'data', 'json', 'returns.json')
 app = Flask(__name__)
 
 # Configure logging
-LOG_DIR = os.path.join(BASE_DIR, 'data', 'logs')
+DATA_DIR = os.path.join(BASE_DIR, 'data')
+JSON_DIR = os.path.join(DATA_DIR, 'json')
+LOG_DIR = os.path.join(DATA_DIR, 'logs')
+
+# Ensure data directories exist
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(JSON_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
+
 LOG_FILE = os.path.join(LOG_DIR, 'flask.log')
 SYNC_STATUS_FILE = os.path.join(LOG_DIR, 'sync_status.log')
 
@@ -49,17 +56,29 @@ except IOError as e:
 
 # Configure logging to file and console
 file_handler = RotatingFileHandler(LOG_FILE, maxBytes=10*1024*1024, backupCount=5)
-file_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s')
 file_handler.setFormatter(formatter)
-
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-console_handler.setFormatter(formatter)
-
 app.logger.addHandler(file_handler)
-app.logger.addHandler(console_handler)
-app.logger.setLevel(logging.INFO)
+app.logger.setLevel(logging.DEBUG)
+
+# Redirect stdout and stderr to the log file
+class DualLogger:
+    def __init__(self, filename, encoding='utf-8'):
+        self.terminal = sys.stdout
+        self.log = open(filename, 'a', encoding=encoding)
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+        self.log.flush() # Ensure immediate write to file
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
+
+sys.stdout = DualLogger(LOG_FILE)
+sys.stderr = DualLogger(LOG_FILE)
 
 # Log server startup
 app.logger.info("Flask server starting up...")
@@ -84,6 +103,15 @@ def json_serial(obj):
     if isinstance(obj, Decimal):
         return float(obj)
     raise TypeError("Type %s not serializable" % type(obj))
+
+def write_json_file(file_path, data):
+    """Helper function to write JSON data to a file safely."""
+    with file_lock:
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, default=json_serial, ensure_ascii=False)
+        except IOError as e:
+            app.logger.error(f"Error writing to file {file_path}: {e}")
 
 def get_products_data():
     """Load products with barcodes combined"""
@@ -224,6 +252,22 @@ def search_bills_for_returns(query, search_type):
             matching_bills.append(bill)
     matching_bills.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
     return matching_bills
+
+def log_sync_event(change_type: str, user_id: str | None = None, details: str | None = None):
+    try:
+        # Prefer ISO string; MySQL connector can also accept datetime if column is DATETIME
+        payload = {
+            'change_type': change_type,
+            'timestamp': datetime.now().isoformat(),
+            'user_id': user_id,
+            'details': details
+        }
+        if hasattr(sync_controller, 'queue_for_sync'):
+            # Will filter keys to actual sync_table columns and insert immediately
+            sync_controller.queue_for_sync('sync_table', payload, 'INSERT')
+        app.logger.info(f"Session event logged: {change_type} for user {user_id}")
+    except Exception as e:
+        app.logger.error(f"Failed to log session event: {e}")
 
 def create_notification(notification_type, message, related_id=None):
     notification = {
@@ -405,6 +449,8 @@ def login():
 
         if user and user.get('password') == password:
             user_info = {k: v for k, v in user.items() if k != 'password'}
+            # Log a LOGIN event into sync_table
+            log_sync_event('LOGIN', user_info.get('id'), 'User logged in')
             return jsonify({
                 "auth_ok": True, 
                 "user_role": user_info.get('role'), 
@@ -425,6 +471,29 @@ def login_options():
     response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
     response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
     return response, 200
+
+@app.route('/api/auth/logout', methods=['POST'])
+def logout():
+    try:
+        data = request.json or {}
+        # Accept any identifier the client can provide
+        user_id = data.get('userId') or data.get('id') or data.get('email')
+        log_sync_event('LOGOUT', user_id, 'User explicitly logged out')
+        return jsonify({"message": "Logout recorded"}), 200
+    except Exception as e:
+        app.logger.error(f"Logout error: {e}")
+        return jsonify({"message": f"Server error: {str(e)}"}), 500
+
+@app.route('/api/auth/close', methods=['POST'])
+def app_closed_without_logout():
+    try:
+        data = request.json or {}
+        user_id = data.get('userId') or data.get('id') or data.get('email')
+        log_sync_event('CLOSE_NO_LOGOUT', user_id, 'App closed without explicit logout')
+        return jsonify({"message": "Close recorded"}), 200
+    except Exception as e:
+        app.logger.error(f"Close log error: {e}")
+        return jsonify({"message": f"Server error: {str(e)}"}), 500
 
 @app.route('/api/auth/forgot-password-proxy', methods=['POST'])
 def forgot_password_proxy():

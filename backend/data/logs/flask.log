@@ -1,14 +1,22 @@
-2025-10-06 13:49:08,416 - main - INFO - Flask server starting up...
-2025-10-06 13:49:08,615 - main - INFO - Background pull sync completed successfully.
-2025-10-06 13:49:10,969 - main - INFO - Flask server starting...
-2025-10-06 13:49:10,969 - main - INFO - Flask will run on port 8080
-2025-10-06 13:49:10,980 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
-2025-10-06 13:49:11,976 - main - INFO - Background pull sync completed successfully.
-2025-10-06 13:54:08,637 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
-2025-10-06 13:54:09,825 - main - INFO - Background pull sync completed successfully.
-2025-10-06 13:54:11,989 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
-2025-10-06 13:54:13,219 - main - INFO - Background pull sync completed successfully.
-2025-10-06 13:59:09,833 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
-2025-10-06 13:59:10,997 - main - INFO - Background pull sync completed successfully.
-2025-10-06 13:59:13,231 - main - INFO - Background pull sync starting. Next sync in 5 minutes.
-2025-10-06 13:59:14,414 - main - INFO - Background pull sync completed successfully.
+[2025-10-15 21:29:43,947] INFO in main: Flask server starting up...
+[2025-10-15 21:29:43,947] INFO in main: Flask server starting up...
+2025-10-15 21:29:43,947 - main - INFO - main.py:84 - Flask server starting up...
+[2025-10-15 21:29:44,204] INFO in main: Background pull sync completed successfully.
+[2025-10-15 21:29:44,204] INFO in main: Background pull sync completed successfully.
+2025-10-15 21:29:44,204 - main - INFO - main.py:630 - Background pull sync completed successfully.
+[2025-10-15 21:29:46,845] INFO in main: Flask server starting...
+[2025-10-15 21:29:46,845] INFO in main: Flask server starting...
+2025-10-15 21:29:46,845 - main - INFO - main.py:639 - Flask server starting...
+[2025-10-15 21:29:46,845] INFO in main: Flask will run on port 8080
+[2025-10-15 21:29:46,845] INFO in main: Flask will run on port 8080
+2025-10-15 21:29:46,845 - main - INFO - main.py:645 - Flask will run on port 8080
+[2025-10-15 21:29:46,845] INFO in main: Background pull sync starting. Next sync in 5 minutes.
+[2025-10-15 21:29:46,845] INFO in main: Background pull sync starting. Next sync in 5 minutes.
+2025-10-15 21:29:46,845 - main - INFO - main.py:626 - Background pull sync starting. Next sync in 5 minutes.
+ * Debugger is active!
+ * Debugger is active!
+ * Debugger PIN: 818-351-335
+ * Debugger PIN: 818-351-335
+[2025-10-15 21:29:47,770] INFO in main: Background pull sync completed successfully.
+[2025-10-15 21:29:47,770] INFO in main: Background pull sync completed successfully.
+2025-10-15 21:29:47,770 - main - INFO - main.py:630 - Background pull sync completed successfully.
