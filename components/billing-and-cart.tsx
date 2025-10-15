@@ -316,9 +316,9 @@ export default function BillingAndCart() {
   const fetchUserData = async () => {
     try {
       const [usersRes, storesRes, userStoresRes] = await Promise.all([
-        fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/users`),
-        fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/stores`),
-        fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/user-stores`),
+        fetch(`http://localhost:8080/api/users`),
+        fetch(`http://localhost:8080/api/stores`),
+        fetch(`http://localhost:8080/api/user-stores`),
       ]);
       const { users: usersData } = await usersRes.json();
       const { stores: storesData } = await storesRes.json();

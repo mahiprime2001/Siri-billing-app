@@ -19,29 +19,34 @@ from utils.connection_pool import initialize_pool, get_connection, close_pool
 from utils.sync_controller import SyncController, json_serial as sync_json_serial
 
 # Define file paths for the 5 main JSON files
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DOTENV_PATH = os.path.join(BASE_DIR, '.env')
+APP_BASE_DIR = os.getcwd()
+os.environ['APP_BASE_DIR'] = APP_BASE_DIR # Set environment variable
+# DOTENV_PATH should be relative to main.py's location, which is backend/
+DOTENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
 load_dotenv(dotenv_path=DOTENV_PATH)
 
-USERS_FILE = os.path.join(BASE_DIR, 'data', 'json', 'users.json')
-PRODUCTS_FILE = os.path.join(BASE_DIR, 'data', 'json', 'products.json')
-BILLS_FILE = os.path.join(BASE_DIR, 'data', 'json', 'bills.json')
-CUSTOMERS_FILE = os.path.join(BASE_DIR, 'data', 'json', 'customers.json')
-SYSTEM_SETTINGS_FILE = os.path.join(BASE_DIR, 'data', 'json', 'systemsettings.json')
-STORES_FILE = os.path.join(BASE_DIR, 'data', 'json', 'stores.json')
-BILL_FORMATS_FILE = os.path.join(BASE_DIR, 'data', 'json', 'billformats.json')
-RETURNS_FILE = os.path.join(BASE_DIR, 'data', 'json', 'returns.json')
-
-app = Flask(__name__)
-
-# Configure logging
-DATA_DIR = os.path.join(BASE_DIR, 'data')
+# Data directories should be located in the launch directory (APP_BASE_DIR)
+DATA_DIR = os.path.join(APP_BASE_DIR, 'data')
 JSON_DIR = os.path.join(DATA_DIR, 'json')
 LOG_DIR = os.path.join(DATA_DIR, 'logs')
 
-# Ensure data directories exist
-os.makedirs(DATA_DIR, exist_ok=True)
-os.makedirs(JSON_DIR, exist_ok=True)
+USERS_FILE = os.path.join(JSON_DIR, 'users.json')
+PRODUCTS_FILE = os.path.join(JSON_DIR, 'products.json')
+BILLS_FILE = os.path.join(JSON_DIR, 'bills.json')
+CUSTOMERS_FILE = os.path.join(JSON_DIR, 'customers.json')
+SYSTEM_SETTINGS_FILE = os.path.join(JSON_DIR, 'systemsettings.json')
+STORES_FILE = os.path.join(JSON_DIR, 'stores.json')
+BILL_FORMATS_FILE = os.path.join(JSON_DIR, 'billformats.json')
+RETURNS_FILE = os.path.join(JSON_DIR, 'returns.json')
+
+app = Flask(__name__)
+
+# Configure logging (paths already updated above)
+# DATA_DIR = os.path.join(APP_BASE_DIR, 'data') # Redundant, already defined
+# JSON_DIR = os.path.join(DATA_DIR, 'json') # Redundant, already defined
+# LOG_DIR = os.path.join(DATA_DIR, 'logs') # Redundant, already defined
+
+# Ensure LOG_DIR exists for logging, as per user feedback.
 os.makedirs(LOG_DIR, exist_ok=True)
 
 LOG_FILE = os.path.join(LOG_DIR, 'flask.log')
@@ -79,6 +84,7 @@ class DualLogger:
 
 sys.stdout = DualLogger(LOG_FILE)
 sys.stderr = DualLogger(LOG_FILE)
+app.logger.info(f"Console output (stdout/stderr) redirected to {LOG_FILE}")
 
 # Log server startup
 app.logger.info("Flask server starting up...")
@@ -428,7 +434,8 @@ def test_env():
         'MYSQL_USER': os.getenv('MYSQL_USER'),
         'MYSQL_PASSWORD': '***' if os.getenv('MYSQL_PASSWORD') else None,  # Hide password
         'MYSQL_DATABASE': os.getenv('MYSQL_DATABASE'),
-        'has_dotenv': True if os.getenv('MYSQL_HOST') else False
+        'has_dotenv': True if os.getenv('MYSQL_HOST') else False,
+        'APP_BASE_DIR': os.environ.get('APP_BASE_DIR')
     })
 
 @app.route('/api/auth/login', methods=['POST'])
