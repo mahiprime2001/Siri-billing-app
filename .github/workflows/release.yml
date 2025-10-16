@@ -219,14 +219,3 @@ jobs:
           $sha = (git rev-list -n 1 $tag).Trim()
           git tag -f latest $sha
           git push origin -f latest
-
-          # Ensure a 'latest' release exists for clients that expect it
-          gh release view latest -R $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create latest --title "Latest Windows Release" --notes "Auto-synced with $tag" --verify-tag -R $env:GITHUB_REPOSITORY
-            if ($LASTEXITCODE -ne 0) { throw "Failed to create 'latest' release" }
-          }
-
-          # Refresh latest.json on the 'latest' release
-          gh release upload latest latest.json --clobber -R $env:GITHUB_REPOSITORY
-          if ($LASTEXITCODE -ne 0) { throw "Failed to upload latest.json to 'latest' release" }
