@@ -123,12 +123,12 @@ jobs:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         with:
+          projectPath: src-tauri  # Specifies the Tauri project directory
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: ${{ github.ref_type == 'tag' && 'Siri Billing App ${{ github.ref_name }}' || 'Snapshot Build ${{ github.sha }}' }}
           draft: ${{ github.ref_type == 'tag' }}
           prerelease: false
-          args: --target ${{ matrix.target }} --config '{"bundle":{"externalBin":["binaries/Siribilling-backend"],"createUpdaterArtifacts":${{ github.ref_type == 'tag' }},"active":${{ github.ref_type == 'tag' }}},"plugins":{"updater":{"active":${{ github.ref_type == 'tag' }}}},"build":{"frontendDist":"${{ env.DIST_DIR }}"}}'
-        working-directory: src-tauri  # Tauri action expects to run in src-tauri dir
+          args: --target ${{ matrix.target }} --config '{"bundle":{"externalBin":["binaries/Siribilling-backend"],"createUpdaterArtifacts":${{ github.ref_type == 'tag' }},"active":${{ github.ref_type == 'tag' }}},"plugins":{"updater":{"active":${{ github.ref_type == 'tag' }}}},"build":{"frontendDist":"../${{ env.DIST_DIR }}"}}'
 
       - name: Upload bundles as artifact
         uses: actions/upload-artifact@v4
