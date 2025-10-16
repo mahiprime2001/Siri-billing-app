@@ -1,205 +1,196 @@
-name: "🚀 Tauri Windows Auto Release (Tauri Version + Synced latest)"
+name: Release
 
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:
+    tags:
+      - 'v*'
 
 permissions:
-  contents: write
-  actions: read
+  contents: write  # For creating releases and uploading assets
 
 jobs:
-  build-and-release-windows:
-    runs-on: windows-latest
-
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create_release.outputs.release_id }}
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
-      # 1️⃣ Checkout repository (full history + tags for tagging/release)
-      - name: 🛒 Checkout code
+      - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
 
-      # 2️⃣ Setup Node.js & Rust
-      - name: ⚙️ Setup Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '20'  # Adjust if your project uses a different version
+          cache: 'pnpm'  # Matches your pnpm dev command
 
-      - name: 🦀 Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install frontend dependencies
+        run: pnpm install
 
-      # 3️⃣ Install project dependencies
-      - name: 📦 Install dependencies
-        run: yarn install --frozen-lockfile
+      - name: Build frontend
+        run: npm run build  # Matches your tauri.conf.json beforeBuildCommand
 
-      # 4️⃣ Write raw private key as PEM
-      - name: 🗝️ Write private key to PEM file
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $Key = "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" -replace '\\n', "`n"
-          $KeyPath = "src-tauri/signing_private.pem"
-          Set-Content -Path $KeyPath -Value $Key -Encoding UTF8
-          echo "TAURI_SIGNING_PRIVATE_KEY=$(Get-Content $KeyPath -Raw)" >> $env:GITHUB_ENV
-
-      # 5️⃣ Read version from tauri.conf.json and validate MSI limits (255.255.65535)
-      - name: 📄 Read and validate version
-        id: tauri_version
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $configPath = "src-tauri/tauri.conf.json"
-          if (-not (Test-Path $configPath)) { throw "Missing $configPath" }
-          $cfg = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
-          $appVersion = $cfg['version']
-          if (-not $appVersion) { throw "Missing 'version' in tauri.conf.json" }
-
-          try {
-            $ver = [version]($appVersion -replace '^v','')
-          } catch {
-            throw "Version must be parseable as <major>.<minor>.<build>; got '$appVersion'"
-          }
-          if ($ver.Major -gt 255 -or $ver.Minor -gt 255 -or ($ver.Build -ge 0 -and $ver.Build -gt 65535)) {
-            throw "MSI ProductVersion out of range (limits 255.255.65535). Update src-tauri/tauri.conf.json 'version' (current: $appVersion)."
-          }
-
-          echo "APP_VERSION=$appVersion" >> $env:GITHUB_ENV
-          echo "RELEASE_TAG=v$appVersion" >> $env:GITHUB_ENV
-          Write-Host "APP_VERSION=$appVersion; RELEASE_TAG=v$appVersion"
-
-      # 6️⃣ Ensure tag v{APP_VERSION} exists (no deletion/force moves)
-      - name: 🏷️ Ensure tag for version
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $tag = "${{ env.RELEASE_TAG }}"
-          if (git rev-parse -q --verify "refs/tags/$tag" *> $null) {
-            Write-Host "Tag $tag exists."
-          } else {
-            git config user.name "github-actions"
-            git config user.email "github-actions@github.com"
-            git tag $tag
-            git push origin $tag
-          }
-
-      # 7️⃣ Build Tauri App (Windows MSVC backend)
-      - name: 🚀 Build Windows release with Tauri
-        shell: pwsh
+      - name: Create GitHub Release
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ env.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          TAURI_ENV_TARGET_TRIPLE: x86_64-pc-windows-msvc
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Siri Billing App ${{ github.ref_name }}"
+          draft: true  # Start as draft, publish later
+          prerelease: false
+          args: --config '{"build":{"beforeBuildCommand":"npm run build"},"bundle":{"createUpdaterArtifacts":true}}'
+
+  build-and-sign:
+    needs: create-release
+    strategy:
+      matrix:
+        platform: [macos-latest, ubuntu-latest, windows-latest]
+        include:
+          - platform: macos-latest
+            target: x86_64-apple-darwin,aarch64-apple-darwin  # Build for both Intel and Apple Silicon
+          - platform: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Ubuntu dependencies (for Linux builds)
+        if: matrix.platform == 'ubuntu-latest'
         run: |
-          $ErrorActionPreference = "Stop"
+          sudo apt-get update
+          sudo apt-get install -y gcc g++ pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf libayatana-appindicator3-dev
 
-          # Optional: ensure externalBin path if needed
-          $configPath = "src-tauri/tauri.conf.json"
-          $cfg = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
-          if (-not $cfg.ContainsKey('bundle')) { $cfg['bundle'] = @{} }
-          $cfg['bundle']['externalBin'] = @("binaries/Siribilling-backend")
-          $cfg | ConvertTo-Json -Depth 20 | Out-File $configPath -Encoding UTF8
+      - name: Install macOS dependencies (if needed)
+        if: matrix.platform == 'macos-latest'
+        run: brew install pkg-config  # Add if your external bin needs it
 
-          yarn tauri build
+      - name: Install Windows dependencies (if needed)
+        if: matrix.platform == 'windows-latest'
+        run: choco install pkgconfiglite  # Rare, but for any native deps
 
-      # 8️⃣ Generate latest.json (use APP_VERSION; assets under RELEASE_TAG)
-      - name: 🧾 Generate latest.json
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
+      - name: Install frontend dependencies
+        run: pnpm install
 
-          $appVersion = "${{ env.APP_VERSION }}"
-          $tag = "${{ env.RELEASE_TAG }}"
-          $pubDate = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
-          $repo = $env:GITHUB_REPOSITORY
+      - name: Build frontend
+        run: npm run build
 
-          $nsisDir = "src-tauri/target/release/bundle/nsis"
-          if (-not (Test-Path $nsisDir)) {
-            throw "NSIS bundle directory not found: $nsisDir"
-          }
+      # Build your external binary if it's not pre-committed (example for a Go binary; adjust or remove if not needed)
+      # - name: Build external backend binary (e.g., Go)
+      #   if: true  # Customize condition
+      #   run: |
+      #     go build -o binaries/Siribilling-backend-${{ matrix.platform }} ./path/to/backend
+      #   env:
+      #     GOOS: ${{ matrix.platform == 'windows-latest' && 'windows' || matrix.platform == 'ubuntu-latest' && 'linux' || 'darwin' }}
+      #     GOARCH: amd64  # Or arm64 for aarch64
 
-          $exe = Get-ChildItem -Path $nsisDir -Filter *.exe -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $exe) { throw "No NSIS .exe found in $nsisDir" }
-
-          $sig = Get-ChildItem -Path $nsisDir -Filter *.sig -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $sig) { throw "No .sig found in $nsisDir" }
-          $sigContent = Get-Content -Path $sig.FullName -Raw
-
-          $assetNameEncoded = [System.Uri]::EscapeDataString($exe.Name)
-          $assetUrl = "https://github.com/$repo/releases/download/$tag/$assetNameEncoded"
-
-          $latestJson = @{
-            version   = $appVersion
-            notes     = "Windows release $tag"
-            pub_date  = $pubDate
-            platforms = @{
-              "windows-x86_64" = @{
-                url       = $assetUrl
-                signature = $sigContent
-              }
-            }
-          } | ConvertTo-Json -Depth 6
-
-          $latestJson | Out-File -FilePath latest.json -Encoding UTF8
-
-      # 9️⃣ Create release, mark as Latest, sync `latest` tag, upload assets
-      - name: 📤 Create release and upload assets (mark as Latest + sync tag)
-        shell: pwsh
+      - name: Build and bundle Tauri app
+        id: tauri_build
+        uses: tauri-apps/tauri-action@v0
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # For code signing (optional but recommended for prod)
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}  # Base64-encoded cert for macOS
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}  # Windows cert
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Siri Billing App ${{ github.ref_name }}"
+          draft: true
+          prerelease: false
+          args: --target ${{ matrix.target }} --config '{"bundle":{"externalBin":["binaries/Siribilling-backend"],"createUpdaterArtifacts":true},"plugins":{"updater":{"active":true}}}'
+          updaterArgs: '--sign-with-minisign'  # Auto-signs if key provided, but we'll handle manually
+
+      - name: Install minisign (for Unix-like platforms)
+        if: matrix.platform != 'windows-latest'
         run: |
-          $ErrorActionPreference = "Stop"
+          curl -L https://github.com/jedisct1/minisign/releases/download/0.11/minisign-linux-amd64 -o minisign
+          chmod +x minisign
 
-          gh auth status
-          if ($LASTEXITCODE -ne 0) { throw "GitHub CLI auth failed" }
+      - name: Sign updater artifacts with minisign
+        if: matrix.platform != 'windows-latest'
+        env:
+          MINISIGN_PRIVATE_KEY: ${{ secrets.MINISIGN_PRIVATE_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: |
+          echo "$MINISIGN_PRIVATE_KEY" > minisign.key
+          for file in src-tauri/target/*/release/bundle/*/update/*.bin; do
+            ./minisign -S -s minisign.key -m "$file" -x "$file.sig" -t "Updater artifact for ${{ github.ref_name }} on ${{ matrix.platform }}" -p "$MINISIGN_PASSWORD"
+          done
+          # Also sign latest.json if generated per-platform (Tauri generates one globally, but ensure)
+          if [ -f src-tauri/target/*/release/bundle/latest.json ]; then
+            ./minisign -S -s minisign.key -m src-tauri/target/*/release/bundle/latest.json -x src-tauri/target/*/release/bundle/latest.json.sig -t "Latest manifest" -p "$MINISIGN_PASSWORD"
+          fi
 
-          $tag = "${{ env.RELEASE_TAG }}"
+      - name: Sign on Windows (using minisign via WSL or alternative; skip if handling elsewhere)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        env:
+          MINISIGN_PRIVATE_KEY: ${{ secrets.MINISIGN_PRIVATE_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: |
+          # Install minisign on Windows via scoop or manual; this is tricky, recommend using a tool like signtool if alternative
+          echo "Minisign on Windows requires additional setup; consider cross-signing or using a Unix step."
+          # Placeholder: Add actual Windows minisign installation if needed
 
-          # Create or reuse the versioned release
-          gh release view $tag -R $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --title "Windows Release $tag" --notes "Automated release" --verify-tag -R $env:GITHUB_REPOSITORY
-            if ($LASTEXITCODE -ne 0) { throw "Failed to create release $tag" }
-          }
+      - name: Upload built bundles and updater artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-${{ matrix.platform }}
+          path: |
+            src-tauri/target/*/release/bundle/**
+            !**/*.sig  # Upload sigs separately if needed
+          retention-days: 5
 
-          # Upload artifacts
-          $folders = @(
-            "src-tauri/target/release/bundle/msi",
-            "src-tauri/target/release/bundle/nsis"
-          )
-          foreach ($folder in $folders) {
-            if (Test-Path $folder) {
-              Get-ChildItem -Path $folder -File | ForEach-Object {
-                Write-Host "Uploading $($_.FullName)..."
-                gh release upload $tag $_.FullName --clobber -R $env:GITHUB_REPOSITORY
-                if ($LASTEXITCODE -ne 0) { throw "Failed to upload $($_.Name) to $tag" }
-              }
-            }
-          }
+      - name: Upload signatures
+        uses: actions/upload-artifact@v4
+        with:
+          name: signatures-${{ matrix.platform }}
+          path: src-tauri/target/*/release/bundle/**/*.sig
+          retention-days: 5
 
-          # Upload latest.json to the versioned release
-          gh release upload $tag latest.json --clobber -R $env:GITHUB_REPOSITORY
-          if ($LASTEXITCODE -ne 0) { throw "Failed to upload latest.json to $tag" }
+  publish-release:
+    needs: [create-release, build-and-sign]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
 
-          # Mark the versioned release as the "Latest release" (green badge)
-          gh release edit $tag --latest -R $env:GITHUB_REPOSITORY
-          if ($LASTEXITCODE -ne 0) { throw "Failed to mark $tag as Latest" }
+      - name: Prepare assets for upload
+        run: |
+          mkdir -p release-assets
+          cp -r artifacts/*/ release-assets/
+          # Flatten and organize: e.g., latest.json should be at root for your endpoint
 
-          # Force-move the `latest` tag to the same commit as the version tag
-          $sha = (git rev-list -n 1 $tag).Trim()
-          git tag -f latest $sha
-          git push origin -f latest
-
-          # Ensure a 'latest' release exists for clients that expect it
-          gh release view latest -R $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create latest --title "Latest Windows Release" --notes "Auto-synced with $tag" --verify-tag -R $env:GITHUB_REPOSITORY
-            if ($LASTEXITCODE -ne 0) { throw "Failed to create 'latest' release" }
-          }
-
-          # Refresh latest.json on the 'latest' release
-          gh release upload latest latest.json --clobber -R $env:GITHUB_REPOSITORY
-          if ($LASTEXITCODE -ne 0) { throw "Failed to upload latest.json to 'latest' release" }
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          files: |
+            release-assets/**
+          body: |
+            ## Changes
+            - Update to version ${{ github.ref_name }}
+            - Bundled with latest backend.
+            See tauri.conf.json for config details.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
