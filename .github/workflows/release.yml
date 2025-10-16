@@ -25,28 +25,35 @@ jobs:
         with:
           fetch-depth: 0  # Needed for tag checks
 
+      - name: Setup Node.js with pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest  # Or specify e.g., 9.x
+          
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          cache: 'pnpm'  # Caches pnpm store
 
       - name: Install frontend dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile  # Use --frozen-lockfile for CI consistency
 
       - name: Build frontend
         run: ${{ env.BEFORE_BUILD_COMMAND }}
 
-      - name: Hash dist folder for caching
+      - name: Hash dist folder for integrity check
         id: dist-hash
-        run: echo "hash=$(md5sum -b ../out/* | md5sum)" >> $GITHUB_OUTPUT  # Adjust path if needed
+        run: |
+          find ../out -type f -exec md5sum {} + | sort | md5sum | awk '{print $1}' > hash.txt
+          echo "hash=$(cat hash.txt)" >> $GITHUB_OUTPUT
 
       - name: Upload frontend dist as artifact
         uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
-          path: ../out/**  # Matches your frontendDist
-          retention-days: 1  # Short retention since used immediately
+          path: ../out/**
+          retention-days: 1
 
   build-and-bundle:
     needs: build-artifacts
@@ -67,6 +74,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Node.js with pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -78,12 +90,11 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install platform dependencies
+      - name: Install Linux dependencies (Ubuntu only)
         if: matrix.platform == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc g++ pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf libayatana-appindicator3-dev
-      # Add macOS/Windows deps if needed for external bin
 
       - name: Download frontend dist
         uses: actions/download-artifact@v4
@@ -91,59 +102,60 @@ jobs:
           name: frontend-dist
           path: ../out
 
-      - name: Verify dist integrity (optional)
+      - name: Verify dist integrity
         run: |
-          if [ "$(md5sum -b ../out/* | md5sum)" != "${{ needs.build-artifacts.outputs.dist-hash }}" ]; then
-            echo "Dist hash mismatch!" && exit 1
+          DOWNLOAD_HASH=$(find ../out -type f -exec md5sum {} + | sort | md5sum | awk '{print $1}')
+          if [ "$DOWNLOAD_HASH" != "${{ needs.build-artifacts.outputs.dist-hash }}" ]; then
+            echo "Dist hash mismatch! Expected: ${{ needs.build-artifacts.outputs.dist-hash }}, Got: $DOWNLOAD_HASH"
+            exit 1
           fi
-
-      # Build external binary if needed (example for Go; customize twitch/remove)
-      # - name: Build external backend
-      #   run: |
-      #     go build -o binaries/Siribilling-backend ./path/to/backend
-      #   env:
-      #     GOOS: ${{ matrix.platform == 'windows-latest' && 'windows' || matrix.platform == 'ubuntu-latest' && 'linux' || 'darwin' }}
-      #     GOARCH: amd64
 
       - name: Build and bundle Tauri app
         id: tauri_build
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Optional signing secrets
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}  # Only set if tag
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: ${{ github.ref_type == 'tag' && 'Siri Billing App ${{ github.ref_name }}' || 'Snapshot Build ${{ github.sha }}' }}
-          draft: ${{ github.ref_type == 'tag' }}  # Draft only for tags
+          draft: ${{ github.ref_type == 'tag' }}
           prerelease: false
           args: --target ${{ matrix.target }} --config '{"bundle":{"externalBin":["binaries/Siribilling-backend"],"createUpdaterArtifacts":${{ github.ref_type == 'tag' }},"active":${{ github.ref_type == 'tag' }}},"plugins":{"updater":{"active":${{ github.ref_type == 'tag' }}}},"build":{"frontendDist":"../out"}}'
-          # No updater artifacts on branch pushes to save time
 
-      - name: Upload bundles as artifact (for all pushes)
+      - name: Upload bundles as artifact
         uses: actions/upload-artifact@v4
         with:
           name: bundles-${{ matrix.platform }}-${{ github.sha }}
           path: src-tauri/target/*/release/bundle/**
-          retention-days: 7  # Keep for a week for debugging
+          retention-days: 7
 
   create-or-update-release:
-    if: github.ref_type == 'tag'  # Only run full release/sign/publish on tags
+    if: github.ref_type == 'tag'
     needs: build-and-bundle
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code (for context)
+        uses: actions/checkout@v4
+
       - name: Download all bundle artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
+      - name: Setup Node.js with pnpm (for consistency)
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
       - name: Install minisign
         run: |
-          curl -L https://github.com/jedisct1/minisign/releases/download/0.11/minisign-linux-amd64 -o minisign
+          curl -L https://github.com/jedisct1/minisign/releases/latest/download/minisign-linux-amd64 -o minisign
           chmod +x minisign
+          sudo mv minisign /usr/local/bin/
 
       - name: Sign updater artifacts
         env:
@@ -152,13 +164,15 @@ jobs:
         run: |
           echo "$MINISIGN_PRIVATE_KEY" > minisign.key
           find artifacts -name '*.bin' -o -name 'latest.json' | while read file; do
-            ./minisign -S -s minisign.key -m "$file" -x "$file.sig" -t "Artifact for ${{ github.ref_name }}" -p "$MINISIGN_PASSWORD"
+            if [ -f "$file" ]; then
+              minisign -S -s minisign.key -m "$file" -x "$file.sig" -t "Artifact for ${{ github.ref_name }}" -p "$MINISIGN_PASSWORD"
+            fi
           done
 
       - name: Prepare release assets
         run: |
           mkdir release-assets
-          cp -r artifacts/*/* release-assets/  # Flatten
+          find artifacts -type f -exec cp --parents {} release-assets/ \;
 
       - name: Create/Update GitHub Release
         uses: softprops/action-gh-release@v2
@@ -174,9 +188,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   notify-success:
-    if: always()  # Runs even on failure for notification
+    if: always()
     needs: [build-and-bundle, create-or-update-release]
     runs-on: ubuntu-latest
     steps:
-      - name: Echo completion
-        run: echo "Build complete for ${{ github.ref }}. Artifacts available for download."
+      - name: Notify completion
+        run: echo "Workflow complete for ${{ github.ref }}. Check artifacts or release."
