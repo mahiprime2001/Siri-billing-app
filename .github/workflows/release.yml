@@ -1,200 +1,232 @@
-name: Build and Release
+name: "🚀 Tauri Windows Auto Release (Tauri Version + Synced latest)"
 
 on:
   push:
     branches:
-      - main  # Adjust to your default branch (e.g., master, develop)
-    tags:
-      - 'v*'  # For official releases
+      - main
+    paths-ignore:
+      - 'src-tauri/tauri.conf.json'
+  workflow_dispatch:
 
 permissions:
-  contents: write  # For creating releases and uploading assets
-
-env:
-  NODE_VERSION: '20'  # Shared Node version
-  BEFORE_BUILD_COMMAND: "npm run build"  # Matches your tauri.conf.json
-  DIST_DIR: "out"  # Relative to repo root; matches frontendDist "../out" from src-tauri perspective
+  contents: write
+  actions: read
 
 jobs:
-  build-artifacts:
-    runs-on: ubuntu-latest
-    outputs:
-      dist-hash: ${{ steps.dist-hash.outputs.hash }}
+  build-and-release-windows:
+    runs-on: windows-latest
+
     steps:
-      - name: Checkout code
+      # 1️⃣ Checkout repository (full history + tags for tagging/release)
+      - name: 🛒 Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: latest
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
-
-      - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build frontend
-        run: ${{ env.BEFORE_BUILD_COMMAND }}
-        working-directory: ./  # Ensure build runs in root where package.json is
-
-      - name: Hash dist folder for integrity check
-        id: dist-hash
+      # 🔢 Auto-increment version in tauri.conf.json
+      - name: 🔢 Auto-increment version
+        shell: pwsh
         run: |
-          find ${{ env.DIST_DIR }} -type f -exec md5sum {} + | sort | md5sum | awk '{print $1}' > hash.txt
-          echo "hash=$(cat hash.txt)" >> $GITHUB_OUTPUT
+          $ErrorActionPreference = "Stop"
+          $configPath = "src-tauri/tauri.conf.json"
+          $cfg = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
+          $currentVer = $cfg['version']
+          if (-not $currentVer) { throw "No version found in $configPath" }
+          $verParts = $currentVer -split '\.'
+          if ($verParts.Length -ne 3) { throw "Invalid version format: $currentVer" }
+          $buildNum = [int]$verParts[2] + 1
+          $newVer = "$($verParts[0]).$($verParts[1]).$buildNum"
+          $cfg['version'] = $newVer
+          $cfg | ConvertTo-Json -Depth 20 | Out-File $configPath -Encoding UTF8
+          echo "Bumped version from $currentVer to $newVer"
+          echo "APP_VERSION=$newVer" >> $env:GITHUB_ENV
+          echo "RELEASE_TAG=v$newVer" >> $env:GITHUB_ENV
+          # Commit and push to persist the bump (ignored by workflow trigger)
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add $configPath
+          git commit -m "ci: bump version to $newVer" || echo "No changes to commit"
+          git push origin HEAD:main
 
-      - name: Upload frontend dist as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-dist
-          path: ${{ env.DIST_DIR }}/**
-          retention-days: 1
-
-  build-and-bundle:
-    needs: build-artifacts
-    strategy:
-      matrix:
-        platform: [macos-latest, ubuntu-latest, windows-latest]
-        include:
-          - platform: macos-latest
-            target: x86_64-apple-darwin,aarch64-apple-darwin
-          - platform: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-          - platform: windows-latest
-            target: x86_64-pc-windows-msvc
-    runs-on: ${{ matrix.platform }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: latest
-
-      - name: Setup Node.js
+      # 2️⃣ Setup Node.js & Rust
+      - name: ⚙️ Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          node-version: 20
 
-      - name: Install Rust toolchain
+      - name: 🦀 Setup Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
 
-      - name: Install Linux dependencies (Ubuntu only)
-        if: matrix.platform == 'ubuntu-latest'
+      # 3️⃣ Install project dependencies
+      - name: 📦 Install dependencies
+        run: yarn install --frozen-lockfile
+
+      # 4️⃣ Write raw private key as PEM
+      - name: 🗝️ Write private key to PEM file
+        shell: pwsh
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc g++ pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf libayatana-appindicator3-dev
+          $ErrorActionPreference = "Stop"
+          $Key = "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" -replace '\\n', "`n"
+          $KeyPath = "src-tauri/signing_private.pem"
+          Set-Content -Path $KeyPath -Value $Key -Encoding UTF8
+          echo "TAURI_SIGNING_PRIVATE_KEY=$(Get-Content $KeyPath -Raw)" >> $env:GITHUB_ENV
 
-      - name: Download frontend dist
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-dist
-          path: ${{ env.DIST_DIR }}
-
-      - name: Verify dist integrity
+      # 5️⃣ Read version from tauri.conf.json and validate MSI limits (255.255.65535)
+      - name: 📄 Read and validate version
+        id: tauri_version
+        shell: pwsh
         run: |
-          DOWNLOAD_HASH=$(find ${{ env.DIST_DIR }} -type f -exec md5sum {} + | sort | md5sum | awk '{print $1}')
-          if [ "$DOWNLOAD_HASH" != "${{ needs.build-artifacts.outputs.dist-hash }}" ]; then
-            echo "Dist hash mismatch! Expected: ${{ needs.build-artifacts.outputs.dist-hash }}, Got: $DOWNLOAD_HASH"
-            exit 1
-          fi
-        shell: bash  # Ensure bash for Windows compatibility
+          $ErrorActionPreference = "Stop"
+          $configPath = "src-tauri/tauri.conf.json"
+          if (-not (Test-Path $configPath)) { throw "Missing $configPath" }
+          $cfg = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
+          $appVersion = $cfg['version']
+          if (-not $appVersion) { throw "Missing 'version' in tauri.conf.json" }
 
-      - name: Build and bundle Tauri app
-        id: tauri_build
-        uses: tauri-apps/tauri-action@v0
+          try {
+            $ver = [version]($appVersion -replace '^v','')
+          } catch {
+            throw "Version must be parseable as <major>.<minor>.<build>; got '$appVersion'"
+          }
+          if ($ver.Major -gt 255 -or $ver.Minor -gt 255 -or ($ver.Build -ge 0 -and $ver.Build -gt 65535)) {
+            throw "MSI ProductVersion out of range (limits 255.255.65535). Update src-tauri/tauri.conf.json 'version' (current: $appVersion)."
+          }
+
+          echo "APP_VERSION=$appVersion" >> $env:GITHUB_ENV
+          echo "RELEASE_TAG=v$appVersion" >> $env:GITHUB_ENV
+          Write-Host "APP_VERSION=$appVersion; RELEASE_TAG=v$appVersion"
+
+      # 6️⃣ Ensure tag v{APP_VERSION} exists (no deletion/force moves)
+      - name: 🏷️ Ensure tag for version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tag = "${{ env.RELEASE_TAG }}"
+          if (git rev-parse -q --verify "refs/tags/$tag" *> $null) {
+            Write-Host "Tag $tag exists."
+          } else {
+            git config user.name "github-actions"
+            git config user.email "github-actions@github.com"
+            git tag $tag
+            git push origin $tag
+          }
+
+      # 7️⃣ Build Tauri App (Windows MSVC backend)
+      - name: 🚀 Build Windows release with Tauri
+        shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-        with:
-          projectPath: src-tauri  # Specifies the Tauri project directory
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-          releaseName: ${{ github.ref_type == 'tag' && 'Siri Billing App ${{ github.ref_name }}' || 'Snapshot Build ${{ github.sha }}' }}
-          draft: ${{ github.ref_type == 'tag' }}
-          prerelease: false
-          args: --target ${{ matrix.target }} --config '{"bundle":{"externalBin":["binaries/Siribilling-backend"],"createUpdaterArtifacts":${{ github.ref_type == 'tag' }},"active":${{ github.ref_type == 'tag' }}},"plugins":{"updater":{"active":${{ github.ref_type == 'tag' }}}},"build":{"frontendDist":"../${{ env.DIST_DIR }}"}}'
-
-      - name: Upload bundles as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: bundles-${{ matrix.platform }}-${{ github.sha }}
-          path: target/*/release/bundle/**
-          retention-days: 7
-
-  create-or-update-release:
-    if: github.ref_type == 'tag'
-    needs: build-and-bundle
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download all bundle artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: latest
-
-      - name: Install minisign
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_ENV_TARGET_TRIPLE: x86_64-pc-windows-msvc
         run: |
-          curl -L https://github.com/jedisct1/minisign/releases/latest/download/minisign-linux-amd64 -o minisign
-          chmod +x minisign
-          sudo mv minisign /usr/local/bin/
+          $ErrorActionPreference = "Stop"
 
-      - name: Sign updater artifacts
+          # Optional: ensure externalBin path if needed
+          $configPath = "src-tauri/tauri.conf.json"
+          $cfg = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
+          if (-not $cfg.ContainsKey('bundle')) { $cfg['bundle'] = @{} }
+          $cfg['bundle']['externalBin'] = @("binaries/Siribilling-backend")
+          $cfg | ConvertTo-Json -Depth 20 | Out-File $configPath -Encoding UTF8
+
+          yarn tauri build
+
+      # 8️⃣ Generate latest.json (use APP_VERSION; assets under RELEASE_TAG)
+      - name: 🧾 Generate latest.json
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $appVersion = "${{ env.APP_VERSION }}"
+          $tag = "${{ env.RELEASE_TAG }}"
+          $pubDate = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
+          $repo = $env:GITHUB_REPOSITORY
+
+          $nsisDir = "src-tauri/target/release/bundle/nsis"
+          if (-not (Test-Path $nsisDir)) {
+            throw "NSIS bundle directory not found: $nsisDir"
+          }
+
+          $exe = Get-ChildItem -Path $nsisDir -Filter *.exe -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $exe) { throw "No NSIS .exe found in $nsisDir" }
+
+          $sig = Get-ChildItem -Path $nsisDir -Filter *.sig -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $sig) { throw "No .sig found in $nsisDir" }
+          $sigContent = Get-Content -Path $sig.FullName -Raw
+
+          $assetNameEncoded = [System.Uri]::EscapeDataString($exe.Name)
+          $assetUrl = "https://github.com/$repo/releases/download/$tag/$assetNameEncoded"
+
+          $latestJson = @{
+            version   = $appVersion
+            notes     = "Windows release $tag"
+            pub_date  = $pubDate
+            platforms = @{
+              "windows-x86_64" = @{
+                url       = $assetUrl
+                signature = $sigContent
+              }
+            }
+          } | ConvertTo-Json -Depth 6
+
+          $latestJson | Out-File -FilePath latest.json -Encoding UTF8
+
+      # 9️⃣ Create release, mark as Latest, sync `latest` tag, upload assets
+      - name: 📤 Create release and upload assets (mark as Latest + sync tag)
+        shell: pwsh
         env:
-          MINISIGN_PRIVATE_KEY: ${{ secrets.MINISIGN_PRIVATE_KEY }}
-          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "$MINISIGN_PRIVATE_KEY" > minisign.key
-          find artifacts -name '*.bin' -o -name 'latest.json' | while read file; do
-            if [ -f "$file" ]; then
-              minisign -S -s minisign.key -m "$file" -x "$file.sig" -t "Artifact for ${{ github.ref_name }}" -p "$MINISIGN_PASSWORD"
-            fi
-          done
+          $ErrorActionPreference = "Stop"
 
-      - name: Prepare release assets
-        run: |
-          mkdir release-assets
-          find artifacts -type f -exec cp --parents {} release-assets/ \;
+          gh auth status
+          if ($LASTEXITCODE -ne 0) { throw "GitHub CLI auth failed" }
 
-      - name: Create/Update GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: false
-          prerelease: false
-          files: release-assets/**
-          body: |
-            ## Version ${{ github.ref_name }}
-            Auto-generated release from tag.
-            Includes bundled backend and updater support.
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          $tag = "${{ env.RELEASE_TAG }}"
 
-  notify-success:
-    if: always()
-    needs: [build-and-bundle, create-or-update-release]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Notify completion
-        run: echo "Workflow complete for ${{ github.ref }}. Check artifacts or release."
+          # Create or reuse the versioned release
+          gh release view $tag -R $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title "Windows Release $tag" --notes "Automated release" --verify-tag -R $env:GITHUB_REPOSITORY
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create release $tag" }
+          }
+
+          # Upload artifacts
+          $folders = @(
+            "src-tauri/target/release/bundle/msi",
+            "src-tauri/target/release/bundle/nsis"
+          )
+          foreach ($folder in $folders) {
+            if (Test-Path $folder) {
+              Get-ChildItem -Path $folder -File | ForEach-Object {
+                Write-Host "Uploading $($_.FullName)..."
+                gh release upload $tag $_.FullName --clobber -R $env:GITHUB_REPOSITORY
+                if ($LASTEXITCODE -ne 0) { throw "Failed to upload $($_.Name) to $tag" }
+              }
+            }
+          }
+
+          # Upload latest.json to the versioned release
+          gh release upload $tag latest.json --clobber -R $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw "Failed to upload latest.json to $tag" }
+
+          # Mark the versioned release as the "Latest release" (green badge)
+          gh release edit $tag --latest -R $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw "Failed to mark $tag as Latest" }
+
+          # Force-move the `latest` tag to the same commit as the version tag
+          $sha = (git rev-list -n 1 $tag).Trim()
+          git tag -f latest $sha
+          git push origin -f latest
+
+          # Ensure a 'latest' release exists for clients that expect it
+          gh release view latest -R $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create latest --title "Latest Windows Release" --notes "Auto-synced with $tag" --verify-tag -R $env:GITHUB_REPOSITORY
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create 'latest' release" }
+          }
+
+          # Refresh latest.json on the 'latest' release
+          gh release upload latest latest.json --clobber -R $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw "Failed to upload latest.json to 'latest' release" }
