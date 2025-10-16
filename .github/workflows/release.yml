@@ -13,46 +13,48 @@ permissions:
 env:
   NODE_VERSION: '20'  # Shared Node version
   BEFORE_BUILD_COMMAND: "npm run build"  # Matches your tauri.conf.json
+  DIST_DIR: "out"  # Relative to repo root; matches frontendDist "../out" from src-tauri perspective
 
 jobs:
   build-artifacts:
-    runs-on: ubuntu-latest  # Frontend build is cross-platform; do it once
+    runs-on: ubuntu-latest
     outputs:
       dist-hash: ${{ steps.dist-hash.outputs.hash }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Needed for tag checks
+          fetch-depth: 0
 
-      - name: Setup Node.js with pnpm
+      - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: latest  # Or specify e.g., 9.x
-          
+          version: latest
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'  # Caches pnpm store
+          cache: 'pnpm'
 
       - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile  # Use --frozen-lockfile for CI consistency
+        run: pnpm install --frozen-lockfile
 
       - name: Build frontend
         run: ${{ env.BEFORE_BUILD_COMMAND }}
+        working-directory: ./  # Ensure build runs in root where package.json is
 
       - name: Hash dist folder for integrity check
         id: dist-hash
         run: |
-          find ../out -type f -exec md5sum {} + | sort | md5sum | awk '{print $1}' > hash.txt
+          find ${{ env.DIST_DIR }} -type f -exec md5sum {} + | sort | md5sum | awk '{print $1}' > hash.txt
           echo "hash=$(cat hash.txt)" >> $GITHUB_OUTPUT
 
       - name: Upload frontend dist as artifact
         uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
-          path: ../out/**
+          path: ${{ env.DIST_DIR }}/**
           retention-days: 1
 
   build-and-bundle:
@@ -74,7 +76,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js with pnpm
+      - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: latest
@@ -100,15 +102,16 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: frontend-dist
-          path: ../out
+          path: ${{ env.DIST_DIR }}
 
       - name: Verify dist integrity
         run: |
-          DOWNLOAD_HASH=$(find ../out -type f -exec md5sum {} + | sort | md5sum | awk '{print $1}')
+          DOWNLOAD_HASH=$(find ${{ env.DIST_DIR }} -type f -exec md5sum {} + | sort | md5sum | awk '{print $1}')
           if [ "$DOWNLOAD_HASH" != "${{ needs.build-artifacts.outputs.dist-hash }}" ]; then
             echo "Dist hash mismatch! Expected: ${{ needs.build-artifacts.outputs.dist-hash }}, Got: $DOWNLOAD_HASH"
             exit 1
           fi
+        shell: bash  # Ensure bash for Windows compatibility
 
       - name: Build and bundle Tauri app
         id: tauri_build
@@ -124,13 +127,14 @@ jobs:
           releaseName: ${{ github.ref_type == 'tag' && 'Siri Billing App ${{ github.ref_name }}' || 'Snapshot Build ${{ github.sha }}' }}
           draft: ${{ github.ref_type == 'tag' }}
           prerelease: false
-          args: --target ${{ matrix.target }} --config '{"bundle":{"externalBin":["binaries/Siribilling-backend"],"createUpdaterArtifacts":${{ github.ref_type == 'tag' }},"active":${{ github.ref_type == 'tag' }}},"plugins":{"updater":{"active":${{ github.ref_type == 'tag' }}}},"build":{"frontendDist":"../out"}}'
+          args: --target ${{ matrix.target }} --config '{"bundle":{"externalBin":["binaries/Siribilling-backend"],"createUpdaterArtifacts":${{ github.ref_type == 'tag' }},"active":${{ github.ref_type == 'tag' }}},"plugins":{"updater":{"active":${{ github.ref_type == 'tag' }}}},"build":{"frontendDist":"${{ env.DIST_DIR }}"}}'
+        working-directory: src-tauri  # Tauri action expects to run in src-tauri dir
 
       - name: Upload bundles as artifact
         uses: actions/upload-artifact@v4
         with:
           name: bundles-${{ matrix.platform }}-${{ github.sha }}
-          path: src-tauri/target/*/release/bundle/**
+          path: target/*/release/bundle/**
           retention-days: 7
 
   create-or-update-release:
@@ -138,7 +142,7 @@ jobs:
     needs: build-and-bundle
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code (for context)
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Download all bundle artifacts
@@ -146,7 +150,7 @@ jobs:
         with:
           path: artifacts
 
-      - name: Setup Node.js with pnpm (for consistency)
+      - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: latest
