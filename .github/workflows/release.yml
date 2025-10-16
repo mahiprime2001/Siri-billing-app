@@ -61,7 +61,6 @@ jobs:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.platform }}
-    needs: build-artifacts
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -98,7 +97,7 @@ jobs:
             echo "Dist hash mismatch!" && exit 1
           fi
 
-      # Build external binary if needed (example for Go; customize/remove)
+      # Build external binary if needed (example for Go; customize twitch/remove)
       # - name: Build external backend
       #   run: |
       #     go build -o binaries/Siribilling-backend ./path/to/backend
