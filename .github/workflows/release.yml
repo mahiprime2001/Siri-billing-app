@@ -1,67 +1,77 @@
-name: Release
+name: Build and Release
 
 on:
   push:
+    branches:
+      - main  # Adjust to your default branch (e.g., master, develop)
     tags:
-      - 'v*'
+      - 'v*'  # For official releases
 
 permissions:
   contents: write  # For creating releases and uploading assets
 
+env:
+  NODE_VERSION: '20'  # Shared Node version
+  BEFORE_BUILD_COMMAND: "npm run build"  # Matches your tauri.conf.json
+
 jobs:
-  create-release:
-    runs-on: ubuntu-latest
+  build-artifacts:
+    runs-on: ubuntu-latest  # Frontend build is cross-platform; do it once
     outputs:
-      release_id: ${{ steps.create_release.outputs.release_id }}
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      dist-hash: ${{ steps.dist-hash.outputs.hash }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for tag checks
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'  # Adjust if your project uses a different version
-          cache: 'pnpm'  # Matches your pnpm dev command
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
 
       - name: Install frontend dependencies
         run: pnpm install
 
       - name: Build frontend
-        run: npm run build  # Matches your tauri.conf.json beforeBuildCommand
+        run: ${{ env.BEFORE_BUILD_COMMAND }}
 
-      - name: Create GitHub Release
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Hash dist folder for caching
+        id: dist-hash
+        run: echo "hash=$(md5sum -b ../out/* | md5sum)" >> $GITHUB_OUTPUT  # Adjust path if needed
+
+      - name: Upload frontend dist as artifact
+        uses: actions/upload-artifact@v4
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Siri Billing App ${{ github.ref_name }}"
-          draft: true  # Start as draft, publish later
-          prerelease: false
-          args: --config '{"build":{"beforeBuildCommand":"npm run build"},"bundle":{"createUpdaterArtifacts":true}}'
+          name: frontend-dist
+          path: ../out/**  # Matches your frontendDist
+          retention-days: 1  # Short retention since used immediately
 
-  build-and-sign:
-    needs: create-release
+  build-and-bundle:
+    needs: build-artifacts
     strategy:
       matrix:
         platform: [macos-latest, ubuntu-latest, windows-latest]
         include:
           - platform: macos-latest
-            target: x86_64-apple-darwin,aarch64-apple-darwin  # Build for both Intel and Apple Silicon
+            target: x86_64-apple-darwin,aarch64-apple-darwin
           - platform: ubuntu-latest
             target: x86_64-unknown-linux-gnu
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.platform }}
+    needs: build-artifacts
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
 
       - name: Install Rust toolchain
@@ -69,128 +79,105 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install Ubuntu dependencies (for Linux builds)
+      - name: Install platform dependencies
         if: matrix.platform == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc g++ pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf libayatana-appindicator3-dev
+      # Add macOS/Windows deps if needed for external bin
 
-      - name: Install macOS dependencies (if needed)
-        if: matrix.platform == 'macos-latest'
-        run: brew install pkg-config  # Add if your external bin needs it
+      - name: Download frontend dist
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: ../out
 
-      - name: Install Windows dependencies (if needed)
-        if: matrix.platform == 'windows-latest'
-        run: choco install pkgconfiglite  # Rare, but for any native deps
+      - name: Verify dist integrity (optional)
+        run: |
+          if [ "$(md5sum -b ../out/* | md5sum)" != "${{ needs.build-artifacts.outputs.dist-hash }}" ]; then
+            echo "Dist hash mismatch!" && exit 1
+          fi
 
-      - name: Install frontend dependencies
-        run: pnpm install
-
-      - name: Build frontend
-        run: npm run build
-
-      # Build your external binary if it's not pre-committed (example for a Go binary; adjust or remove if not needed)
-      # - name: Build external backend binary (e.g., Go)
-      #   if: true  # Customize condition
+      # Build external binary if needed (example for Go; customize/remove)
+      # - name: Build external backend
       #   run: |
-      #     go build -o binaries/Siribilling-backend-${{ matrix.platform }} ./path/to/backend
+      #     go build -o binaries/Siribilling-backend ./path/to/backend
       #   env:
       #     GOOS: ${{ matrix.platform == 'windows-latest' && 'windows' || matrix.platform == 'ubuntu-latest' && 'linux' || 'darwin' }}
-      #     GOARCH: amd64  # Or arm64 for aarch64
+      #     GOARCH: amd64
 
       - name: Build and bundle Tauri app
         id: tauri_build
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # For code signing (optional but recommended for prod)
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}  # Base64-encoded cert for macOS
+          # Optional signing secrets
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}  # Windows cert
+          CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Siri Billing App ${{ github.ref_name }}"
-          draft: true
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}  # Only set if tag
+          releaseName: ${{ github.ref_type == 'tag' && 'Siri Billing App ${{ github.ref_name }}' || 'Snapshot Build ${{ github.sha }}' }}
+          draft: ${{ github.ref_type == 'tag' }}  # Draft only for tags
           prerelease: false
-          args: --target ${{ matrix.target }} --config '{"bundle":{"externalBin":["binaries/Siribilling-backend"],"createUpdaterArtifacts":true},"plugins":{"updater":{"active":true}}}'
-          updaterArgs: '--sign-with-minisign'  # Auto-signs if key provided, but we'll handle manually
+          args: --target ${{ matrix.target }} --config '{"bundle":{"externalBin":["binaries/Siribilling-backend"],"createUpdaterArtifacts":${{ github.ref_type == 'tag' }},"active":${{ github.ref_type == 'tag' }}},"plugins":{"updater":{"active":${{ github.ref_type == 'tag' }}}},"build":{"frontendDist":"../out"}}'
+          # No updater artifacts on branch pushes to save time
 
-      - name: Install minisign (for Unix-like platforms)
-        if: matrix.platform != 'windows-latest'
+      - name: Upload bundles as artifact (for all pushes)
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundles-${{ matrix.platform }}-${{ github.sha }}
+          path: src-tauri/target/*/release/bundle/**
+          retention-days: 7  # Keep for a week for debugging
+
+  create-or-update-release:
+    if: github.ref_type == 'tag'  # Only run full release/sign/publish on tags
+    needs: build-and-bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all bundle artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Install minisign
         run: |
           curl -L https://github.com/jedisct1/minisign/releases/download/0.11/minisign-linux-amd64 -o minisign
           chmod +x minisign
 
-      - name: Sign updater artifacts with minisign
-        if: matrix.platform != 'windows-latest'
+      - name: Sign updater artifacts
         env:
           MINISIGN_PRIVATE_KEY: ${{ secrets.MINISIGN_PRIVATE_KEY }}
           MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
         run: |
           echo "$MINISIGN_PRIVATE_KEY" > minisign.key
-          for file in src-tauri/target/*/release/bundle/*/update/*.bin; do
-            ./minisign -S -s minisign.key -m "$file" -x "$file.sig" -t "Updater artifact for ${{ github.ref_name }} on ${{ matrix.platform }}" -p "$MINISIGN_PASSWORD"
+          find artifacts -name '*.bin' -o -name 'latest.json' | while read file; do
+            ./minisign -S -s minisign.key -m "$file" -x "$file.sig" -t "Artifact for ${{ github.ref_name }}" -p "$MINISIGN_PASSWORD"
           done
-          # Also sign latest.json if generated per-platform (Tauri generates one globally, but ensure)
-          if [ -f src-tauri/target/*/release/bundle/latest.json ]; then
-            ./minisign -S -s minisign.key -m src-tauri/target/*/release/bundle/latest.json -x src-tauri/target/*/release/bundle/latest.json.sig -t "Latest manifest" -p "$MINISIGN_PASSWORD"
-          fi
 
-      - name: Sign on Windows (using minisign via WSL or alternative; skip if handling elsewhere)
-        if: matrix.platform == 'windows-latest'
-        shell: bash
-        env:
-          MINISIGN_PRIVATE_KEY: ${{ secrets.MINISIGN_PRIVATE_KEY }}
-          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+      - name: Prepare release assets
         run: |
-          # Install minisign on Windows via scoop or manual; this is tricky, recommend using a tool like signtool if alternative
-          echo "Minisign on Windows requires additional setup; consider cross-signing or using a Unix step."
-          # Placeholder: Add actual Windows minisign installation if needed
+          mkdir release-assets
+          cp -r artifacts/*/* release-assets/  # Flatten
 
-      - name: Upload built bundles and updater artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-assets-${{ matrix.platform }}
-          path: |
-            src-tauri/target/*/release/bundle/**
-            !**/*.sig  # Upload sigs separately if needed
-          retention-days: 5
-
-      - name: Upload signatures
-        uses: actions/upload-artifact@v4
-        with:
-          name: signatures-${{ matrix.platform }}
-          path: src-tauri/target/*/release/bundle/**/*.sig
-          retention-days: 5
-
-  publish-release:
-    needs: [create-release, build-and-sign]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Prepare assets for upload
-        run: |
-          mkdir -p release-assets
-          cp -r artifacts/*/ release-assets/
-          # Flatten and organize: e.g., latest.json should be at root for your endpoint
-
-      - name: Publish GitHub Release
+      - name: Create/Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           draft: false
           prerelease: false
-          files: |
-            release-assets/**
+          files: release-assets/**
           body: |
-            ## Changes
-            - Update to version ${{ github.ref_name }}
-            - Bundled with latest backend.
-            See tauri.conf.json for config details.
+            ## Version ${{ github.ref_name }}
+            Auto-generated release from tag.
+            Includes bundled backend and updater support.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify-success:
+    if: always()  # Runs even on failure for notification
+    needs: [build-and-bundle, create-or-update-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Echo completion
+        run: echo "Build complete for ${{ github.ref }}. Artifacts available for download."
