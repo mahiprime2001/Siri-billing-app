@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - 'src-tauri/tauri.conf.json'
   workflow_dispatch:
 
 permissions:
@@ -21,6 +23,31 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+
+      # 🔢 Auto-increment version in tauri.conf.json
+      - name: 🔢 Auto-increment version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $configPath = "src-tauri/tauri.conf.json"
+          $cfg = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
+          $currentVer = $cfg['version']
+          if (-not $currentVer) { throw "No version found in $configPath" }
+          $verParts = $currentVer -split '\.'
+          if ($verParts.Length -ne 3) { throw "Invalid version format: $currentVer" }
+          $buildNum = [int]$verParts[2] + 1
+          $newVer = "$($verParts[0]).$($verParts[1]).$buildNum"
+          $cfg['version'] = $newVer
+          $cfg | ConvertTo-Json -Depth 20 | Out-File $configPath -Encoding UTF8
+          echo "Bumped version from $currentVer to $newVer"
+          echo "APP_VERSION=$newVer" >> $env:GITHUB_ENV
+          echo "RELEASE_TAG=v$newVer" >> $env:GITHUB_ENV
+          # Commit and push to persist the bump (ignored by workflow trigger)
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add $configPath
+          git commit -m "ci: bump version to $newVer" || echo "No changes to commit"
+          git push origin HEAD:main
 
       # 2️⃣ Setup Node.js & Rust
       - name: ⚙️ Setup Node.js
@@ -192,14 +219,3 @@ jobs:
           $sha = (git rev-list -n 1 $tag).Trim()
           git tag -f latest $sha
           git push origin -f latest
-
-          # Ensure a 'latest' release exists for clients that expect it
-          gh release view latest -R $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create latest --title "Latest Windows Release" --notes "Auto-synced with $tag" --verify-tag -R $env:GITHUB_REPOSITORY
-            if ($LASTEXITCODE -ne 0) { throw "Failed to create 'latest' release" }
-          }
-
-          # Refresh latest.json on the 'latest' release
-          gh release upload latest latest.json --clobber -R $env:GITHUB_REPOSITORY
-          if ($LASTEXITCODE -ne 0) { throw "Failed to upload latest.json to 'latest' release" }
