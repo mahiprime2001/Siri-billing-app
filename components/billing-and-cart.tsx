@@ -33,6 +33,7 @@ import { useRouter } from "next/navigation"
 import { useToast } from "@/components/ui/use-toast"
 import { LogOut } from "lucide-react"
 import { useOnlineStatus } from "@/hooks/use-online-status"
+import { apiClient } from "@/lib/api-client"; // Import apiClient
 
 interface User {
   id: string;
@@ -205,23 +206,55 @@ export default function BillingAndCart() {
     fetchUserData()
   }, [isOnline])
 
-  // Effect to set the initial user
+  // Effect to fetch current user and store based on session token
   useEffect(() => {
-    const loggedInUserEmail = localStorage.getItem("userEmail");
-    console.log("loggedInUserEmail from localStorage:", loggedInUserEmail);
-    console.log("Users array:", users);
-    console.log("Current user state:", currentUser);
-
-    if (users.length > 0 && !currentUser && loggedInUserEmail) {
-      const match = users.find(
-        (u) => u.email.toLowerCase() === loggedInUserEmail.toLowerCase()
-      );
-      console.log("Found matching user:", match);
-      if (match) {
-        setCurrentUser(match);
+    const fetchCurrentUserAndStore = async () => {
+      const sessionToken = typeof window !== 'undefined' ? localStorage.getItem('session_token') : null;
+      if (!sessionToken) {
+        router.push("/login");
+        return;
       }
-    }
-  }, [users, currentUser]);
+
+      try {
+        const userRes = await apiClient("/api/auth/me");
+        if (!userRes.ok) {
+          throw new Error("Failed to fetch user data");
+        }
+        const { user: userData } = await userRes.json();
+        setCurrentUser(userData);
+
+        const storesRes = await apiClient("/api/stores");
+        if (!storesRes.ok) {
+          throw new Error("Failed to fetch stores data");
+        }
+        const { stores: storesData } = await storesRes.json();
+        setStores(storesData);
+
+        const userStoresRes = await apiClient("/api/user-stores");
+        if (!userStoresRes.ok) {
+          throw new Error("Failed to fetch user stores data");
+        }
+        const userStoresData = await userStoresRes.json();
+        setUserStores(userStoresData);
+
+        // Also fetch products and settings here as they depend on a logged-in user
+        fetchProducts();
+        fetchSettings();
+
+      } catch (error) {
+        console.error("Error fetching current user or store:", error);
+        toast({
+          title: "Authentication Error",
+          description: "Session expired or failed to load user data. Please log in again.",
+          variant: "destructive",
+        });
+        localStorage.clear(); // Clear any invalid session token
+        router.push("/login");
+      }
+    };
+
+    fetchCurrentUserAndStore();
+  }, [router]); // Depend on router to ensure it's available
 
   // Effect to set the store based on the current user
   useEffect(() => {
@@ -236,16 +269,25 @@ export default function BillingAndCart() {
     }
   }, [currentUser, stores, userStores]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("user")
-    localStorage.removeItem("userEmail")
-    toast({
-      title: "Logout Successful",
-      description: "You have been successfully logged out.",
-      variant: "default",
-    })
-    router.push("/login")
-  }
+  const handleLogout = async () => {
+    try {
+      await apiClient("/api/auth/logout", { method: "POST" });
+      localStorage.removeItem("session_token");
+      toast({
+        title: "Logout Successful",
+        description: "You have been successfully logged out.",
+        variant: "default",
+      });
+      router.push("/login");
+    } catch (error) {
+      console.error("Error during logout:", error);
+      toast({
+        title: "Logout Failed",
+        description: "An error occurred during logout. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
   useEffect(() => {
     if (activeBillingInstance && !activeBillingInstance.isEditingTotal) {
@@ -277,7 +319,7 @@ export default function BillingAndCart() {
 
   const fetchProducts = async () => {
     try {
-      const response = await fetch("http://localhost:8080/api/products")
+      const response = await apiClient("/api/products")
       const data = await response.json()
       console.log("Fetched products:", data); // Log fetched products
       setProducts(data)
@@ -294,7 +336,7 @@ export default function BillingAndCart() {
 
   const fetchSettings = async () => {
     try {
-      const response = await fetch("http://localhost:8080/api/settings")
+      const response = await apiClient("/api/settings")
       let data = await response.json()
       if (Array.isArray(data) && data.length > 0) {
         data = data[0]
@@ -316,9 +358,9 @@ export default function BillingAndCart() {
   const fetchUserData = async () => {
     try {
       const [usersRes, storesRes, userStoresRes] = await Promise.all([
-        fetch(`http://localhost:8080/api/users`),
-        fetch(`http://localhost:8080/api/stores`),
-        fetch(`http://localhost:8080/api/user-stores`),
+        apiClient("/api/users"),
+        apiClient("/api/stores"),
+        apiClient("/api/user-stores"),
       ]);
       const { users: usersData } = await usersRes.json();
       const { stores: storesData } = await storesRes.json();
@@ -550,11 +592,8 @@ export default function BillingAndCart() {
     }
 
     try {
-      const response = await fetch("http://localhost:8080/api/billing/save", {
+      const response = await apiClient("/api/billing/save", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(invoice),
       })
 
@@ -662,11 +701,8 @@ export default function BillingAndCart() {
       const fileContent = await file.text();
       const jsonData = JSON.parse(fileContent);
 
-      const response = await fetch("http://localhost:8080/api/products/upload", {
+      const response = await apiClient("/api/products/upload", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(jsonData),
       });
 

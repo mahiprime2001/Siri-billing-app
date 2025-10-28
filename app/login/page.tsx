@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Gem, Eye, EyeOff, Mail, ArrowLeft, CheckCircle, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
+import { apiClient } from "@/lib/api-client"; // Import apiClient
 
 interface ForgotPasswordState {
   email: string
@@ -53,8 +54,11 @@ export default function LoginPage() {
       const data = await response.json()
 
       if (response.ok) {
-        localStorage.setItem("adminLoggedIn", "true")
-        localStorage.setItem("adminUser", JSON.stringify(data.user))
+        localStorage.setItem("session_token", data.session_token); // Store session token
+        // Remove old localStorage items
+        localStorage.removeItem("adminLoggedIn");
+        localStorage.removeItem("adminUser");
+        localStorage.removeItem("userEmail");
 
         toast("✅ Login Successful", {
           description: "Welcome back!",
@@ -118,11 +122,9 @@ export default function LoginPage() {
     }))
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/auth/forgot-password-proxy`, {
+      // Use apiClient for forgot password proxy
+      const response = await apiClient("/api/auth/forgot-password-proxy", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({ email: forgotPassword.email }),
       })
 

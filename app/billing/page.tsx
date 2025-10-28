@@ -12,7 +12,7 @@ import PrintableInvoice from "@/components/printable-invoice" // Import Printabl
 import ReturnsDialog from "@/components/returns-dialog" // Import ReturnsDialog
 import { useToast } from "@/hooks/use-toast"
 import Image from "next/image"
-
+import { apiClient } from "@/lib/api-client"; // Import apiClient
 
 
 interface User {
@@ -31,28 +31,31 @@ export default function BillingPage() {
   const { toast } = useToast()
 
   const fetchUserData = useCallback(async () => {
-    const adminLoggedIn = localStorage.getItem("adminLoggedIn")
-    const adminUser = localStorage.getItem("adminUser")
-
-    if (!adminLoggedIn || !adminUser) {
-      router.push("/login")
-      console.log("No admin user data found in localStorage. Redirecting to login.")
-      return
+    const sessionToken = typeof window !== 'undefined' ? localStorage.getItem('session_token') : null;
+    if (!sessionToken) {
+      router.push("/login");
+      return;
     }
 
     try {
-      const parsedUser = JSON.parse(adminUser)
-      setUser(parsedUser)
-      console.log("User data loaded from localStorage:", parsedUser)
+      const response = await apiClient("/api/auth/me");
+      if (response.ok) {
+        const { user: userData } = await response.json();
+        setUser(userData);
+      } else {
+        localStorage.removeItem("session_token"); // Clear invalid token
+        router.push("/login");
+      }
     } catch (error) {
-      console.error("Error parsing admin user data from localStorage:", error)
-      router.push("/login")
+      console.error("Error fetching user data:", error);
+      localStorage.removeItem("session_token"); // Clear token on network error
+      router.push("/login");
     }
-  }, [router])
+  }, [router]);
 
   const fetchSyncStatus = useCallback(async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/sync/status`);
+      const response = await apiClient("/api/sync/status");
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -80,11 +83,25 @@ export default function BillingPage() {
     }
   }, [fetchUserData, fetchSyncStatus])
 
-  const handleLogout = () => {
-    localStorage.removeItem("adminLoggedIn")
-    localStorage.removeItem("adminUser")
-    router.push("/login")
-  }
+  const handleLogout = async () => {
+    try {
+      await apiClient("/api/auth/logout", { method: "POST" });
+      localStorage.removeItem("session_token");
+      toast({
+        title: "Logout Successful",
+        description: "You have been successfully logged out.",
+        variant: "default",
+      });
+      router.push("/login");
+    } catch (error) {
+      console.error("Error during logout:", error);
+      toast({
+        title: "Logout Failed",
+        description: "An error occurred during logout. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
   if (!user) {
     return <div>Loading...</div>

@@ -1,61 +1,143 @@
-[2025-10-16 22:21:13,980] INFO in main: Console output (stdout/stderr) redirected to E:\Siri-apps\Siri-billing-app\backend\data\logs\flask.log
-[2025-10-16 22:21:13,980] INFO in main: Console output (stdout/stderr) redirected to E:\Siri-apps\Siri-billing-app\backend\data\logs\flask.log
-2025-10-16 22:21:13,980 - main - INFO - main.py:87 - Console output (stdout/stderr) redirected to E:\Siri-apps\Siri-billing-app\backend\data\logs\flask.log
-[2025-10-16 22:21:13,980] INFO in main: Flask server starting up...
-[2025-10-16 22:21:13,980] INFO in main: Flask server starting up...
-2025-10-16 22:21:13,980 - main - INFO - main.py:90 - Flask server starting up...
-[2025-10-16 22:21:14,400] INFO in main: Background pull sync completed successfully.
-[2025-10-16 22:21:14,400] INFO in main: Background pull sync completed successfully.
-2025-10-16 22:21:14,400 - main - INFO - main.py:646 - Background pull sync completed successfully.
-[2025-10-16 22:21:16,821] INFO in main: Flask server starting...
-[2025-10-16 22:21:16,821] INFO in main: Flask server starting...
-2025-10-16 22:21:16,821 - main - INFO - main.py:655 - Flask server starting...
-[2025-10-16 22:21:16,821] INFO in main: Flask will run on port 8080
-[2025-10-16 22:21:16,821] INFO in main: Flask will run on port 8080
-2025-10-16 22:21:16,821 - main - INFO - main.py:661 - Flask will run on port 8080
-[2025-10-16 22:21:16,821] INFO in main: Background pull sync starting. Next sync in 5 minutes.
-[2025-10-16 22:21:16,821] INFO in main: Background pull sync starting. Next sync in 5 minutes.
-2025-10-16 22:21:16,821 - main - INFO - main.py:642 - Background pull sync starting. Next sync in 5 minutes.
+[2025-10-28 23:41:45,248] INFO in main: Console output (stdout/stderr) redirected to E:\Siri-apps\Siri-billing-app\backend\data\logs\flask.log
+[2025-10-28 23:41:45,248] INFO in main: Console output (stdout/stderr) redirected to E:\Siri-apps\Siri-billing-app\backend\data\logs\flask.log
+2025-10-28 23:41:45,248 - main - INFO - main.py:120 - Console output (stdout/stderr) redirected to E:\Siri-apps\Siri-billing-app\backend\data\logs\flask.log
+[2025-10-28 23:41:45,248] INFO in main: Flask server starting up...
+[2025-10-28 23:41:45,248] INFO in main: Flask server starting up...
+2025-10-28 23:41:45,248 - main - INFO - main.py:123 - Flask server starting up...
+[2025-10-28 23:41:48,145] INFO in main: Flask server starting...
+[2025-10-28 23:41:48,145] INFO in main: Flask server starting...
+2025-10-28 23:41:48,145 - main - INFO - main.py:719 - Flask server starting...
+[2025-10-28 23:41:48,267] INFO in main: Flask will run on port 8080
+[2025-10-28 23:41:48,267] INFO in main: Flask will run on port 8080
+2025-10-28 23:41:48,267 - main - INFO - main.py:725 - Flask will run on port 8080
+[2025-10-28 23:41:48,536] INFO in main: Background pull sync starting. Next sync in 5 minutes.
+[2025-10-28 23:41:48,536] INFO in main: Background pull sync starting. Next sync in 5 minutes.
+2025-10-28 23:41:48,536 - main - INFO - main.py:706 - Background pull sync starting. Next sync in 5 minutes.
  * Debugger is active!
  * Debugger is active!
  * Debugger PIN: 259-910-106
  * Debugger PIN: 259-910-106
-[2025-10-16 22:21:17,796] INFO in main: Background pull sync completed successfully.
-[2025-10-16 22:21:17,796] INFO in main: Background pull sync completed successfully.
-2025-10-16 22:21:17,796 - main - INFO - main.py:646 - Background pull sync completed successfully.
-[2025-10-16 22:26:14,416] INFO in main: Background pull sync starting. Next sync in 5 minutes.
-[2025-10-16 22:26:14,416] INFO in main: Background pull sync starting. Next sync in 5 minutes.
-2025-10-16 22:26:14,416 - main - INFO - main.py:642 - Background pull sync starting. Next sync in 5 minutes.
-[2025-10-16 22:26:15,673] INFO in main: Background pull sync completed successfully.
-[2025-10-16 22:26:15,673] INFO in main: Background pull sync completed successfully.
-2025-10-16 22:26:15,673 - main - INFO - main.py:646 - Background pull sync completed successfully.
-[2025-10-16 22:26:17,816] INFO in main: Background pull sync starting. Next sync in 5 minutes.
-[2025-10-16 22:26:17,816] INFO in main: Background pull sync starting. Next sync in 5 minutes.
-2025-10-16 22:26:17,816 - main - INFO - main.py:642 - Background pull sync starting. Next sync in 5 minutes.
-[2025-10-16 22:26:19,005] INFO in main: Background pull sync completed successfully.
-[2025-10-16 22:26:19,005] INFO in main: Background pull sync completed successfully.
-2025-10-16 22:26:19,005 - main - INFO - main.py:646 - Background pull sync completed successfully.
-127.0.0.1 - - [16/Oct/2025 22:26:22] "GET /api/user-stores HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:22] "GET /api/user-stores HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:22] "GET /api/stores HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:22] "GET /api/stores HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:22] "GET /api/users HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:22] "GET /api/users HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:22] "GET /api/settings HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:22] "GET /api/settings HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:22] "GET /api/products HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:22] "GET /api/products HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:23] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:23] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:23] "GET /api/user-stores HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:23] "GET /api/user-stores HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:23] "GET /api/stores HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:23] "GET /api/stores HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:23] "GET /api/users HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:23] "GET /api/users HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:23] "GET /api/settings HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:23] "GET /api/settings HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:23] "GET /api/products HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:23] "GET /api/products HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:23] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [16/Oct/2025 22:26:23] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-10-28 23:41:49,393] INFO in main: Background pull sync completed successfully.
+[2025-10-28 23:41:49,393] INFO in main: Background pull sync completed successfully.
+2025-10-28 23:41:49,393 - main - INFO - main.py:710 - Background pull sync completed successfully.
+127.0.0.1 - - [28/Oct/2025 23:42:31] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:42:31] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:44:07] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:44:07] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:44:17] "OPTIONS /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:44:17] "OPTIONS /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:44:17] "127.0.0.1 - - [28/Oct/2025 23:44:17] "GET /api/auth/me HTTP/1.1GET /api/auth/me HTTP/1.1" 401 -
+" 401 -
+[2025-10-28 23:45:33,272] INFO in main: Background pull sync starting. Next sync in 5 minutes.
+[2025-10-28 23:45:33,272] INFO in main: Background pull sync starting. Next sync in 5 minutes.
+2025-10-28 23:45:33,272 - main - INFO - main.py:642 - Background pull sync starting. Next sync in 5 minutes.
+[2025-10-28 23:45:34,486] INFO in main: Background pull sync completed successfully.
+[2025-10-28 23:45:34,486] INFO in main: Background pull sync completed successfully.
+2025-10-28 23:45:34,486 - main - INFO - main.py:646 - Background pull sync completed successfully.
+[2025-10-28 23:46:49,409] INFO in main: Background pull sync starting. Next sync in 5 minutes.
+[2025-10-28 23:46:49,409] INFO in main: Background pull sync starting. Next sync in 5 minutes.
+2025-10-28 23:46:49,409 - main - INFO - main.py:706 - Background pull sync starting. Next sync in 5 minutes.
+[2025-10-28 23:46:50,528] INFO in main: Background pull sync completed successfully.
+[2025-10-28 23:46:50,528] INFO in main: Background pull sync completed successfully.
+2025-10-28 23:46:50,528 - main - INFO - main.py:710 - Background pull sync completed successfully.
+[2025-10-28 23:50:34,498] INFO in main: Background pull sync starting. Next sync in 5 minutes.
+[2025-10-28 23:50:34,498] INFO in main: Background pull sync starting. Next sync in 5 minutes.
+2025-10-28 23:50:34,498 - main - INFO - main.py:642 - Background pull sync starting. Next sync in 5 minutes.
+[2025-10-28 23:50:35,623] INFO in main: Background pull sync completed successfully.
+[2025-10-28 23:50:35,623] INFO in main: Background pull sync completed successfully.
+2025-10-28 23:50:35,623 - main - INFO - main.py:646 - Background pull sync completed successfully.
+[2025-10-28 23:51:50,550] INFO in main: Background pull sync starting. Next sync in 5 minutes.
+[2025-10-28 23:51:50,550] INFO in main: Background pull sync starting. Next sync in 5 minutes.
+2025-10-28 23:51:50,550 - main - INFO - main.py:706 - Background pull sync starting. Next sync in 5 minutes.
+[2025-10-28 23:51:51,675] INFO in main: Background pull sync completed successfully.
+[2025-10-28 23:51:51,675] INFO in main: Background pull sync completed successfully.
+2025-10-28 23:51:51,675 - main - INFO - main.py:710 - Background pull sync completed successfully.
+127.0.0.1 - - [28/Oct/2025 23:53:06] "OPTIONS /api/auth/login HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:06] "OPTIONS /api/auth/login HTTP/1.1" 200 -
+[2025-10-28 23:53:07,269] INFO in main: Session event logged: LOGIN for user c55868c9-b09f-4e53-a6fe-d16d7840ae99
+[2025-10-28 23:53:07,269] INFO in main: Session event logged: LOGIN for user c55868c9-b09f-4e53-a6fe-d16d7840ae99
+2025-10-28 23:53:07,269 - main - INFO - main.py:307 - Session event logged: LOGIN for user c55868c9-b09f-4e53-a6fe-d16d7840ae99
+127.0.0.1 - - [28/Oct/2025 23:53:07] "POST /api/auth/login HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "POST /api/auth/login HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:07] "OPTIONS /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:08] "GET /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:09] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:53:09] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:54:08] "OPTIONS /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:54:08] "OPTIONS /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:54:08] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:54:08] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:55:08] "OPTIONS /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:55:08] "OPTIONS /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:55:08] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [28/Oct/2025 23:55:08] "GET /api/sync/status HTTP/1.1" 200 -

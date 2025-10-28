@@ -13,10 +13,12 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 import threading
 import uuid # Added for generating UUIDs
+from functools import wraps # Added for decorator
 
 # New imports for connection pool and sync controller
 from utils.connection_pool import initialize_pool, get_connection, close_pool
 from utils.sync_controller import SyncController, json_serial as sync_json_serial
+from flask import g # Import g for request-specific data
 
 # Define file paths for the 5 main JSON files
 APP_BASE_DIR = os.getcwd()
@@ -40,6 +42,37 @@ BILL_FORMATS_FILE = os.path.join(JSON_DIR, 'billformats.json')
 RETURNS_FILE = os.path.join(JSON_DIR, 'returns.json')
 
 app = Flask(__name__)
+
+# In-memory store for active sessions (token: user_id)
+# In a real application, this would be a persistent store like a database or Redis
+active_sessions = {}
+
+# Decorator for token-based authentication
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        if 'Authorization' in request.headers:
+            token = request.headers['Authorization'].split(" ")[1]
+
+        if not token:
+            return jsonify({"message": "Token is missing!"}), 401
+
+        user_id = active_sessions.get(token)
+        if not user_id:
+            return jsonify({"message": "Token is invalid or expired!"}), 401
+
+        # Fetch user data based on user_id
+        users = get_users_data()
+        current_user = next((u for u in users if u.get('id') == user_id), None)
+
+        if not current_user:
+            return jsonify({"message": "User not found!"}), 401
+
+        g.current_user = current_user # Store user in Flask's global context
+        g.session_token = token # Store token in Flask's global context
+        return f(*args, **kwargs)
+    return decorated
 
 # Configure logging (paths already updated above)
 # DATA_DIR = os.path.join(APP_BASE_DIR, 'data') # Redundant, already defined
@@ -456,12 +489,18 @@ def login():
 
         if user and user.get('password') == password:
             user_info = {k: v for k, v in user.items() if k != 'password'}
+            
+            # Generate a session token
+            session_token = str(uuid.uuid4())
+            active_sessions[session_token] = user_info['id'] # Store token with user ID
+
             # Log a LOGIN event into sync_table
             log_sync_event('LOGIN', user_info.get('id'), 'User logged in')
             return jsonify({
                 "auth_ok": True, 
                 "user_role": user_info.get('role'), 
                 "user": user_info, 
+                "session_token": session_token, # Return the session token
                 "message": "Login successful"
             })
 
@@ -480,15 +519,32 @@ def login_options():
     return response, 200
 
 @app.route('/api/auth/logout', methods=['POST'])
+@token_required
 def logout():
     try:
-        data = request.json or {}
-        # Accept any identifier the client can provide
-        user_id = data.get('userId') or data.get('id') or data.get('email')
-        log_sync_event('LOGOUT', user_id, 'User explicitly logged out')
-        return jsonify({"message": "Logout recorded"}), 200
+        # The token is already validated by @token_required
+        session_token = g.session_token
+        user_id = g.current_user['id']
+        
+        if session_token in active_sessions:
+            del active_sessions[session_token]
+            log_sync_event('LOGOUT', user_id, 'User explicitly logged out')
+            return jsonify({"message": "Logout successful"}), 200
+        else:
+            return jsonify({"message": "Session not found or already logged out"}), 400
     except Exception as e:
         app.logger.error(f"Logout error: {e}")
+        return jsonify({"message": f"Server error: {str(e)}"}), 500
+
+@app.route('/api/auth/me', methods=['GET'])
+@token_required
+def get_current_user():
+    try:
+        # current_user is set by the @token_required decorator
+        user_info = {k: v for k, v in g.current_user.items() if k != 'password'}
+        return jsonify({"user": user_info}), 200
+    except Exception as e:
+        app.logger.error(f"Error getting current user: {e}")
         return jsonify({"message": f"Server error: {str(e)}"}), 500
 
 @app.route('/api/auth/close', methods=['POST'])
@@ -529,6 +585,7 @@ def forgot_password_proxy():
         return jsonify({"message": f"Server error: {str(e)}"}), 500
 
 @app.route('/api/products', methods=['GET'])
+@token_required
 def get_products():
     try:
         products = get_products_data()
@@ -538,6 +595,7 @@ def get_products():
         return jsonify({"error": "Internal server error", "details": str(e)}), 500
 
 @app.route('/api/products/upload', methods=['POST'])
+@token_required
 def upload_products():
     try:
         products_to_upload = request.json
@@ -570,6 +628,7 @@ def upload_products():
         return jsonify({"error": "Internal server error", "details": str(e)}), 500
 
 @app.route('/api/users', methods=['GET'])
+@token_required
 def get_users():
     try:
         users = get_users_data()
@@ -579,6 +638,7 @@ def get_users():
         return jsonify({"error": "Internal server error", "details": str(e)}), 500
 
 @app.route('/api/stores', methods=['GET'])
+@token_required
 def get_stores():
     try:
         stores = get_stores_data()
@@ -588,6 +648,7 @@ def get_stores():
         return jsonify({"error": "Internal server error", "details": str(e)}), 500
 
 @app.route('/api/user-stores', methods=['GET'])
+@token_required
 def get_user_stores():
     try:
         # Assuming user-store mappings are part of user data or a separate file
@@ -603,6 +664,7 @@ def get_user_stores():
         return jsonify({"error": "Internal server error", "details": str(e)}), 500
 
 @app.route('/api/settings', methods=['GET'])
+@token_required
 def get_settings():
     try:
         settings = get_system_settings_data()
@@ -612,6 +674,7 @@ def get_settings():
         return jsonify({"error": "Internal server error", "details": str(e)}), 500
 
 @app.route('/api/billing/save', methods=['POST'])
+@token_required
 def save_bill():
     try:
         bill_data = request.json
@@ -628,6 +691,7 @@ def save_bill():
         return jsonify({"error": "Internal server error", "details": str(e)}), 500
 
 @app.route('/api/bills', methods=['GET'])
+@token_required
 def get_bills():
     try:
         bills = get_bills_data()
