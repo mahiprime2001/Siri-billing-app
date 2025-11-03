@@ -1,11 +1,9 @@
 {
-  "id": 1,
-  "gstin": "27AAFCV2449G1Z7",
-  "taxPercentage": 12.0,
-  "companyName": "SIRI ART JEWELLERY",
-  "companyAddress": "123 Jewelry Street, Mumbai, Maharashtra 400001",
-  "companyPhone": "+91 98765 43210",
-  "companyEmail": "info@siriartjewellery.com",
-  "updatedAt": "2025-09-30T14:04:07.096889",
-  "createdAt": "2025-09-30T14:04:07.096889"
+    "id": 1,
+    "gstin": "27AAFCV2449G1Z7",
+    "taxPercentage": 10.4,
+    "companyName": "SIRI ART JEWELLERY",
+    "companyAddress": "123 Jewelry Street, Mumbai, Maharashtra 400001",
+    "companyPhone": "+91 889771771",
+    "companyEmail": "info@siri.ifleon.com"
 }

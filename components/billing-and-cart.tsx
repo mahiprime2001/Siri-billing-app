@@ -56,9 +56,8 @@ interface UserStore {
 interface Product {
   id: string;
   name: string;
-  price: number;
+  selling_price: number; // Changed from 'price' to 'selling_price'
   stock: number;
-  tax: number;
   createdAt: string;
   updatedAt: string;
   barcodes?: string;
@@ -69,10 +68,9 @@ interface CartItem {
   productId: string;
   name: string;
   quantity: number;
-  price: number;
+  price: number; // This 'price' in CartItem will now store the selling_price of the product
   total: number;
-  tax: number;
-  gstRate: number;
+  gstRate: number; // Retaining gstRate for potential use in invoice details, but it will be 0 for products
   barcodes?: string;
 }
 
@@ -209,8 +207,8 @@ export default function BillingAndCart() {
   // Effect to fetch current user and store based on session token
   useEffect(() => {
     const fetchCurrentUserAndStore = async () => {
-      const sessionToken = typeof window !== 'undefined' ? localStorage.getItem('session_token') : null;
-      if (!sessionToken) {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      if (!token) {
         router.push("/login");
         return;
       }
@@ -399,10 +397,9 @@ export default function BillingAndCart() {
       productId: product.id,
       name: product.name,
       quantity: qty,
-      price: Number(product.price),
-      total: Math.round(Number(product.price) * qty * 100) / 100, // Round to 2 decimal places
-      tax: Number(product.tax),
-      gstRate: Number(product.tax),
+      price: Number(product.selling_price), // Use selling_price
+      total: Math.round(Number(product.selling_price) * qty * 100) / 100, // Use selling_price
+      gstRate: DEFAULT_GST_RATE, // Product-specific tax removed, set to default
       barcodes: product.barcodes,
     }
       updatedCartItems = [...activeBillingInstance.cartItems, newItem]
@@ -816,12 +813,12 @@ export default function BillingAndCart() {
                     <div>
                       <p className="font-medium">{product.name}</p>
                       <p className="text-sm text-gray-500">
-                        Stock: {product.stock} • Tax: {product.tax}%
+                        Stock: {product.stock}
                         {product.barcodes && ` • ${product.barcodes.split(',')[0]}${product.barcodes.split(',').length > 1 ? '...' : ''}`}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="font-semibold">₹{product.price.toLocaleString()}</p>
+                      <p className="font-semibold">₹{product.selling_price != null ? product.selling_price.toLocaleString() : '0'}</p>
                     </div>
                   </div>
                 ))}
@@ -940,7 +937,6 @@ export default function BillingAndCart() {
                                 <TableHead>Item</TableHead>
                                 <TableHead>Price</TableHead>
                                 <TableHead>Qty</TableHead>
-                                <TableHead>Tax%</TableHead>
                                 <TableHead>Total</TableHead>
                                 <TableHead></TableHead>
                               </TableRow>
@@ -968,9 +964,6 @@ export default function BillingAndCart() {
                                         +
                                       </Button>
                                     </div>
-                                  </TableCell>
-                                  <TableCell>
-                                    <Badge variant="secondary">{item.tax}%</Badge>
                                   </TableCell>
                                   <TableCell>₹{item.total.toLocaleString()}</TableCell>
                                   <TableCell>

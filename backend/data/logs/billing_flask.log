@@ -1,0 +1,59 @@
+[2025-11-01 16:04:43,477] INFO in logger: Logging configured.
+[2025-11-01 16:04:43,477] INFO in logger: Logging configured.
+2025-11-01 16:04:43,477 - main - INFO - logger.py:51 - Logging configured.
+[2025-11-01 16:04:43,491] INFO in main: Billing Flask server starting up...
+[2025-11-01 16:04:43,491] INFO in main: Billing Flask server starting up...
+2025-11-01 16:04:43,491 - main - INFO - main.py:46 - Billing Flask server starting up...
+[2025-11-01 16:04:43,495] INFO in main: Billing Flask server starting...
+[2025-11-01 16:04:43,495] INFO in main: Billing Flask server starting...
+2025-11-01 16:04:43,495 - main - INFO - main.py:75 - Billing Flask server starting...
+[2025-11-01 16:04:43,495] INFO in main: Billing app will run on 127.0.0.1:8080
+[2025-11-01 16:04:43,495] INFO in main: Billing app will run on 127.0.0.1:8080
+2025-11-01 16:04:43,495 - main - INFO - main.py:81 - Billing app will run on 127.0.0.1:8080
+[2025-11-01 16:04:43,500] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-01 16:04:43,500] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-01 16:04:43,500] INFO in background_tasks: Background pull sync scheduler started.
+[2025-11-01 16:04:43,500] INFO in background_tasks: Background pull sync scheduler started.
+2025-11-01 16:04:43,500 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+2025-11-01 16:04:43,500 - main - INFO - background_tasks.py:48 - Background pull sync scheduler started.
+ * Debugger is active!
+ * Debugger is active!
+ * Debugger PIN: 259-910-106
+ * Debugger PIN: 259-910-106
+[2025-11-01 16:04:44,219] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-01 16:04:44,219] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-01 16:04:44,219 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+[2025-11-01 16:04:58,286] INFO in billing_routes: MySQL stock updated for c119a802-d484-4242-823f-2cabac974a46: 2337 -> 2333
+[2025-11-01 16:04:58,286] INFO in billing_routes: MySQL stock updated for c119a802-d484-4242-823f-2cabac974a46: 2337 -> 2333
+2025-11-01 16:04:58,286 - main - INFO - billing_routes.py:61 - MySQL stock updated for c119a802-d484-4242-823f-2cabac974a46: 2337 -> 2333
+[2025-11-01 16:04:59,270] INFO in billing_routes: Local JSON stock updated for c119a802-d484-4242-823f-2cabac974a46: 2333 -> 2329
+[2025-11-01 16:04:59,270] INFO in billing_routes: Local JSON stock updated for c119a802-d484-4242-823f-2cabac974a46: 2333 -> 2329
+2025-11-01 16:04:59,270 - main - INFO - billing_routes.py:97 - Local JSON stock updated for c119a802-d484-4242-823f-2cabac974a46: 2333 -> 2329
+[2025-11-01 16:04:59,799] INFO in mysql_data_access: Successfully synced UPDATE for Products: 5f409f0b-1035-463b-bd4c-14f67f0916a8
+[2025-11-01 16:04:59,799] INFO in mysql_data_access: Successfully synced UPDATE for Products: 5f409f0b-1035-463b-bd4c-14f67f0916a8
+2025-11-01 16:04:59,799 - main - INFO - mysql_data_access.py:18 - Successfully synced UPDATE for Products: 5f409f0b-1035-463b-bd4c-14f67f0916a8
+[2025-11-01 16:05:00,334] INFO in mysql_data_access: Successfully synced UPDATE for Products: c119a802-d484-4242-823f-2cabac974a46
+[2025-11-01 16:05:00,334] INFO in mysql_data_access: Successfully synced UPDATE for Products: c119a802-d484-4242-823f-2cabac974a46
+2025-11-01 16:05:00,334 - main - INFO - mysql_data_access.py:18 - Successfully synced UPDATE for Products: c119a802-d484-4242-823f-2cabac974a46
+[2025-11-01 16:05:00,759] INFO in mysql_data_access: Successfully synced INSERT for Bills: INV-295405
+[2025-11-01 16:05:00,759] INFO in mysql_data_access: Successfully synced INSERT for Bills: INV-295405
+2025-11-01 16:05:00,759 - main - INFO - mysql_data_access.py:18 - Successfully synced INSERT for Bills: INV-295405
+[2025-11-01 16:05:01,195] INFO in mysql_data_access: Successfully synced INSERT for BillItems: 1761993300761521
+[2025-11-01 16:05:01,195] INFO in mysql_data_access: Successfully synced INSERT for BillItems: 1761993300761521
+2025-11-01 16:05:01,195 - main - INFO - mysql_data_access.py:18 - Successfully synced INSERT for BillItems: 1761993300761521
+[2025-11-01 16:05:01,732] INFO in mysql_data_access: Successfully synced INSERT for Notifications: 1761993301217
+[2025-11-01 16:05:01,732] INFO in mysql_data_access: Successfully synced INSERT for Notifications: 1761993301217
+2025-11-01 16:05:01,732 - main - INFO - mysql_data_access.py:18 - Successfully synced INSERT for Notifications: 1761993301217
+[2025-11-01 16:05:01,732] INFO in notifications: Created notification: bill_created - New bill created: INV-295405 by 94ac1f3a-bb34-44ee-b68c-d96b3edef79d, Total: Rs.2871
+[2025-11-01 16:05:01,732] INFO in notifications: Created notification: bill_created - New bill created: INV-295405 by 94ac1f3a-bb34-44ee-b68c-d96b3edef79d, Total: Rs.2871
+2025-11-01 16:05:01,732 - main - INFO - notifications.py:19 - Created notification: bill_created - New bill created: INV-295405 by 94ac1f3a-bb34-44ee-b68c-d96b3edef79d, Total: Rs.2871
+127.0.0.1 - - [01/Nov/2025 16:05:01] "POST /api/billing/save HTTP/1.1" 200 -
+127.0.0.1 - - [01/Nov/2025 16:05:01] "POST /api/billing/save HTTP/1.1" 200 -
+127.0.0.1 - - [01/Nov/2025 16:05:14] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [01/Nov/2025 16:05:14] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-01 16:05:49,965] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-01 16:05:49,965] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-01 16:05:49,965 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-01 16:05:51,133] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-01 16:05:51,133] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-01 16:05:51,133 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.

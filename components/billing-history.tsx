@@ -54,7 +54,12 @@ export default function BillingHistory() {
   const fetchBillingHistory = useCallback(async () => {
     try {
       console.log("Fetching billing history from Flask backend...");
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/bills`);
+      const token = localStorage.getItem('token'); // Assuming token is stored in localStorage
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/bills`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }

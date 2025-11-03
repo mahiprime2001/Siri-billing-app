@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Gem, Eye, EyeOff, Mail, ArrowLeft, CheckCircle, AlertTriangle } from "lucide-react"
+import { Eye, EyeOff, Mail, ArrowLeft, CheckCircle, AlertTriangle } from "lucide-react"
+import Image from "next/image"
 import { toast } from "sonner"
 import { apiClient } from "@/lib/api-client"; // Import apiClient
 
@@ -54,7 +55,8 @@ export default function LoginPage() {
       const data = await response.json()
 
       if (response.ok) {
-        localStorage.setItem("session_token", data.session_token); // Store session token
+        localStorage.setItem("token", data.session_token); // Store session token
+        localStorage.setItem("just_logged_in", "true"); // Set flag for successful login
         // Remove old localStorage items
         localStorage.removeItem("adminLoggedIn");
         localStorage.removeItem("adminUser");
@@ -192,12 +194,26 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 to-orange-100 p-4">
-      <Card className="w-full max-w-md">
+    <div 
+      className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
+      style={{
+        backgroundImage: "url('/Logo.png')",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+      }}
+    >
+      <div className="absolute inset-0 bg-black bg-opacity-50 backdrop-blur-sm"></div> {/* Overlay for blur and dimming */}
+      <Card className="w-full max-w-md relative z-10"> {/* Ensure card is above the background */}
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
             <div className="p-3 bg-amber-100 rounded-full">
-              <Gem className="h-8 w-8 text-amber-600" />
+              <Image 
+                src="/Logo.png" 
+                alt="Siri Art Jewellers Logo" 
+                width={32} 
+                height={32} 
+                className="h-8 w-8" 
+              />
             </div>
           </div>
           <CardTitle className="text-2xl font-bold text-gray-900">Siri Art Jewellers</CardTitle>
