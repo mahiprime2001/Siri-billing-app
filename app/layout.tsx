@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { useOnlineStatus } from '@/hooks/use-online-status'
 import { useEffect } from 'react'
 import Updater from '@/components/Updater'
+import packageJson from '../package.json'
 
 declare global {
   interface Window {
@@ -49,6 +50,11 @@ html {
         <Updater />
         {children}
         <Toaster position="top-right" />
+        
+        {/* Version display in footer */}
+        <div className="fixed bottom-2 left-2 text-xs text-gray-400 pointer-events-none z-50">
+          v{packageJson.version}
+        </div>
       </body>
     </html>
   )

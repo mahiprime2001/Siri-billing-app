@@ -21,13 +21,14 @@ imports:
     <a href="#_collections_abc">_collections_abc</a>
  &#8226;   <a href="#_weakrefset">_weakrefset</a>
  &#8226;   <a href="#abc">abc</a>
+ &#8226;   <a href="#background_tasks.background_tasks">background_tasks.background_tasks</a>
  &#8226;   <a href="#codecs">codecs</a>
  &#8226;   <a href="#collections">collections</a>
  &#8226;   <a href="#collections.abc">collections.abc</a>
+ &#8226;   <a href="#config.config">config.config</a>
  &#8226;   <a href="#copyreg">copyreg</a>
  &#8226;   <a href="#datetime">datetime</a>
  &#8226;   <a href="#decimal">decimal</a>
- &#8226;   <a href="#dotenv">dotenv</a>
  &#8226;   <a href="#encodings">encodings</a>
  &#8226;   <a href="#encodings.aliases">encodings.aliases</a>
  &#8226;   <a href="#encodings.ascii">encodings.ascii</a>
@@ -161,8 +162,8 @@ imports:
  &#8226;   <a href="#keyword">keyword</a>
  &#8226;   <a href="#linecache">linecache</a>
  &#8226;   <a href="#locale">locale</a>
+ &#8226;   <a href="#logger.logger">logger.logger</a>
  &#8226;   <a href="#logging">logging</a>
- &#8226;   <a href="#logging.handlers">logging.handlers</a>
  &#8226;   <a href="#mysql.connector.locales.eng.client_error">mysql.connector.locales.eng.client_error</a>
  &#8226;   <a href="#mysql.connector.plugins.mysql_native_password">mysql.connector.plugins.mysql_native_password</a>
  &#8226;   <a href="#ntpath">ntpath</a>
@@ -183,6 +184,16 @@ imports:
  &#8226;   <a href="#re._constants">re._constants</a>
  &#8226;   <a href="#re._parser">re._parser</a>
  &#8226;   <a href="#reprlib">reprlib</a>
+ &#8226;   <a href="#routes.auth_routes">routes.auth_routes</a>
+ &#8226;   <a href="#routes.billing_routes">routes.billing_routes</a>
+ &#8226;   <a href="#routes.customer_routes">routes.customer_routes</a>
+ &#8226;   <a href="#routes.health_routes">routes.health_routes</a>
+ &#8226;   <a href="#routes.product_routes">routes.product_routes</a>
+ &#8226;   <a href="#routes.return_routes">routes.return_routes</a>
+ &#8226;   <a href="#routes.settings_routes">routes.settings_routes</a>
+ &#8226;   <a href="#routes.store_routes">routes.store_routes</a>
+ &#8226;   <a href="#routes.sync_routes">routes.sync_routes</a>
+ &#8226;   <a href="#routes.user_routes">routes.user_routes</a>
  &#8226;   <a href="#sre_compile">sre_compile</a>
  &#8226;   <a href="#sre_constants">sre_constants</a>
  &#8226;   <a href="#sre_parse">sre_parse</a>
@@ -7413,6 +7424,81 @@ imported by:
 </div>
 
 <div class="node">
+  <a name="auth"></a>
+  <a target="code" href="-" type="text/plain"><tt>auth</tt></a>
+<span class="moduletype">NamespacePackage</span>  <div class="import">
+imported by:
+    <a href="#auth.auth">auth.auth</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="auth.auth"></a>
+  <a target="code" href="///E:/Siri-apps/Siri-billing-app/backend/auth/auth.py" type="text/plain"><tt>auth.auth</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#auth">auth</a>
+ &#8226;   <a href="#data_access.data_access">data_access.data_access</a>
+ &#8226;   <a href="#flask">flask</a>
+ &#8226;   <a href="#functools">functools</a>
+ &#8226;   <a href="#json">json</a>
+ &#8226;   <a href="#logging">logging</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#uuid">uuid</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#routes.auth_routes">routes.auth_routes</a>
+ &#8226;   <a href="#routes.billing_routes">routes.billing_routes</a>
+ &#8226;   <a href="#routes.customer_routes">routes.customer_routes</a>
+ &#8226;   <a href="#routes.product_routes">routes.product_routes</a>
+ &#8226;   <a href="#routes.return_routes">routes.return_routes</a>
+ &#8226;   <a href="#routes.settings_routes">routes.settings_routes</a>
+ &#8226;   <a href="#routes.store_routes">routes.store_routes</a>
+ &#8226;   <a href="#routes.sync_routes">routes.sync_routes</a>
+ &#8226;   <a href="#routes.user_routes">routes.user_routes</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="background_tasks"></a>
+  <a target="code" href="-" type="text/plain"><tt>background_tasks</tt></a>
+<span class="moduletype">NamespacePackage</span>  <div class="import">
+imported by:
+    <a href="#background_tasks.background_tasks">background_tasks.background_tasks</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="background_tasks.background_tasks"></a>
+  <a target="code" href="///E:/Siri-apps/Siri-billing-app/backend/background_tasks/background_tasks.py" type="text/plain"><tt>background_tasks.background_tasks</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#background_tasks">background_tasks</a>
+ &#8226;   <a href="#config.config">config.config</a>
+ &#8226;   <a href="#flask">flask</a>
+ &#8226;   <a href="#helpers.utils">helpers.utils</a>
+ &#8226;   <a href="#threading">threading</a>
+ &#8226;   <a href="#time">time</a>
+ &#8226;   <a href="#utils.sync_controller">utils.sync_controller</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
   <a name="backports"></a>
   <a target="code" href="///C:/Users/Dell/AppData/Local/Programs/Python/Python312/Lib/site-packages/setuptools/_vendor/backports/__init__.py" type="text/plain"><tt>backports</tt></a>
 <span class="moduletype">Package</span>  <div class="import">
@@ -10447,6 +10533,37 @@ imported by:
 </div>
 
 <div class="node">
+  <a name="config"></a>
+  <a target="code" href="-" type="text/plain"><tt>config</tt></a>
+<span class="moduletype">NamespacePackage</span>  <div class="import">
+imported by:
+    <a href="#config.config">config.config</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="config.config"></a>
+  <a target="code" href="///E:/Siri-apps/Siri-billing-app/backend/config/config.py" type="text/plain"><tt>config.config</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#config">config</a>
+ &#8226;   <a href="#dotenv">dotenv</a>
+ &#8226;   <a href="#os">os</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#background_tasks.background_tasks">background_tasks.background_tasks</a>
+ &#8226;   <a href="#data_access.data_access">data_access.data_access</a>
+ &#8226;   <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
   <a name="configparser"></a>
   <a target="code" href="///C:/Users/Dell/AppData/Local/Programs/Python/Python312/Lib/configparser.py" type="text/plain"><tt>configparser</tt></a>
 <span class="moduletype">SourceModule</span>  <div class="import">
@@ -12335,6 +12452,70 @@ imported by:
 </div>
 
 <div class="node">
+  <a name="data_access"></a>
+  <a target="code" href="-" type="text/plain"><tt>data_access</tt></a>
+<span class="moduletype">NamespacePackage</span>  <div class="import">
+imported by:
+    <a href="#data_access.data_access">data_access.data_access</a>
+ &#8226;   <a href="#data_access.mysql_data_access">data_access.mysql_data_access</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="data_access.data_access"></a>
+  <a target="code" href="///E:/Siri-apps/Siri-billing-app/backend/data_access/data_access.py" type="text/plain"><tt>data_access.data_access</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#config.config">config.config</a>
+ &#8226;   <a href="#data_access">data_access</a>
+ &#8226;   <a href="#data_access.mysql_data_access">data_access.mysql_data_access</a>
+ &#8226;   <a href="#helpers.utils">helpers.utils</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#auth.auth">auth.auth</a>
+ &#8226;   <a href="#routes.auth_routes">routes.auth_routes</a>
+ &#8226;   <a href="#routes.billing_routes">routes.billing_routes</a>
+ &#8226;   <a href="#routes.customer_routes">routes.customer_routes</a>
+ &#8226;   <a href="#routes.product_routes">routes.product_routes</a>
+ &#8226;   <a href="#routes.return_routes">routes.return_routes</a>
+ &#8226;   <a href="#routes.settings_routes">routes.settings_routes</a>
+ &#8226;   <a href="#routes.store_routes">routes.store_routes</a>
+ &#8226;   <a href="#routes.user_routes">routes.user_routes</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="data_access.mysql_data_access"></a>
+  <a target="code" href="///E:/Siri-apps/Siri-billing-app/backend/data_access/mysql_data_access.py" type="text/plain"><tt>data_access.mysql_data_access</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#data_access">data_access</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#decimal">decimal</a>
+ &#8226;   <a href="#flask">flask</a>
+ &#8226;   <a href="#utils.connection_pool">utils.connection_pool</a>
+ &#8226;   <a href="#utils.sync_controller">utils.sync_controller</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#data_access.data_access">data_access.data_access</a>
+ &#8226;   <a href="#notifications.notifications">notifications.notifications</a>
+ &#8226;   <a href="#routes.billing_routes">routes.billing_routes</a>
+ &#8226;   <a href="#routes.return_routes">routes.return_routes</a>
+ &#8226;   <a href="#routes.user_routes">routes.user_routes</a>
+
+  </div>
+
+</div>
+
+<div class="node">
   <a name="dataclasses"></a>
   <a target="code" href="///C:/Users/Dell/AppData/Local/Programs/Python/Python312/Lib/dataclasses.py" type="text/plain"><tt>dataclasses</tt></a>
 <span class="moduletype">SourceModule</span>  <div class="import">
@@ -12418,6 +12599,7 @@ imported by:
  &#8226;   <a href="#click.types">click.types</a>
  &#8226;   <a href="#cryptography.x509.base">cryptography.x509.base</a>
  &#8226;   <a href="#cryptography.x509.extensions">cryptography.x509.extensions</a>
+ &#8226;   <a href="#data_access.mysql_data_access">data_access.mysql_data_access</a>
  &#8226;   <a href="#email.utils">email.utils</a>
  &#8226;   <a href="#flask.app">flask.app</a>
  &#8226;   <a href="#flask.blueprints">flask.blueprints</a>
@@ -12429,6 +12611,7 @@ imported by:
  &#8226;   <a href="#flask_cors.core">flask_cors.core</a>
  &#8226;   <a href="#google.protobuf.internal.well_known_types">google.protobuf.internal.well_known_types</a>
  &#8226;   <a href="#grpc._simple_stubs">grpc._simple_stubs</a>
+ &#8226;   <a href="#helpers.utils">helpers.utils</a>
  &#8226;   <a href="#http.cookiejar">http.cookiejar</a>
  &#8226;   <a href="#http.server">http.server</a>
  &#8226;   <a href="#httpx._client">httpx._client</a>
@@ -12443,6 +12626,7 @@ imported by:
  &#8226;   <a href="#mysql.connector.protocol">mysql.connector.protocol</a>
  &#8226;   <a href="#mysql.connector.types">mysql.connector.types</a>
  &#8226;   <a href="#mysql.opentelemetry.sdk.util">mysql.opentelemetry.sdk.util</a>
+ &#8226;   <a href="#notifications.notifications">notifications.notifications</a>
  &#8226;   <a href="#olefile.olefile">olefile.olefile</a>
  &#8226;   <a href="#opentelemetry.sdk.util">opentelemetry.sdk.util</a>
  &#8226;   <a href="#plistlib">plistlib</a>
@@ -12452,6 +12636,11 @@ imported by:
  &#8226;   <a href="#rich._log_render">rich._log_render</a>
  &#8226;   <a href="#rich.console">rich.console</a>
  &#8226;   <a href="#rich.progress">rich.progress</a>
+ &#8226;   <a href="#routes.billing_routes">routes.billing_routes</a>
+ &#8226;   <a href="#routes.health_routes">routes.health_routes</a>
+ &#8226;   <a href="#routes.product_routes">routes.product_routes</a>
+ &#8226;   <a href="#routes.return_routes">routes.return_routes</a>
+ &#8226;   <a href="#session_logging.session_logging">session_logging.session_logging</a>
  &#8226;   <a href="#setuptools.warnings">setuptools.warnings</a>
  &#8226;   <a href="#smtplib">smtplib</a>
  &#8226;   <a href="#tomli._re">tomli._re</a>
@@ -12489,8 +12678,10 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#flask.json.provider">flask.json.provider</a>
+    <a href="#data_access.mysql_data_access">data_access.mysql_data_access</a>
+ &#8226;   <a href="#flask.json.provider">flask.json.provider</a>
  &#8226;   <a href="#fractions">fractions</a>
+ &#8226;   <a href="#helpers.utils">helpers.utils</a>
  &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#mysql.connector.abstracts">mysql.connector.abstracts</a>
  &#8226;   <a href="#mysql.connector.connection">mysql.connector.connection</a>
@@ -16433,12 +16624,12 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#dotenv.ipython">dotenv.ipython</a>
+    <a href="#config.config">config.config</a>
+ &#8226;   <a href="#dotenv.ipython">dotenv.ipython</a>
  &#8226;   <a href="#dotenv.main">dotenv.main</a>
  &#8226;   <a href="#dotenv.parser">dotenv.parser</a>
  &#8226;   <a href="#dotenv.variables">dotenv.variables</a>
  &#8226;   <a href="#flask.cli">flask.cli</a>
- &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#utils.connection_pool">utils.connection_pool</a>
 
   </div>
@@ -19770,7 +19961,10 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#flask">flask</a>
+    <a href="#auth.auth">auth.auth</a>
+ &#8226;   <a href="#background_tasks.background_tasks">background_tasks.background_tasks</a>
+ &#8226;   <a href="#data_access.mysql_data_access">data_access.mysql_data_access</a>
+ &#8226;   <a href="#flask">flask</a>
  &#8226;   <a href="#flask.app">flask.app</a>
  &#8226;   <a href="#flask.blueprints">flask.blueprints</a>
  &#8226;   <a href="#flask.cli">flask.cli</a>
@@ -19794,7 +19988,21 @@ imported by:
  &#8226;   <a href="#flask_cors.core">flask_cors.core</a>
  &#8226;   <a href="#flask_cors.decorator">flask_cors.decorator</a>
  &#8226;   <a href="#flask_cors.extension">flask_cors.extension</a>
+ &#8226;   <a href="#helpers.utils">helpers.utils</a>
+ &#8226;   <a href="#logger.logger">logger.logger</a>
  &#8226;   <a href="#main.py">main.py</a>
+ &#8226;   <a href="#notifications.notifications">notifications.notifications</a>
+ &#8226;   <a href="#routes.auth_routes">routes.auth_routes</a>
+ &#8226;   <a href="#routes.billing_routes">routes.billing_routes</a>
+ &#8226;   <a href="#routes.customer_routes">routes.customer_routes</a>
+ &#8226;   <a href="#routes.health_routes">routes.health_routes</a>
+ &#8226;   <a href="#routes.product_routes">routes.product_routes</a>
+ &#8226;   <a href="#routes.return_routes">routes.return_routes</a>
+ &#8226;   <a href="#routes.settings_routes">routes.settings_routes</a>
+ &#8226;   <a href="#routes.store_routes">routes.store_routes</a>
+ &#8226;   <a href="#routes.sync_routes">routes.sync_routes</a>
+ &#8226;   <a href="#routes.user_routes">routes.user_routes</a>
+ &#8226;   <a href="#session_logging.session_logging">session_logging.session_logging</a>
 
   </div>
 
@@ -20705,6 +20913,7 @@ imported by:
  &#8226;   <a href="#attr._make">attr._make</a>
  &#8226;   <a href="#attr._next_gen">attr._next_gen</a>
  &#8226;   <a href="#attr._version_info">attr._version_info</a>
+ &#8226;   <a href="#auth.auth">auth.auth</a>
  &#8226;   <a href="#blinker.base">blinker.base</a>
  &#8226;   <a href="#charset_normalizer.cd">charset_normalizer.cd</a>
  &#8226;   <a href="#charset_normalizer.md">charset_normalizer.md</a>
@@ -23519,6 +23728,40 @@ imported by:
  &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#more_itertools.more">more_itertools.more</a>
  &#8226;   <a href="#queue">queue</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="helpers"></a>
+  <a target="code" href="-" type="text/plain"><tt>helpers</tt></a>
+<span class="moduletype">NamespacePackage</span>  <div class="import">
+imported by:
+    <a href="#helpers.utils">helpers.utils</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="helpers.utils"></a>
+  <a target="code" href="///E:/Siri-apps/Siri-billing-app/backend/helpers/utils.py" type="text/plain"><tt>helpers.utils</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#datetime">datetime</a>
+ &#8226;   <a href="#decimal">decimal</a>
+ &#8226;   <a href="#flask">flask</a>
+ &#8226;   <a href="#helpers">helpers</a>
+ &#8226;   <a href="#json">json</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#threading">threading</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#background_tasks.background_tasks">background_tasks.background_tasks</a>
+ &#8226;   <a href="#data_access.data_access">data_access.data_access</a>
 
   </div>
 
@@ -26993,6 +27236,7 @@ imported by:
  &#8226;   <a href="#importlib_resources._adapters">importlib_resources._adapters</a>
  &#8226;   <a href="#jinja2.bccache">jinja2.bccache</a>
  &#8226;   <a href="#jinja2.compiler">jinja2.compiler</a>
+ &#8226;   <a href="#logger.logger">logger.logger</a>
  &#8226;   <a href="#logging">logging</a>
  &#8226;   <a href="#logging.handlers">logging.handlers</a>
  &#8226;   <a href="#lzma">lzma</a>
@@ -28282,10 +28526,12 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#charset_normalizer.models">charset_normalizer.models</a>
+    <a href="#auth.auth">auth.auth</a>
+ &#8226;   <a href="#charset_normalizer.models">charset_normalizer.models</a>
  &#8226;   <a href="#flask.config">flask.config</a>
  &#8226;   <a href="#flask.json">flask.json</a>
  &#8226;   <a href="#flask.json.provider">flask.json.provider</a>
+ &#8226;   <a href="#helpers.utils">helpers.utils</a>
  &#8226;   <a href="#httpx._content">httpx._content</a>
  &#8226;   <a href="#httpx._main">httpx._main</a>
  &#8226;   <a href="#httpx._models">httpx._models</a>
@@ -28309,6 +28555,7 @@ imported by:
  &#8226;   <a href="#requests.compat">requests.compat</a>
  &#8226;   <a href="#rich.highlighter">rich.highlighter</a>
  &#8226;   <a href="#rich.json">rich.json</a>
+ &#8226;   <a href="#session_logging.session_logging">session_logging.session_logging</a>
  &#8226;   <a href="#setuptools.config._validate_pyproject.error_reporting">setuptools.config._validate_pyproject.error_reporting</a>
  &#8226;   <a href="#setuptools.msvc">setuptools.msvc</a>
  &#8226;   <a href="#threadpoolctl">threadpoolctl</a>
@@ -28478,6 +28725,39 @@ imported by:
 </div>
 
 <div class="node">
+  <a name="logger"></a>
+  <a target="code" href="-" type="text/plain"><tt>logger</tt></a>
+<span class="moduletype">NamespacePackage</span>  <div class="import">
+imported by:
+    <a href="#logger.logger">logger.logger</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="logger.logger"></a>
+  <a target="code" href="///E:/Siri-apps/Siri-billing-app/backend/logger/logger.py" type="text/plain"><tt>logger.logger</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#flask">flask</a>
+ &#8226;   <a href="#io">io</a>
+ &#8226;   <a href="#logger">logger</a>
+ &#8226;   <a href="#logging">logging</a>
+ &#8226;   <a href="#logging.handlers">logging.handlers</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#sys">sys</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
   <a name="logging"></a>
   <a target="code" href="///C:/Users/Dell/AppData/Local/Programs/Python/Python312/Lib/logging/__init__.py" type="text/plain"><tt>logging</tt></a>
 <span class="moduletype">Package</span>  <div class="import">
@@ -28507,6 +28787,7 @@ imported by:
  &#8226;   <a href="#anyio.streams.tls">anyio.streams.tls</a>
  &#8226;   <a href="#asyncio.futures">asyncio.futures</a>
  &#8226;   <a href="#asyncio.log">asyncio.log</a>
+ &#8226;   <a href="#auth.auth">auth.auth</a>
  &#8226;   <a href="#chardet.charsetprober">chardet.charsetprober</a>
  &#8226;   <a href="#chardet.codingstatemachine">chardet.codingstatemachine</a>
  &#8226;   <a href="#chardet.universaldetector">chardet.universaldetector</a>
@@ -28548,6 +28829,7 @@ imported by:
  &#8226;   <a href="#httpcore._trace">httpcore._trace</a>
  &#8226;   <a href="#httpx._client">httpx._client</a>
  &#8226;   <a href="#jinja2.runtime">jinja2.runtime</a>
+ &#8226;   <a href="#logger.logger">logger.logger</a>
  &#8226;   <a href="#logging.handlers">logging.handlers</a>
  &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#markdown_it.parser_block">markdown_it.parser_block</a>
@@ -28677,7 +28959,7 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#main.py">main.py</a>
+    <a href="#logger.logger">logger.logger</a>
  &#8226;   <a href="#pyreadline3.logger.control">pyreadline3.logger.control</a>
 
   </div>
@@ -33225,6 +33507,37 @@ imported by:
     <a href="#ftplib">ftplib</a>
  &#8226;   <a href="#httpx._auth">httpx._auth</a>
  &#8226;   <a href="#requests.utils">requests.utils</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="notifications"></a>
+  <a target="code" href="-" type="text/plain"><tt>notifications</tt></a>
+<span class="moduletype">NamespacePackage</span>  <div class="import">
+imported by:
+    <a href="#notifications.notifications">notifications.notifications</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="notifications.notifications"></a>
+  <a target="code" href="///E:/Siri-apps/Siri-billing-app/backend/notifications/notifications.py" type="text/plain"><tt>notifications.notifications</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#data_access.mysql_data_access">data_access.mysql_data_access</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#flask">flask</a>
+ &#8226;   <a href="#notifications">notifications</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#routes.billing_routes">routes.billing_routes</a>
+ &#8226;   <a href="#routes.return_routes">routes.return_routes</a>
 
   </div>
 
@@ -41701,6 +42014,7 @@ imported by:
  &#8226;   <a href="#asyncio.selector_events">asyncio.selector_events</a>
  &#8226;   <a href="#asyncio.unix_events">asyncio.unix_events</a>
  &#8226;   <a href="#asyncio.windows_utils">asyncio.windows_utils</a>
+ &#8226;   <a href="#auth.auth">auth.auth</a>
  &#8226;   <a href="#bdb">bdb</a>
  &#8226;   <a href="#bz2">bz2</a>
  &#8226;   <a href="#certifi.core">certifi.core</a>
@@ -41715,6 +42029,7 @@ imported by:
  &#8226;   <a href="#colorama.ansitowin32">colorama.ansitowin32</a>
  &#8226;   <a href="#concurrent.futures.process">concurrent.futures.process</a>
  &#8226;   <a href="#concurrent.futures.thread">concurrent.futures.thread</a>
+ &#8226;   <a href="#config.config">config.config</a>
  &#8226;   <a href="#configparser">configparser</a>
  &#8226;   <a href="#contextlib">contextlib</a>
  &#8226;   <a href="#cryptography.hazmat.bindings.openssl.binding">cryptography.hazmat.bindings.openssl.binding</a>
@@ -41750,6 +42065,7 @@ imported by:
  &#8226;   <a href="#grpc._simple_stubs">grpc._simple_stubs</a>
  &#8226;   <a href="#grpc_tools.protoc">grpc_tools.protoc</a>
  &#8226;   <a href="#gzip">gzip</a>
+ &#8226;   <a href="#helpers.utils">helpers.utils</a>
  &#8226;   <a href="#http.cookiejar">http.cookiejar</a>
  &#8226;   <a href="#http.server">http.server</a>
  &#8226;   <a href="#httpx._auth">httpx._auth</a>
@@ -41773,6 +42089,7 @@ imported by:
  &#8226;   <a href="#jinja2.utils">jinja2.utils</a>
  &#8226;   <a href="#linecache">linecache</a>
  &#8226;   <a href="#locale">locale</a>
+ &#8226;   <a href="#logger.logger">logger.logger</a>
  &#8226;   <a href="#logging">logging</a>
  &#8226;   <a href="#logging.handlers">logging.handlers</a>
  &#8226;   <a href="#lzma">lzma</a>
@@ -55351,6 +55668,229 @@ imported by:
 </div>
 
 <div class="node">
+  <a name="routes"></a>
+  <a target="code" href="-" type="text/plain"><tt>routes</tt></a>
+<span class="moduletype">NamespacePackage</span>  <div class="import">
+imported by:
+    <a href="#routes.auth_routes">routes.auth_routes</a>
+ &#8226;   <a href="#routes.billing_routes">routes.billing_routes</a>
+ &#8226;   <a href="#routes.customer_routes">routes.customer_routes</a>
+ &#8226;   <a href="#routes.health_routes">routes.health_routes</a>
+ &#8226;   <a href="#routes.product_routes">routes.product_routes</a>
+ &#8226;   <a href="#routes.return_routes">routes.return_routes</a>
+ &#8226;   <a href="#routes.settings_routes">routes.settings_routes</a>
+ &#8226;   <a href="#routes.store_routes">routes.store_routes</a>
+ &#8226;   <a href="#routes.sync_routes">routes.sync_routes</a>
+ &#8226;   <a href="#routes.user_routes">routes.user_routes</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="routes.auth_routes"></a>
+  <a target="code" href="///E:/Siri-apps/Siri-billing-app/backend/routes/auth_routes.py" type="text/plain"><tt>routes.auth_routes</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#auth.auth">auth.auth</a>
+ &#8226;   <a href="#data_access.data_access">data_access.data_access</a>
+ &#8226;   <a href="#flask">flask</a>
+ &#8226;   <a href="#routes">routes</a>
+ &#8226;   <a href="#session_logging.session_logging">session_logging.session_logging</a>
+ &#8226;   <a href="#uuid">uuid</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="routes.billing_routes"></a>
+  <a target="code" href="///E:/Siri-apps/Siri-billing-app/backend/routes/billing_routes.py" type="text/plain"><tt>routes.billing_routes</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#auth.auth">auth.auth</a>
+ &#8226;   <a href="#data_access.data_access">data_access.data_access</a>
+ &#8226;   <a href="#data_access.mysql_data_access">data_access.mysql_data_access</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#flask">flask</a>
+ &#8226;   <a href="#notifications.notifications">notifications.notifications</a>
+ &#8226;   <a href="#routes">routes</a>
+ &#8226;   <a href="#utils.connection_pool">utils.connection_pool</a>
+ &#8226;   <a href="#uuid">uuid</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="routes.customer_routes"></a>
+  <a target="code" href="///E:/Siri-apps/Siri-billing-app/backend/routes/customer_routes.py" type="text/plain"><tt>routes.customer_routes</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#auth.auth">auth.auth</a>
+ &#8226;   <a href="#data_access.data_access">data_access.data_access</a>
+ &#8226;   <a href="#flask">flask</a>
+ &#8226;   <a href="#routes">routes</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="routes.health_routes"></a>
+  <a target="code" href="///E:/Siri-apps/Siri-billing-app/backend/routes/health_routes.py" type="text/plain"><tt>routes.health_routes</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#datetime">datetime</a>
+ &#8226;   <a href="#flask">flask</a>
+ &#8226;   <a href="#routes">routes</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="routes.product_routes"></a>
+  <a target="code" href="///E:/Siri-apps/Siri-billing-app/backend/routes/product_routes.py" type="text/plain"><tt>routes.product_routes</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#auth.auth">auth.auth</a>
+ &#8226;   <a href="#data_access.data_access">data_access.data_access</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#flask">flask</a>
+ &#8226;   <a href="#routes">routes</a>
+ &#8226;   <a href="#utils.connection_pool">utils.connection_pool</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="routes.return_routes"></a>
+  <a target="code" href="///E:/Siri-apps/Siri-billing-app/backend/routes/return_routes.py" type="text/plain"><tt>routes.return_routes</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#auth.auth">auth.auth</a>
+ &#8226;   <a href="#data_access.data_access">data_access.data_access</a>
+ &#8226;   <a href="#data_access.mysql_data_access">data_access.mysql_data_access</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#flask">flask</a>
+ &#8226;   <a href="#notifications.notifications">notifications.notifications</a>
+ &#8226;   <a href="#routes">routes</a>
+ &#8226;   <a href="#uuid">uuid</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="routes.settings_routes"></a>
+  <a target="code" href="///E:/Siri-apps/Siri-billing-app/backend/routes/settings_routes.py" type="text/plain"><tt>routes.settings_routes</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#auth.auth">auth.auth</a>
+ &#8226;   <a href="#data_access.data_access">data_access.data_access</a>
+ &#8226;   <a href="#flask">flask</a>
+ &#8226;   <a href="#routes">routes</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="routes.store_routes"></a>
+  <a target="code" href="///E:/Siri-apps/Siri-billing-app/backend/routes/store_routes.py" type="text/plain"><tt>routes.store_routes</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#auth.auth">auth.auth</a>
+ &#8226;   <a href="#data_access.data_access">data_access.data_access</a>
+ &#8226;   <a href="#flask">flask</a>
+ &#8226;   <a href="#routes">routes</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="routes.sync_routes"></a>
+  <a target="code" href="///E:/Siri-apps/Siri-billing-app/backend/routes/sync_routes.py" type="text/plain"><tt>routes.sync_routes</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#auth.auth">auth.auth</a>
+ &#8226;   <a href="#flask">flask</a>
+ &#8226;   <a href="#routes">routes</a>
+ &#8226;   <a href="#utils.sync_controller">utils.sync_controller</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="routes.user_routes"></a>
+  <a target="code" href="///E:/Siri-apps/Siri-billing-app/backend/routes/user_routes.py" type="text/plain"><tt>routes.user_routes</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#auth.auth">auth.auth</a>
+ &#8226;   <a href="#data_access.data_access">data_access.data_access</a>
+ &#8226;   <a href="#data_access.mysql_data_access">data_access.mysql_data_access</a>
+ &#8226;   <a href="#flask">flask</a>
+ &#8226;   <a href="#routes">routes</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
   <a name="runpy"></a>
   <a target="code" href="///C:/Users/Dell/AppData/Local/Programs/Python/Python312/Lib/runpy.py" type="text/plain"><tt>runpy</tt></a>
 <span class="moduletype">SourceModule</span>  <div class="import">
@@ -55434,6 +55974,37 @@ imported by:
  &#8226;   <a href="#socketserver">socketserver</a>
  &#8226;   <a href="#subprocess">subprocess</a>
  &#8226;   <a href="#werkzeug.serving">werkzeug.serving</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="session_logging"></a>
+  <a target="code" href="-" type="text/plain"><tt>session_logging</tt></a>
+<span class="moduletype">NamespacePackage</span>  <div class="import">
+imported by:
+    <a href="#session_logging.session_logging">session_logging.session_logging</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="session_logging.session_logging"></a>
+  <a target="code" href="///E:/Siri-apps/Siri-billing-app/backend/session_logging/session_logging.py" type="text/plain"><tt>session_logging.session_logging</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#datetime">datetime</a>
+ &#8226;   <a href="#flask">flask</a>
+ &#8226;   <a href="#json">json</a>
+ &#8226;   <a href="#session_logging">session_logging</a>
+ &#8226;   <a href="#utils.connection_pool">utils.connection_pool</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#routes.auth_routes">routes.auth_routes</a>
 
   </div>
 
@@ -59494,6 +60065,7 @@ imported by:
  &#8226;   <a href="#jinja2.runtime">jinja2.runtime</a>
  &#8226;   <a href="#linecache">linecache</a>
  &#8226;   <a href="#locale">locale</a>
+ &#8226;   <a href="#logger.logger">logger.logger</a>
  &#8226;   <a href="#logging">logging</a>
  &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#markdown_it._compat">markdown_it._compat</a>
@@ -59965,6 +60537,7 @@ imported by:
  &#8226;   <a href="#asyncio.runners">asyncio.runners</a>
  &#8226;   <a href="#asyncio.unix_events">asyncio.unix_events</a>
  &#8226;   <a href="#attr._compat">attr._compat</a>
+ &#8226;   <a href="#background_tasks.background_tasks">background_tasks.background_tasks</a>
  &#8226;   <a href="#click.globals">click.globals</a>
  &#8226;   <a href="#concurrent.futures._base">concurrent.futures._base</a>
  &#8226;   <a href="#concurrent.futures.process">concurrent.futures.process</a>
@@ -59982,6 +60555,7 @@ imported by:
  &#8226;   <a href="#grpc._simple_stubs">grpc._simple_stubs</a>
  &#8226;   <a href="#grpc._utilities">grpc._utilities</a>
  &#8226;   <a href="#grpc_tools.protoc">grpc_tools.protoc</a>
+ &#8226;   <a href="#helpers.utils">helpers.utils</a>
  &#8226;   <a href="#http.cookiejar">http.cookiejar</a>
  &#8226;   <a href="#httpcore._synchronization">httpcore._synchronization</a>
  &#8226;   <a href="#importlib.util">importlib.util</a>
@@ -60104,6 +60678,7 @@ imported by:
  &#8226;   <a href="#_strptime">_strptime</a>
  &#8226;   <a href="#asyncio.base_events">asyncio.base_events</a>
  &#8226;   <a href="#asyncio.windows_events">asyncio.windows_events</a>
+ &#8226;   <a href="#background_tasks.background_tasks">background_tasks.background_tasks</a>
  &#8226;   <a href="#click._termui_impl">click._termui_impl</a>
  &#8226;   <a href="#click._winconsole">click._winconsole</a>
  &#8226;   <a href="#concurrent.futures._base">concurrent.futures._base</a>
@@ -63249,7 +63824,11 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#main.py">main.py</a>
+    <a href="#data_access.mysql_data_access">data_access.mysql_data_access</a>
+ &#8226;   <a href="#main.py">main.py</a>
+ &#8226;   <a href="#routes.billing_routes">routes.billing_routes</a>
+ &#8226;   <a href="#routes.product_routes">routes.product_routes</a>
+ &#8226;   <a href="#session_logging.session_logging">session_logging.session_logging</a>
  &#8226;   <a href="#utils.sync_controller">utils.sync_controller</a>
 
   </div>
@@ -63276,7 +63855,10 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#main.py">main.py</a>
+    <a href="#background_tasks.background_tasks">background_tasks.background_tasks</a>
+ &#8226;   <a href="#data_access.mysql_data_access">data_access.mysql_data_access</a>
+ &#8226;   <a href="#main.py">main.py</a>
+ &#8226;   <a href="#routes.sync_routes">routes.sync_routes</a>
 
   </div>
 
@@ -63304,13 +63886,17 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#click.types">click.types</a>
+    <a href="#auth.auth">auth.auth</a>
+ &#8226;   <a href="#click.types">click.types</a>
  &#8226;   <a href="#flask.json.provider">flask.json.provider</a>
  &#8226;   <a href="#flask.json.tag">flask.json.tag</a>
  &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#mysql.connector.pooling">mysql.connector.pooling</a>
  &#8226;   <a href="#mysql.opentelemetry.context">mysql.opentelemetry.context</a>
  &#8226;   <a href="#opentelemetry.context">opentelemetry.context</a>
+ &#8226;   <a href="#routes.auth_routes">routes.auth_routes</a>
+ &#8226;   <a href="#routes.billing_routes">routes.billing_routes</a>
+ &#8226;   <a href="#routes.return_routes">routes.return_routes</a>
  &#8226;   <a href="#werkzeug.debug">werkzeug.debug</a>
  &#8226;   <a href="#werkzeug.routing.converters">werkzeug.routing.converters</a>
 

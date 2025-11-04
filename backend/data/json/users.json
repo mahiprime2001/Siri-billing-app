@@ -1,5 +1,19 @@
 [
     {
+        "id": "17dc8e96-f909-4479-ab78-453eda736bf1",
+        "name": "A. Haram set",
+        "email": "mailbox2249@gmail.com",
+        "password": "r3i!4sLL",
+        "role": "billing_user",
+        "status": "active",
+        "sessionDuration": null,
+        "createdAt": "2025-11-03T14:35:37",
+        "updatedAt": "2025-11-03T14:35:37",
+        "lastLogin": null,
+        "lastLogout": null,
+        "totalSessionDuration": 0
+    },
+    {
         "id": "4fbbce4b-6c41-4964-99f5-1698a9aca500",
         "name": "A. Tops",
         "email": "19jn1a0596@gmail.com",

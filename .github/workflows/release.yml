@@ -24,12 +24,15 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      # 🔢 Auto-increment version in tauri.conf.json
+      # 🔢 Auto-increment version in tauri.conf.json and package.json
       - name: 🔢 Auto-increment version
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $configPath = "src-tauri/tauri.conf.json"
+          $packagePath = "package.json"
+          
+          # Read and increment Tauri version
           $cfg = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
           $currentVer = $cfg['version']
           if (-not $currentVer) { throw "No version found in $configPath" }
@@ -37,16 +40,26 @@ jobs:
           if ($verParts.Length -ne 3) { throw "Invalid version format: $currentVer" }
           $buildNum = [int]$verParts[2] + 1
           $newVer = "$($verParts[0]).$($verParts[1]).$buildNum"
+          
+          # Update Tauri config
           $cfg['version'] = $newVer
           $cfg | ConvertTo-Json -Depth 20 | Out-File $configPath -Encoding UTF8
+          
+          # Update package.json with same version
+          $pkg = Get-Content $packagePath -Raw | ConvertFrom-Json -AsHashtable
+          $pkg['version'] = $newVer
+          $pkg | ConvertTo-Json -Depth 20 | Out-File $packagePath -Encoding UTF8
+          
           echo "Bumped version from $currentVer to $newVer"
+          echo "Updated both tauri.conf.json and package.json to $newVer"
           echo "APP_VERSION=$newVer" >> $env:GITHUB_ENV
           echo "RELEASE_TAG=v$newVer" >> $env:GITHUB_ENV
-          # Commit and push to persist the bump (ignored by workflow trigger)
+          
+          # Commit and push both files to persist the bump (ignored by workflow trigger)
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add $configPath
-          git commit -m "ci: bump version to $newVer" || echo "No changes to commit"
+          git add $configPath $packagePath
+          git commit -m "ci: bump version to $newVer [skip ci]" || echo "No changes to commit"
           git push origin HEAD:main
 
       # 2️⃣ Setup Node.js & Rust
