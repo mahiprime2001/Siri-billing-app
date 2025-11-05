@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from flask import Blueprint, jsonify, request, g, current_app as app
 
-from auth.auth import token_required
+from auth.auth import session_required # Changed from token_required
 from data_access.data_access import get_bills_data, get_returns_data, save_returns_data
 from notifications.notifications import create_notification
 from data_access.mysql_data_access import sync_to_mysql_immediately
@@ -10,7 +10,7 @@ from data_access.mysql_data_access import sync_to_mysql_immediately
 return_bp = Blueprint('return_bp', __name__)
 
 @return_bp.route('/returns/search', methods=['POST'])
-@token_required
+@session_required
 def search_bills_for_returns():
     """Search bills for returns"""
     try:
@@ -52,7 +52,7 @@ def search_bills_for_returns():
         return jsonify({"error": "Internal server error", "details": str(e)}), 500
 
 @return_bp.route('/returns/submit', methods=['POST'])
-@token_required
+@session_required
 def submit_return_request():
     """Submit a return request"""
     try:

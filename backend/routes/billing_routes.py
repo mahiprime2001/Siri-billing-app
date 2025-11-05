@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from flask import Blueprint, jsonify, request, g, current_app as app
 
-from auth.auth import token_required
+from auth.auth import session_required # Changed from token_required
 from data_access.data_access import get_bills_data, save_bills_data, get_products_data, save_products_data
 from data_access.mysql_data_access import (
     sync_to_mysql_immediately, check_user_exists_mysql, check_customer_exists_mysql
@@ -111,7 +111,7 @@ def update_product_stock_local(product_id: str, quantity_sold: int) -> bool:
 
 
 @billing_bp.route('/billing/save', methods=['POST'])
-@token_required
+@session_required
 def save_bill():
     """
     Save a bill with enhanced validation, stock management, and immediate MySQL sync.
@@ -247,7 +247,7 @@ def save_bill():
 
 
 @billing_bp.route('/bills', methods=['GET'])
-@token_required
+@session_required
 def get_bills():
     """Get all bills"""
     try:
@@ -259,7 +259,7 @@ def get_bills():
 
 
 @billing_bp.route('/bills/<bill_id>', methods=['GET'])
-@token_required
+@session_required
 def get_bill_by_id(bill_id):
     """Get a specific bill by ID"""
     try:

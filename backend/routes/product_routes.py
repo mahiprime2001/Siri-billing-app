@@ -1,14 +1,14 @@
 from flask import Blueprint, jsonify, request, current_app as app
 from datetime import datetime
 
-from auth.auth import token_required
+from auth.auth import session_required # Changed from token_required
 from data_access.data_access import get_products_data, save_products_data
 from utils.connection_pool import get_connection
 
 product_bp = Blueprint('product_bp', __name__)
 
 @product_bp.route('/products', methods=['GET'])
-@token_required
+@session_required
 def get_products():
     """Get all products"""
     try:
@@ -19,7 +19,7 @@ def get_products():
         return jsonify({"error": "Internal server error", "details": str(e)}), 500
 
 @product_bp.route('/products/<product_id>', methods=['PUT'])
-@token_required
+@session_required
 def update_product_stock(product_id):
     """Update product stock after billing"""
     try:

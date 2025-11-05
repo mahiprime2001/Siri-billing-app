@@ -1,7 +1,6 @@
 import uuid
-from flask import Blueprint, request, jsonify, make_response, g, current_app as app
-
-from auth.auth import token_required, active_sessions, save_sessions
+from flask import Blueprint, request, jsonify, make_response, g, current_app as app, session
+from auth.auth import session_required  # Use session_required instead of token_required
 from data_access.data_access import get_users_data
 from session_logging.session_logging import log_session_event
 
@@ -34,19 +33,20 @@ def login():
         if user and user.get('password') == password:
             user_info = {k: v for k, v in user.items() if k != 'password'}
             
-            # Generate session token
-            session_token = str(uuid.uuid4())
-            active_sessions[session_token] = user_info['id']
-            save_sessions(active_sessions) # Persist sessions after login
+            # Store user ID in Flask session (server-side)
+            session['user_id'] = user_info['id']
+            session.permanent = False  # Session expires when browser closes
+            
+            app.logger.info(f"User ID {user_info['id']} stored in session after login.")
             
             # Log login event
             log_session_event('LOGIN', user_info.get('id'), 'User logged in to billing app')
             
+            # Return user info WITHOUT token (session handles auth)
             return jsonify({
                 "auth_ok": True,
                 "user_role": user_info.get('role'),
                 "user": user_info,
-                "session_token": session_token,
                 "message": "Login successful"
             }), 200
         
@@ -57,18 +57,17 @@ def login():
         return jsonify({"message": f"Server error: {str(e)}"}), 500
 
 @auth_bp.route('/logout', methods=['POST'])
-@token_required
+@session_required
 def logout():
     """Logout endpoint"""
     try:
-        session_token = g.session_token
-        user_id = g.current_user['id']
+        user_id = session.pop('user_id', None)  # Remove user_id from session
         
-        if session_token in active_sessions:
-            del active_sessions[session_token]
-            save_sessions(active_sessions) # Persist sessions after logout
+        if user_id:
+            log_session_event('LOGOUT', user_id, 'User logged out from billing app')
         
-        log_session_event('LOGOUT', user_id, 'User logged out from billing app')
+        # Clear entire session
+        session.clear()
         
         return jsonify({"message": "Logout successful"}), 200
     
@@ -76,13 +75,21 @@ def logout():
         app.logger.error(f"Logout error: {e}")
         return jsonify({"message": f"Server error: {str(e)}"}), 500
 
-@auth_bp.route('/me', methods=['GET'])
-@token_required
+@auth_bp.route('/me', methods=['GET', 'OPTIONS'])
+@session_required
 def get_current_user():
     """Get current user info"""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Methods", "GET, OPTIONS")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        return response, 200
+    
     try:
         user_info = {k: v for k, v in g.current_user.items() if k != 'password'}
         return jsonify({"user": user_info}), 200
+    
     except Exception as e:
         app.logger.error(f"Error getting current user: {e}")
         return jsonify({"message": f"Server error: {str(e)}"}), 500

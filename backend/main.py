@@ -7,11 +7,12 @@ import logging
 from datetime import datetime, timedelta, timezone, date
 from decimal import Decimal
 from urllib.parse import urlparse
-from flask import Flask, request, jsonify, make_response, g
-from flask_cors import CORS
+from flask import Flask, request, jsonify, make_response, g, session
 import threading
 import uuid
 from functools import wraps
+# Remove Flask-CORS import - we'll implement manually
+# from flask_cors import CORS
 
 # Import connection pool and sync controller
 from utils.connection_pool import initialize_pool, get_connection, close_pool
@@ -36,6 +37,14 @@ from routes.health_routes import health_bp
 
 app = Flask(__name__)
 
+# Configure Flask sessions
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_key_for_dev')
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SECURE'] = False
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_DOMAIN'] = None
+app.config['SESSION_COOKIE_PATH'] = '/'
+
 # Initialize connection pool and sync controller
 initialize_pool()
 sync_controller = SyncController()
@@ -45,17 +54,37 @@ setup_logging(app, LOG_FILE)
 
 app.logger.info("Billing Flask server starting up...")
 
-# Enable CORS - UPDATED VERSION
-CORS(app, 
-     resources={r"/api/*": {
-         "origins": ["http://localhost:3000", "http://127.0.0.1:3000"],
-         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-         "allow_headers": ["Content-Type", "Authorization", "Accept"],
-         "expose_headers": ["Content-Type", "Authorization"],
-         "supports_credentials": True,
-         "max_age": 3600
-     }},
-     supports_credentials=True)
+# Manual CORS implementation - REPLACES Flask-CORS
+@app.after_request
+def after_request(response):
+    """Add CORS headers to every response"""
+    origin = request.headers.get('Origin')
+    
+    # Only allow localhost:3000
+    if origin == 'http://localhost:3000':
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        response.headers['Access-Control-Expose-Headers'] = 'Content-Type'
+    
+    return response
+
+@app.before_request
+def handle_preflight():
+    """Handle OPTIONS requests for CORS preflight"""
+    if request.method == 'OPTIONS':
+        response = make_response()
+        origin = request.headers.get('Origin')
+        
+        if origin == 'http://localhost:3000':
+            response.headers['Access-Control-Allow-Origin'] = origin
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+            response.headers['Access-Control-Max-Age'] = '3600'
+        
+        return response
 
 # Register blueprints
 app.register_blueprint(auth_bp, url_prefix='/api/auth')
@@ -74,9 +103,9 @@ app.register_blueprint(health_bp, url_prefix='/api')
 if __name__ == '__main__':
     app.logger.info("Billing Flask server starting...")
     
-    # Hardcoded to run on localhost:8080
+    # Hardcoded to run on localhost:8080 for consistency with cookie domain
     port = 8080
-    host = '127.0.0.1'
+    host = 'localhost'
     
     app.logger.info(f"Billing app will run on {host}:{port}")
     

@@ -1,12 +1,12 @@
 from flask import Blueprint, jsonify, current_app as app
 
-from auth.auth import token_required
+from auth.auth import session_required # Changed from token_required
 from data_access.data_access import get_stores_data
 
 store_bp = Blueprint('store_bp', __name__)
 
 @store_bp.route('/stores', methods=['GET'])
-@token_required
+@session_required
 def get_stores():
     """Get all stores"""
     try:

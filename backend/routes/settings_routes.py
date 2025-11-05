@@ -1,12 +1,12 @@
 from flask import Blueprint, jsonify, current_app as app
 
-from auth.auth import token_required
+from auth.auth import session_required # Changed from token_required
 from data_access.data_access import get_system_settings_data
 
 settings_bp = Blueprint('settings_bp', __name__)
 
 @settings_bp.route('/settings', methods=['GET'])
-@token_required
+@session_required
 def get_settings():
     """Get system settings"""
     try:

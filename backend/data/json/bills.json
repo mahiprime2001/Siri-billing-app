@@ -427,5 +427,83 @@
                 "barcodes": "1762160513558784"
             }
         ]
+    },
+    {
+        "id": "INV-944778",
+        "storeId": "store3",
+        "storeName": "SIRI ART JEWELLERY - Mall",
+        "storeAddress": "789 Mall Complex, City",
+        "customerName": "Walk-in Customer",
+        "customerEmail": "",
+        "customerPhone": "",
+        "customerAddress": "",
+        "customerId": null,
+        "subtotal": 1314,
+        "taxPercentage": 10.4,
+        "taxAmount": 136.66,
+        "discountPercentage": 0,
+        "discountAmount": 0,
+        "total": 1451,
+        "paymentMethod": "Cash",
+        "timestamp": "2025-11-05T02:49:04.778Z",
+        "notes": "",
+        "gstin": "27AAFCV2449G1Z7",
+        "companyName": "SIRI ART JEWELLERY",
+        "companyAddress": "123 Jewelry Street, Mumbai, Maharashtra 400001",
+        "companyPhone": "+91 889771771",
+        "companyEmail": "info@siri.ifleon.com",
+        "billFormat": "Thermal 80mm",
+        "createdBy": "94ac1f3a-bb34-44ee-b68c-d96b3edef79d",
+        "items": [
+            {
+                "id": "1762310939210",
+                "productId": "2e5788c4-5cab-4357-96fe-219ef7a7833d",
+                "name": "A. Haram set",
+                "quantity": 2,
+                "price": 657,
+                "total": 1314,
+                "gstRate": 0,
+                "barcodes": "1762160513558784"
+            }
+        ]
+    },
+    {
+        "id": "INV-244534",
+        "storeId": "store3",
+        "storeName": "SIRI ART JEWELLERY - Mall",
+        "storeAddress": "789 Mall Complex, City",
+        "customerName": "Walk-in Customer",
+        "customerEmail": "",
+        "customerPhone": "",
+        "customerAddress": "",
+        "customerId": null,
+        "subtotal": 1314,
+        "taxPercentage": 10.4,
+        "taxAmount": 136.66,
+        "discountPercentage": 0,
+        "discountAmount": 0,
+        "total": 1451,
+        "paymentMethod": "Cash",
+        "timestamp": "2025-11-05T09:00:44.534Z",
+        "notes": "",
+        "gstin": "27AAFCV2449G1Z7",
+        "companyName": "SIRI ART JEWELLERY",
+        "companyAddress": "123 Jewelry Street, Mumbai, Maharashtra 400001",
+        "companyPhone": "+91 889771771",
+        "companyEmail": "info@siri.ifleon.com",
+        "billFormat": "Thermal 80mm",
+        "createdBy": "94ac1f3a-bb34-44ee-b68c-d96b3edef79d",
+        "items": [
+            {
+                "id": "1762333240734",
+                "productId": "2e5788c4-5cab-4357-96fe-219ef7a7833d",
+                "name": "A. Haram set",
+                "quantity": 2,
+                "price": 657,
+                "total": 1314,
+                "gstRate": 0,
+                "barcodes": "1762160513558784"
+            }
+        ]
     }
 ]

@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label"
 import { Eye, Search, Printer } from "lucide-react"
 import InvoicePreview from "./invoice-preview"
+import { apiClient } from "@/lib/api-client"; // Import apiClient
 
 interface Invoice {
   id: string;
@@ -54,12 +55,8 @@ export default function BillingHistory() {
   const fetchBillingHistory = useCallback(async () => {
     try {
       console.log("Fetching billing history from Flask backend...");
-      const token = localStorage.getItem('token'); // Assuming token is stored in localStorage
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/bills`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      // Use apiClient to ensure Authorization header is consistently added
+      const response = await apiClient("/api/bills");
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }

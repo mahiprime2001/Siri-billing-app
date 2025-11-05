@@ -38,59 +38,49 @@ export default function LoginPage() {
   })
   const router = useRouter()
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError("")
+const handleLogin = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setLoading(true);
+  setError('');
 
-    try {
-      const response = await fetch("http://localhost:8080/api/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      })
+  try {
+    const response = await fetch('http://localhost:8080/api/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include', // CRITICAL: Allow cookies
+      body: JSON.stringify({ email, password }),
+    });
 
-      const data = await response.json()
+    const data = await response.json();
 
-      if (response.ok) {
-        localStorage.setItem("token", data.session_token); // Store session token
-        localStorage.setItem("just_logged_in", "true"); // Set flag for successful login
-        // Remove old localStorage items
-        localStorage.removeItem("adminLoggedIn");
-        localStorage.removeItem("adminUser");
-        localStorage.removeItem("userEmail");
-
-        toast("✅ Login Successful", {
-          description: "Welcome back!",
-          duration: 3000,
-        })
-
-        setTimeout(() => {
-          if (data.user.role === "super_admin") {
-            router.push("/billing")
-          } else {
-            router.push("/billing")
-          }
-        }, 0);
-      } else {
-        setError(data.error || "Login failed")
-        toast("❌ Login Failed", {
-          description: data.error || "Invalid credentials.",
-          duration: 3000,
-        })
-      }
-    } catch (error) {
-      setError("An error occurred during login")
-      toast("⚠️ Error", {
-        description: "Something went wrong. Please try again.",
+    if (response.ok) {
+      // DO NOT store anything in localStorage - session cookie handles it
+      toast("Login Successful", {
+        description: "Welcome back!",
         duration: 3000,
-      })
-    } finally {
-      setLoading(false)
+      });
+
+      // Redirect to billing
+      router.push('/billing');
+    } else {
+      setError(data.message || 'Login failed');
+      toast("Login Failed", {
+        description: data.message || "Invalid credentials.",
+        duration: 3000,
+      });
     }
+  } catch (error) {
+    setError('An error occurred during login');
+    toast("Error", {
+      description: "Something went wrong. Please try again.",
+      duration: 3000,
+    });
+  } finally {
+    setLoading(false);
   }
+};
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/

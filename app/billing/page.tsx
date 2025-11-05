@@ -31,25 +31,26 @@ export default function BillingPage() {
   const { toast } = useToast()
 
   const fetchUserData = useCallback(async () => {
-    const sessionToken = typeof window !== 'undefined' ? localStorage.getItem('session_token') : null;
-    if (!sessionToken) {
-      router.push("/login");
-      return;
-    }
-
+    // With HTTP-only cookies, the browser automatically sends the session cookie.
+    // The apiClient is configured to include credentials.
+    // If the session is invalid, apiClient will handle the 401 and redirect.
     try {
+      console.log("Fetching user data...");
       const response = await apiClient("/api/auth/me");
+      
       if (response.ok) {
-        const { user: userData } = await response.json();
-        setUser(userData);
+        const data = await response.json();
+        console.log("User data received:", data);
+        setUser(data.user);
       } else {
-        localStorage.removeItem("session_token"); // Clear invalid token
+        console.error("Failed to fetch user data. Redirecting to login.");
+        // apiClient should handle the redirect for 401, but as a fallback:
         router.push("/login");
       }
     } catch (error) {
       console.error("Error fetching user data:", error);
-      localStorage.removeItem("session_token"); // Clear token on network error
-      router.push("/login");
+      // apiClient is designed to handle 401 errors and redirect.
+      // Other errors might be network issues, which shouldn't immediately redirect.
     }
   }, [router]);
 
@@ -86,7 +87,7 @@ export default function BillingPage() {
   const handleLogout = async () => {
     try {
       await apiClient("/api/auth/logout", { method: "POST" });
-      localStorage.removeItem("session_token");
+      // Session is managed by HTTP-only cookies, no need to remove from localStorage
       toast({
         title: "Logout Successful",
         description: "You have been successfully logged out.",

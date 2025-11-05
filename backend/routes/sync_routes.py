@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request, current_app as app
 
-from auth.auth import token_required
+from auth.auth import session_required # Changed from token_required
 from utils.sync_controller import SyncController
 
 sync_bp = Blueprint('sync_bp', __name__)
@@ -17,7 +17,7 @@ def api_sync_status():
         return jsonify({"error": "Internal server error", "details": str(e)}), 500
 
 @sync_bp.route('/sync/push', methods=['POST'])
-@token_required
+@session_required
 def api_push_sync():
     """Manually trigger push sync"""
     try:
@@ -34,7 +34,7 @@ def api_push_sync():
         return jsonify({"error": "Internal server error", "details": str(e)}), 500
 
 @sync_bp.route('/sync/pull', methods=['POST'])
-@token_required
+@session_required
 def api_pull_sync():
     """Manually trigger pull sync"""
     try:

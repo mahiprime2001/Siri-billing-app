@@ -3,12 +3,12 @@
         "id": "2e5788c4-5cab-4357-96fe-219ef7a7833d",
         "name": "A. Haram set",
         "price": 123.0,
-        "stock": 30,
+        "stock": 22,
         "assignedStoreId": null,
         "batchId": "55a31cb9-7390-4dd0-9441-8b2f5e633647",
         "selling_price": 657.0,
         "createdAt": "2025-11-03T09:01:55",
-        "updatedAt": "2025-11-03T17:18:10"
+        "updatedAt": "2025-11-05T14:30:51"
     },
     {
         "id": "c119a802-d484-4242-823f-2cabac974a46",
