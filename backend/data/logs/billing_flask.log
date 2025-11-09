@@ -1,327 +1,707 @@
-[2025-11-05 16:38:51,002] INFO in logger: Logging configured.
-[2025-11-05 16:38:51,002] INFO in logger: Logging configured.
-2025-11-05 16:38:51,002 - main - INFO - logger.py:51 - Logging configured.
-[2025-11-05 16:38:51,002] INFO in main: Billing Flask server starting up...
-[2025-11-05 16:38:51,002] INFO in main: Billing Flask server starting up...
-2025-11-05 16:38:51,002 - main - INFO - main.py:55 - Billing Flask server starting up...
-[2025-11-05 16:38:51,024] INFO in main: Billing Flask server starting...
-[2025-11-05 16:38:51,024] INFO in main: Billing Flask server starting...
-2025-11-05 16:38:51,024 - main - INFO - main.py:104 - Billing Flask server starting...
-[2025-11-05 16:38:51,027] INFO in main: Billing app will run on localhost:8080
-[2025-11-05 16:38:51,027] INFO in main: Billing app will run on localhost:8080
-2025-11-05 16:38:51,027 - main - INFO - main.py:110 - Billing app will run on localhost:8080
-[2025-11-05 16:38:51,032] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
-[2025-11-05 16:38:51,032] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
-[2025-11-05 16:38:51,032] INFO in background_tasks: Background pull sync scheduler started.
-[2025-11-05 16:38:51,032] INFO in background_tasks: Background pull sync scheduler started.
-2025-11-05 16:38:51,032 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
-2025-11-05 16:38:51,032 - main - INFO - background_tasks.py:48 - Background pull sync scheduler started.
+[2025-11-09 13:14:33,860] INFO in logger: Logging configured.
+[2025-11-09 13:14:33,860] INFO in logger: Logging configured.
+2025-11-09 13:14:33,860 - main - INFO - logger.py:51 - Logging configured.
+[2025-11-09 13:14:33,862] INFO in main: Billing Flask server starting up...
+[2025-11-09 13:14:33,862] INFO in main: Billing Flask server starting up...
+2025-11-09 13:14:33,862 - main - INFO - main.py:55 - Billing Flask server starting up...
+[2025-11-09 13:14:33,877] INFO in main: Billing Flask server starting...
+[2025-11-09 13:14:33,877] INFO in main: Billing Flask server starting...
+2025-11-09 13:14:33,877 - main - INFO - main.py:104 - Billing Flask server starting...
+[2025-11-09 13:14:33,878] INFO in main: Billing app will run on localhost:8080
+[2025-11-09 13:14:33,878] INFO in main: Billing app will run on localhost:8080
+2025-11-09 13:14:33,878 - main - INFO - main.py:110 - Billing app will run on localhost:8080
+[2025-11-09 13:14:33,879] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:14:33,879] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:14:33,880] INFO in background_tasks: Background pull sync scheduler started.
+[2025-11-09 13:14:33,880] INFO in background_tasks: Background pull sync scheduler started.
+2025-11-09 13:14:33,879 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 13:14:33,880 - main - INFO - background_tasks.py:48 - Background pull sync scheduler started.
  * Debugger is active!
  * Debugger is active!
  * Debugger PIN: 259-910-106
  * Debugger PIN: 259-910-106
-[2025-11-05 16:38:52,010] INFO in background_tasks: Background pull sync completed successfully.
-[2025-11-05 16:38:52,010] INFO in background_tasks: Background pull sync completed successfully.
-2025-11-05 16:38:52,010 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
-127.0.0.1 - - [05/Nov/2025 16:39:01] "OPTIONS /api/auth/login HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:01] "OPTIONS /api/auth/login HTTP/1.1" 200 -
-[2025-11-05 16:39:02,553] INFO in auth_routes: User ID 94ac1f3a-bb34-44ee-b68c-d96b3edef79d stored in session after login.
-[2025-11-05 16:39:02,553] INFO in auth_routes: User ID 94ac1f3a-bb34-44ee-b68c-d96b3edef79d stored in session after login.
-2025-11-05 16:39:02,553 - main - INFO - auth_routes.py:40 - User ID 94ac1f3a-bb34-44ee-b68c-d96b3edef79d stored in session after login.
-[2025-11-05 16:39:02,939] INFO in session_logging: Session event logged: LOGIN for user 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:02,939] INFO in session_logging: Session event logged: LOGIN for user 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:02,939 - main - INFO - session_logging.py:43 - Session event logged: LOGIN for user 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:03] "POST /api/auth/login HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:03] "POST /api/auth/login HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:04] "OPTIONS /api/auth/me HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:04] "OPTIONS /api/auth/me HTTP/1.1" 200 -
-[2025-11-05 16:39:04,876] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:04,876] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:04,876 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:05] "OPTIONS /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:05] "OPTIONS /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:05] "OPTIONS /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:05] "OPTIONS /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:05] "GET /api/auth/me HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:05] "GET /api/auth/me HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:05] "OPTIONS /api/products HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:05] "OPTIONS /api/products HTTP/1.1" 200 -
-[2025-11-05 16:39:05,617] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:05,617] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:05,617 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:05] "OPTIONS /api/settings HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:05] "OPTIONS /api/settings HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:05] "OPTIONS /api/users HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:05] "OPTIONS /api/users HTTP/1.1" 200 -
-[2025-11-05 16:39:05,792] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:05,792] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:05,792 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:05] "OPTIONS /api/stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:05] "OPTIONS /api/stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:05] "OPTIONS /api/user-stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:05] "OPTIONS /api/user-stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:06] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:06] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:06] "OPTIONS /api/settings HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:06] "OPTIONS /api/settings HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:06] "OPTIONS /api/users HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:06] "OPTIONS /api/users HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:06] "GET /api/auth/me HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:06] "GET /api/auth/me HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:06] "OPTIONS /api/stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:06] "OPTIONS /api/stores HTTP/1.1" 200 -
-[2025-11-05 16:39:06,179] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:06,179] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:06] "OPTIONS /api/user-stores HTTP/1.1" 200 -
-2025-11-05 16:39:06,179 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:06] "OPTIONS /api/user-stores HTTP/1.1" 200 -
-[2025-11-05 16:39:06,319] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:06,319] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:06,319 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:06,579] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:06,579] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:06,579 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:06,821] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:06,821] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:07] "GET /api/settings HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:07] "GET /api/settings HTTP/1.1" 200 -
-2025-11-05 16:39:06,821 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:08] "GET /api/users HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:08] "GET /api/users HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:08] "GET /api/stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:08] "GET /api/stores HTTP/1.1" 200 -
-[2025-11-05 16:39:08,247] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:08,247] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:08] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:08] "GET /api/sync/status HTTP/1.1" 200 -
-2025-11-05 16:39:08,247 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:08,646] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:08,646] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:08,930] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:08,930] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:08,646 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:09] "GET /api/auth/me HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:09] "GET /api/auth/me HTTP/1.1" 200 -
-[2025-11-05 16:39:09,137] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:09,137] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:09] "GET /api/user-stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:09] "GET /api/user-stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:09] "GET /api/products HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:09] "GET /api/products HTTP/1.1" 200 -
-2025-11-05 16:39:09,137 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:09,659] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:09,659] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:09,853] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:09,659 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:09,853] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:10] "GET /api/settings HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:10] "GET /api/settings HTTP/1.1" 200 -
-[2025-11-05 16:39:10,332] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:09,853 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:10,332] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:10] "GET /api/users HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:10] "GET /api/users HTTP/1.1" 200 -
-2025-11-05 16:39:10,332 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:10] "GET /api/auth/me HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:10] "GET /api/auth/me HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:10] "GET /api/stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:10] "GET /api/stores HTTP/1.1" 200 -
-[2025-11-05 16:39:11,182] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:11,182] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:11,182 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:11] "GET /api/user-stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:11] "GET /api/user-stores HTTP/1.1" 200 -
-[2025-11-05 16:39:11,355] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:11,355] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:11,355 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:12] "GET /api/auth/me HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:12] "GET /api/auth/me HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:13] "GET /api/stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:13] "GET /api/stores HTTP/1.1" 200 -
-[2025-11-05 16:39:13,435] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:13,435] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:13,441] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:13,441] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:13,435 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:13,441 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:14] "GET /api/products HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:14] "GET /api/products HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:15] "GET /api/stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:15] "GET /api/stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:15] "GET /api/user-stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:15] "GET /api/user-stores HTTP/1.1" 200 -
-[2025-11-05 16:39:16,060] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:16,060] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:16,060 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:16,464] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:16,464] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:16,468] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:16,468] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:16,464 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:16,468 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:18] "OPTIONS /api/bills HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:18] "OPTIONS /api/bills HTTP/1.1" 200 -
-[2025-11-05 16:39:18,556] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:18,556] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:18] "OPTIONS /api/bills HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:18] "OPTIONS /api/bills HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:19] "GET /api/user-stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:19] "GET /api/user-stores HTTP/1.1" 200 -
-2025-11-05 16:39:18,556 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:19] "GET /api/settings HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:19] "GET /api/settings HTTP/1.1" 200 -
-[2025-11-05 16:39:20,181] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:20,181] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:20,181 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:20] "GET /api/bills HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:20] "GET /api/bills HTTP/1.1" 200 -
-[2025-11-05 16:39:21,146] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:21,146] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:21,146 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:21] "GET /api/products HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:21] "GET /api/products HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:21] "GET /api/settings HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:21] "GET /api/settings HTTP/1.1" 200 -
-[2025-11-05 16:39:21,963] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:21,963] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:21] "GET /api/bills HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:21] "GET /api/bills HTTP/1.1" 200 -
-2025-11-05 16:39:21,963 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:23] "GET /api/products HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:23] "GET /api/products HTTP/1.1" 200 -
-[2025-11-05 16:39:47,664] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:47,664] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:47,664 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:49] "GET /api/bills HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:49] "GET /api/bills HTTP/1.1" 200 -
-[2025-11-05 16:39:53,420] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:53,420] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:53,420 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:53,779] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:53,779] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:53,779] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:53,779] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:53,779] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:53,779] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:53,779 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:53,779] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:53,779] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:53,779 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:53,779 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:53,779 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:53,797] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:53,797] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:53,797 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:55] "GET /api/auth/me HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:55] "GET /api/auth/me HTTP/1.1" 200 -
-[2025-11-05 16:39:56,035] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:56,035] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:56,035 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:57] "GET /api/settings HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:57] "GET /api/settings HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:57] "GET /api/users HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:57] "GET /api/users HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:57] "GET /api/user-stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:57] "GET /api/user-stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:57] "GET /api/auth/me HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:57] "GET /api/auth/me HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:57] "GET /api/stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:57] "GET /api/stores HTTP/1.1" 200 -
-[2025-11-05 16:39:57,794] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:57,794] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:57,794] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:57,794 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:57,794] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:57,943] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:57,794 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:57,943] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:57,946] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:57,946] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:57,943 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:58] "GET /api/products HTTP/1.1" 200 -
-2025-11-05 16:39:57,946 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:58] "GET /api/products HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:59] "GET /api/settings HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:59] "GET /api/settings HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:59] "GET /api/users HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:59] "GET /api/users HTTP/1.1" 200 -
-[2025-11-05 16:39:59,463] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:39:59,463] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:39:59,463 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:39:59] "GET /api/user-stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:59] "GET /api/user-stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:59] "GET /api/stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:39:59] "GET /api/stores HTTP/1.1" 200 -
-[2025-11-05 16:40:00,416] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:40:00,416] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:40:00,416 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:40:01] "GET /api/stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:40:01] "GET /api/stores HTTP/1.1" 200 -
-[2025-11-05 16:40:02,274] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:40:02,274] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:40:02,275] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:40:02,275] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:40:02,274 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:40:02] "GET /api/products HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:40:02] "GET /api/products HTTP/1.1" 200 -
-2025-11-05 16:40:02,275 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:40:04] "GET /api/stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:40:04] "GET /api/stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:40:04] "GET /api/user-stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:40:04] "GET /api/user-stores HTTP/1.1" 200 -
-[2025-11-05 16:40:04,653] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:40:04,653] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:40:04,653 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:40:04,826] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:40:04,826] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:40:04,826 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:40:05,069] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:40:05,069] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:40:05,069 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:40:06] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:40:06] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:40:07] "GET /api/user-stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:40:07] "GET /api/user-stores HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:40:08] "GET /api/settings HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:40:08] "GET /api/settings HTTP/1.1" 200 -
-[2025-11-05 16:40:08,525] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:40:08,525] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:40:08,525 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:40:09] "GET /api/products HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:40:09] "GET /api/products HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:40:09] "GET /api/settings HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:40:09] "GET /api/settings HTTP/1.1" 200 -
-[2025-11-05 16:40:09,683] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-[2025-11-05 16:40:09,683] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-2025-11-05 16:40:09,683 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
-127.0.0.1 - - [05/Nov/2025 16:40:11] "GET /api/products HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:40:11] "GET /api/products HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:41:05] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:41:05] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:42:05] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:42:05] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:43:05] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:43:05] "GET /api/sync/status HTTP/1.1" 200 -
-[2025-11-05 16:43:48,080] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
-[2025-11-05 16:43:48,080] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
-2025-11-05 16:43:48,080 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
-[2025-11-05 16:43:50,242] INFO in background_tasks: Background pull sync completed successfully.
-[2025-11-05 16:43:50,242] INFO in background_tasks: Background pull sync completed successfully.
-2025-11-05 16:43:50,242 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
-[2025-11-05 16:43:52,017] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
-[2025-11-05 16:43:52,017] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
-2025-11-05 16:43:52,017 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
-[2025-11-05 16:43:53,823] INFO in background_tasks: Background pull sync completed successfully.
-[2025-11-05 16:43:53,823] INFO in background_tasks: Background pull sync completed successfully.
-2025-11-05 16:43:53,823 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
-127.0.0.1 - - [05/Nov/2025 16:44:05] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:44:05] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:45:06] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:45:06] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:46:05] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:46:05] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:47:05] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:47:05] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:48:05] "GET /api/sync/status HTTP/1.1" 200 -
-127.0.0.1 - - [05/Nov/2025 16:48:05] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 13:14:40,196] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 13:14:40,196] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 13:14:40,196 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 13:18:23] "OPTIONS /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:18:23] "OPTIONS /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:18:23] "OPTIONS /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:18:23] "OPTIONS /api/auth/me HTTP/1.1" 200 -
+Session authentication failed. User not logged in.
+Session authentication failed. User not logged in.
+127.0.0.1 - - [09/Nov/2025 13:18:23] "127.0.0.1 - - [09/Nov/2025 13:18:23] "GET /api/auth/me HTTP/1.1GET /api/auth/me HTTP/1.1" 401 -
+" 401 -
+Session authentication failed. User not logged in.
+Session authentication failed. User not logged in.
+127.0.0.1 - - [09/Nov/2025 13:18:23] "127.0.0.1 - - [09/Nov/2025 13:18:23] "GET /api/auth/me HTTP/1.1GET /api/auth/me HTTP/1.1" 401 -
+" 401 -
+127.0.0.1 - - [09/Nov/2025 13:18:48] "OPTIONS /api/auth/login HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:18:48] "OPTIONS /api/auth/login HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:18:53] "127.0.0.1 - - [09/Nov/2025 13:18:53] "POST /api/auth/login HTTP/1.1POST /api/auth/login HTTP/1.1" 401 -
+" 401 -
+[2025-11-09 13:19:06,304] INFO in auth_routes: User ID 94ac1f3a-bb34-44ee-b68c-d96b3edef79d stored in session after login.
+[2025-11-09 13:19:06,304] INFO in auth_routes: User ID 94ac1f3a-bb34-44ee-b68c-d96b3edef79d stored in session after login.
+2025-11-09 13:19:06,304 - main - INFO - auth_routes.py:40 - User ID 94ac1f3a-bb34-44ee-b68c-d96b3edef79d stored in session after login.
+[2025-11-09 13:19:09,440] INFO in session_logging: Session event logged: LOGIN for user 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:09,440] INFO in session_logging: Session event logged: LOGIN for user 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 13:19:09,440 - main - INFO - session_logging.py:43 - Session event logged: LOGIN for user 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 13:19:10] "POST /api/auth/login HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:10] "POST /api/auth/login HTTP/1.1" 200 -
+[2025-11-09 13:19:18,467] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:18,467] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 13:19:18,467 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 13:19:18] "OPTIONS /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:18] "OPTIONS /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:18] "OPTIONS /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:18] "OPTIONS /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 13:19:19,364] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:19:19,364] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 13:19:19,364 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+127.0.0.1 - - [09/Nov/2025 13:19:23] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:23] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:23] "OPTIONS /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:23] "OPTIONS /api/products HTTP/1.1" 200 -
+[2025-11-09 13:19:24,119] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:24,119] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 13:19:24] "OPTIONS /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:24] "OPTIONS /api/settings HTTP/1.1" 200 -
+2025-11-09 13:19:24,119 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 13:19:24] "OPTIONS /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:24] "OPTIONS /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:24] "OPTIONS /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:24] "OPTIONS /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:24] "OPTIONS /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:24] "OPTIONS /api/users HTTP/1.1" 200 -
+[2025-11-09 13:19:24,134] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:24,134] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 13:19:24] "OPTIONS /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:24] "OPTIONS /api/settings HTTP/1.1" 200 -
+2025-11-09 13:19:24,134 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 13:19:24] "OPTIONS /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:24] "OPTIONS /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:24] "OPTIONS /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:24] "OPTIONS /api/user-stores HTTP/1.1" 200 -
+[2025-11-09 13:19:24,455] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:24,455] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 13:19:24] "OPTIONS /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:24] "OPTIONS /api/stores HTTP/1.1" 200 -
+2025-11-09 13:19:24,455 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:24,468] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:24,468] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 13:19:24,468 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:24,475] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:24,475] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 13:19:24,475 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:25,145] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 13:19:25,145] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 13:19:25,145 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 13:19:26] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:26] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:26] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:26] "GET /api/auth/me HTTP/1.1" 200 -
+[2025-11-09 13:19:26,974] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:26,974] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 13:19:26,974 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 13:19:28] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:28] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:28] "GET /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:28] "GET /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:28] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:28] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 13:19:28,640] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:28,640] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 13:19:28,640 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:28,879] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:28,879] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 13:19:29] "GET /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:29] "GET /api/settings HTTP/1.1" 200 -
+[2025-11-09 13:19:29,078] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:29,078] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 13:19:28,879 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 13:19:29] "GET /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:29] "GET /api/user-stores HTTP/1.1" 200 -
+2025-11-09 13:19:29,078 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 13:19:29] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:29] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:29] "GET /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:29] "GET /api/products HTTP/1.1" 200 -
+[2025-11-09 13:19:30,035] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:30,035] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 13:19:30,035 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:30,467] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:30,467] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 13:19:30] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:30] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:30] "GET /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:30] "GET /api/users HTTP/1.1" 200 -
+[2025-11-09 13:19:30,811] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 13:19:30,467 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:30,811] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:30,813] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 13:19:30,811 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:30,813] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 13:19:31] "GET /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:31] "GET /api/settings HTTP/1.1" 200 -
+2025-11-09 13:19:30,813 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 13:19:31] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:31] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:31] "GET /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:31] "GET /api/user-stores HTTP/1.1" 200 -
+[2025-11-09 13:19:32,117] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:32,117] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:32,118] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:32,118] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 13:19:32,117 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 13:19:32,118 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 13:19:32] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:32] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:33] "GET /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:33] "GET /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:33] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:33] "GET /api/stores HTTP/1.1" 200 -
+[2025-11-09 13:19:33,597] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:33,597] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 13:19:33,597 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:33,679] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:33,679] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 13:19:33,679 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 13:19:34] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:34] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:34] "GET /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:34] "GET /api/user-stores HTTP/1.1" 200 -
+[2025-11-09 13:19:34,464] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:34,464] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 13:19:34,464 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:34,880] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:34,880] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 13:19:34,880 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:34,884] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 13:19:34,884 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 13:19:35] "GET /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:35] "GET /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:36] "GET /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:36] "GET /api/settings HTTP/1.1" 200 -
+[2025-11-09 13:19:36,419] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:36,419] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 13:19:36,419 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 13:19:37] "GET /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:37] "GET /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:37] "GET /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:37] "GET /api/settings HTTP/1.1" 200 -
+[2025-11-09 13:19:37,366] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 13:19:37,366] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 13:19:37,366 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 13:19:39] "GET /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:19:39] "GET /api/products HTTP/1.1" 200 -
+[2025-11-09 13:19:40,218] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:19:40,218] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 13:19:40,218 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:19:41,147] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 13:19:41,147] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 13:19:41,147 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 13:20:22] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:20:22] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:21:23] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:21:23] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:22:24] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:22:24] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:23:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:23:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:24:20] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:24:20] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 13:24:25,158] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:24:25,158] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 13:24:25,158 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:24:26,394] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 13:24:26,394] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 13:24:26,394 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+[2025-11-09 13:24:41,166] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:24:41,166] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 13:24:41,166 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:24:42,445] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 13:24:42,445] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 13:24:42,445 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 13:25:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:25:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:26:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:26:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:27:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:27:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:28:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:28:35] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 13:29:26,412] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:29:26,412] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 13:29:26,412 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:29:27,720] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 13:29:27,720] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 13:29:27,720 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 13:29:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:29:34] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 13:29:42,464] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:29:42,464] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 13:29:42,464 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:29:43,802] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 13:29:43,802] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 13:29:43,802 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 13:30:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:30:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:31:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:31:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:32:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:32:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:33:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:33:34] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 13:34:27,750] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:34:27,750] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 13:34:27,750 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:34:29,505] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 13:34:29,505] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 13:34:29,505 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 13:34:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:34:35] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 13:34:43,816] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:34:43,816] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 13:34:43,816 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:34:46,068] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 13:34:46,068] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 13:34:46,068 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 13:35:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:35:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:36:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:36:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:37:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:37:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:38:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:38:35] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 13:39:29,516] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:39:29,516] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 13:39:29,516 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:39:30,561] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 13:39:30,561] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 13:39:30,561 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 13:39:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:39:34] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 13:39:46,099] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:39:46,099] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 13:39:46,099 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:39:47,200] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 13:39:47,200] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 13:39:47,200 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 13:40:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:40:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:41:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:41:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:42:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:42:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:43:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:43:34] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 13:44:30,573] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:44:30,573] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 13:44:30,573 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:44:31,707] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 13:44:31,707] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 13:44:31,707 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 13:44:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:44:35] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 13:44:47,220] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:44:47,220] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 13:44:47,220 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:44:48,399] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 13:44:48,399] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 13:44:48,399 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 13:45:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:45:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:46:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:46:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:47:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:47:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:48:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:48:34] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 13:49:31,737] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:49:31,737] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 13:49:31,737 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:49:32,822] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 13:49:32,822] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 13:49:32,822 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 13:49:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:49:35] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 13:49:48,418] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:49:48,418] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 13:49:48,418 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:49:49,547] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 13:49:49,547] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 13:49:49,547 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 13:50:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:50:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:51:29] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:51:29] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:52:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:52:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:53:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:53:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:54:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:54:19] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 13:54:32,839] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:54:32,839] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 13:54:32,839 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:54:33,906] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 13:54:33,906] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 13:54:33,906 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+[2025-11-09 13:54:49,556] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:54:49,556] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 13:54:49,556 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:54:50,616] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 13:54:50,616] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 13:54:50,616 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 13:55:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:55:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:56:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:56:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:57:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:57:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:58:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:58:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:59:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 13:59:19] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 13:59:33,927] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:59:33,927] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 13:59:33,927 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:59:35,796] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 13:59:35,796] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 13:59:35,796 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+[2025-11-09 13:59:50,644] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:59:50,644] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 13:59:50,644 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 13:59:52,447] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 13:59:52,447] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 13:59:52,447 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 14:00:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:00:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:01:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:01:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:02:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:02:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:03:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:03:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:04:20] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:04:20] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 14:04:35,815] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:04:35,815] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 14:04:35,815 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:04:36,947] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 14:04:36,947] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 14:04:36,947 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+[2025-11-09 14:04:52,477] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:04:52,477] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 14:04:52,477 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:04:53,590] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 14:04:53,590] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 14:04:53,590 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 14:05:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:05:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:06:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:06:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:07:29] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:07:29] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:08:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:08:19] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:09:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:09:35] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 14:09:36,956] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:09:36,956] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 14:09:36,956 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:09:38,095] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 14:09:38,095] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 14:09:38,095 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+[2025-11-09 14:09:53,605] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:09:53,605] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 14:09:53,605 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:09:54,725] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 14:09:54,725] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 14:09:54,725 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 14:10:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:10:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:11:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:11:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:12:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:12:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:13:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:13:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:14:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:14:34] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 14:14:38,116] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:14:38,116] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 14:14:38,116 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:14:39,216] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 14:14:39,216] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 14:14:39,216 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+[2025-11-09 14:14:54,733] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:14:54,733] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 14:14:54,733 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:14:55,834] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 14:14:55,834] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 14:14:55,834 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 14:15:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:15:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:16:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:16:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:17:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:17:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:18:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:18:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:19:34] "OPTIONS /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:19:34] "OPTIONS /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:19:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:19:35] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 14:19:39,245] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:19:39,245] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 14:19:39,245 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:19:40,328] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 14:19:40,328] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 14:19:40,328 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+[2025-11-09 14:19:55,855] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:19:55,855] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 14:19:55,855 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:19:57,012] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 14:19:57,012] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 14:19:57,012 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 14:20:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:20:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:21:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:21:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:22:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:22:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:23:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:23:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:24:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:24:34] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 14:24:40,348] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:24:40,348] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 14:24:40,348 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:24:41,513] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 14:24:41,513] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 14:24:41,513 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+[2025-11-09 14:24:57,027] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:24:57,027] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 14:24:57,027 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:24:58,140] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 14:24:58,140] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 14:24:58,140 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 14:25:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:25:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:26:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:26:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:27:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:27:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:28:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:28:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:29:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:29:35] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 14:29:41,530] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:29:41,530] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 14:29:41,530 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:29:42,647] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 14:29:42,647] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 14:29:42,647 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+[2025-11-09 14:29:58,162] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:29:58,162] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 14:29:58,162 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:29:59,286] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 14:29:59,286] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 14:29:59,286 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 14:30:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:30:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:31:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:31:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:32:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:32:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:33:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:33:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:34:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:34:34] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 14:34:42,673] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:34:42,673] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 14:34:42,673 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:34:43,798] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 14:34:43,798] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 14:34:43,798 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+[2025-11-09 14:34:59,306] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:34:59,306] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 14:34:59,306 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:35:00,440] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 14:35:00,440] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 14:35:00,440 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+127.0.0.1 - - [09/Nov/2025 14:35:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:35:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:36:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:36:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:37:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:37:35] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:38:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:38:34] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:07] "OPTIONS /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:07] "OPTIONS /api/auth/me HTTP/1.1" 200 -
+[2025-11-09 14:39:07,461] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:07,461] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:07,461 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 14:39:07] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:07] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:08] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:08] "GET /api/auth/me HTTP/1.1" 200 -
+[2025-11-09 14:39:20,690] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:20,690] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:20,690 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 14:39:21] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:21] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:21] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:21] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:23] "OPTIONS /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:23] "OPTIONS /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:23] "OPTIONS /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:23] "OPTIONS /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:23] "OPTIONS /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:23] "OPTIONS /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:23] "OPTIONS /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:23] "OPTIONS /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:23] "OPTIONS /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:23] "OPTIONS /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:23] "OPTIONS /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:23] "OPTIONS /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:23] "OPTIONS /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:23] "OPTIONS /api/settings HTTP/1.1" 200 -
+[2025-11-09 14:39:23,820] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:23,820] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:23,820 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:23,824] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:23,824] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:23,824 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:24,035] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:24,035] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:24,035 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 14:39:24] "OPTIONS /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:24] "OPTIONS /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:24] "OPTIONS /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:24] "OPTIONS /api/stores HTTP/1.1" 200 -
+[2025-11-09 14:39:24,180] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:24,180] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:24,180 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:24,264] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 14:39:24] "OPTIONS /api/user-stores HTTP/1.1" 200 -
+c1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 14:39:24] "OPTIONS /api/user-stores HTTP/1.1" 200 -
+[2025-11-09 14:39:24,270] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:24,270] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:24,264 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:24,270 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 14:39:25] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:25] "GET /api/auth/me HTTP/1.1" 200 -
+[2025-11-09 14:39:26,681] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:26,681] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:26,681 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 14:39:26] "GET /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:26] "GET /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:26] "GET /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:26] "GET /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:27] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:27] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:27] "GET /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:27] "GET /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:27] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:27] "GET /api/auth/me HTTP/1.1" 200 -
+[2025-11-09 14:39:27,547] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:27,547] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:27,547 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:27,584] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:27,584] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:27,767] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:27,767] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:27,584 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:27,951] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:27,951] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:27,767 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 14:39:28] "GET /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:28] "GET /api/products HTTP/1.1" 200 -
+2025-11-09 14:39:27,951 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 14:39:28] "GET /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:28] "GET /api/users HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:28] "GET /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:28] "GET /api/settings HTTP/1.1" 200 -
+[2025-11-09 14:39:29,041] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:29,041] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:29,041 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 14:39:29] "GET /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:29] "GET /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:29] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:29] "GET /api/stores HTTP/1.1" 200 -
+[2025-11-09 14:39:29,714] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:29,714] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:29,714 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 14:39:30] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:30] "GET /api/stores HTTP/1.1" 200 -
+[2025-11-09 14:39:30,819] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:30,819] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 14:39:30] "GET /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:30] "GET /api/products HTTP/1.1" 200 -
+2025-11-09 14:39:30,819 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:31,045] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:31,045] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:31,045 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 14:39:31] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:31] "GET /api/stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:31] "GET /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:31] "GET /api/user-stores HTTP/1.1" 200 -
+[2025-11-09 14:39:32,195] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:32,195] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:32,195 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:32,425] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:32,425] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:32,425 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:32,426] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:32,426] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:32,426 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 14:39:32] "GET /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:32] "GET /api/user-stores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:33] "GET /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:33] "GET /api/settings HTTP/1.1" 200 -
+[2025-11-09 14:39:33,756] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:33,756] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:33,756 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 14:39:34] "GET /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:34] "GET /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:34] "GET /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:34] "GET /api/settings HTTP/1.1" 200 -
+[2025-11-09 14:39:34,583] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:34,583] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:34,583 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 14:39:36] "GET /api/products HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:36] "GET /api/products HTTP/1.1" 200 -
+[2025-11-09 14:39:41,310] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:39:41,310] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:39:41,310 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 14:39:41] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:41] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:42] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:39:42] "GET /api/sync/status HTTP/1.1" 200 -
+[2025-11-09 14:39:43,818] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:39:43,818] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 14:39:43,818 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:39:44,925] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 14:39:44,925] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 14:39:44,925 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+[2025-11-09 14:40:00,449] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:40:00,449] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+2025-11-09 14:40:00,449 - main - INFO - background_tasks.py:17 - Background pull sync starting. Next sync in 5 minutes.
+[2025-11-09 14:40:01,650] INFO in background_tasks: Background pull sync completed successfully.
+[2025-11-09 14:40:01,650] INFO in background_tasks: Background pull sync completed successfully.
+2025-11-09 14:40:01,650 - main - INFO - background_tasks.py:21 - Background pull sync completed successfully.
+[2025-11-09 14:40:04,880] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+[2025-11-09 14:40:04,880] INFO in auth: Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+2025-11-09 14:40:04,880 - main - INFO - auth.py:21 - Authenticating user_id from session: 94ac1f3a-bb34-44ee-b68c-d96b3edef79d
+127.0.0.1 - - [09/Nov/2025 14:40:05] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:40:05] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:40:05] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:40:05] "GET /api/auth/me HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:41:06] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:41:06] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:42:05] "GET /api/sync/status HTTP/1.1" 200 -
+127.0.0.1 - - [09/Nov/2025 14:42:05] "GET /api/sync/status HTTP/1.1" 200 -
