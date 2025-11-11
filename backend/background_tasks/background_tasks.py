@@ -3,7 +3,7 @@ import threading
 from flask import Flask
 
 from config.config import (
-    PRODUCTS_FILE, CUSTOMERS_FILE, USERS_FILE, STORES_FILE, SYSTEM_SETTINGS_FILE
+    PRODUCTS_FILE, CUSTOMERS_FILE, USERS_FILE, STORES_FILE, SYSTEM_SETTINGS_FILE, RETURNS_FILE
 )
 from helpers.utils import write_json_file
 from utils.sync_controller import SyncController
@@ -32,6 +32,8 @@ def background_pull_sync_scheduler(app: Flask, interval_minutes=5):
                             write_json_file(STORES_FILE, records)
                         elif table_name == 'SystemSettings' and records and len(records) > 0:
                             write_json_file(SYSTEM_SETTINGS_FILE, records[0])
+                        elif table_name == 'Returns' and records:
+                            write_json_file(RETURNS_FILE, records)
                 else:
                     app.logger.error(f"Background pull sync failed: {result['errors']}")
             except Exception as e:

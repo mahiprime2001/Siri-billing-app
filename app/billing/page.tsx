@@ -10,6 +10,7 @@ import BillingHistory from "@/components/billing-history"
 import BillingAndCart from "@/components/billing-and-cart"
 import PrintableInvoice from "@/components/printable-invoice"
 import ReturnsDialog from "@/components/returns-dialog"
+import ReturnsManagement from "@/components/returns-management"
 import { useToast } from "@/hooks/use-toast"
 import Image from "next/image"
 import { apiClient } from "@/lib/api-client"
@@ -32,6 +33,7 @@ export default function BillingPage() {
   const [isReturnsDialogOpen, setIsReturnsDialogOpen] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false) // State for sync operation
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false) // State for update check
+  const [pendingReturnsCount, setPendingReturnsCount] = useState(0) // State for pending returns count
   const router = useRouter()
   const { toast } = useToast()
 
@@ -77,17 +79,32 @@ export default function BillingPage() {
     }
   }, []);
 
+  const fetchPendingReturnsCount = useCallback(async () => {
+    try {
+      const response = await apiClient("/api/returns/pending/count");
+      if (response.ok) {
+        const data = await response.json();
+        setPendingReturnsCount(data.count);
+      }
+    } catch (error) {
+      console.error("Error fetching pending returns count:", error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchUserData()
     fetchSyncStatus()
+    fetchPendingReturnsCount()
 
-    // Set up an interval to refresh sync status every minute
+    // Set up intervals to refresh sync status and pending returns count
     const statusInterval = setInterval(fetchSyncStatus, 60 * 1000);
+    const returnsInterval = setInterval(fetchPendingReturnsCount, 30 * 1000); // Check every 30 seconds
 
     return () => {
       clearInterval(statusInterval);
+      clearInterval(returnsInterval);
     }
-  }, [fetchUserData, fetchSyncStatus])
+  }, [fetchUserData, fetchSyncStatus, fetchPendingReturnsCount])
 
   const handleLogout = async () => {
     try {
@@ -215,8 +232,9 @@ export default function BillingPage() {
         description: `Successfully synced data to JSON files.`,
       })
 
-      // Refresh sync status
+      // Refresh sync status and pending returns count
       await fetchSyncStatus()
+      await fetchPendingReturnsCount()
     } catch (error) {
       console.error("Sync failed:", error)
       toast({
@@ -299,9 +317,17 @@ export default function BillingPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs defaultValue="billing" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="billing">Billing & Cart</TabsTrigger>
             <TabsTrigger value="history">Billing History</TabsTrigger>
+            <TabsTrigger value="returns" className="relative">
+              Returns
+              {pendingReturnsCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-semibold">
+                  {pendingReturnsCount}
+                </span>
+              )}
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="billing">
@@ -310,6 +336,10 @@ export default function BillingPage() {
 
           <TabsContent value="history">
             <BillingHistory />
+          </TabsContent>
+
+          <TabsContent value="returns">
+            <ReturnsManagement onCountChange={fetchPendingReturnsCount} />
           </TabsContent>
         </Tabs>
       </main>

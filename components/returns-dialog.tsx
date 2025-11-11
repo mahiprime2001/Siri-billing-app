@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/hooks/use-toast"
 import { Search, ArrowLeft, Package, User, Phone, CreditCard, Clock, IndianRupee } from "lucide-react"
+import { apiClient } from "@/lib/api-client"
 
 interface BillItem {
   productId: string
@@ -35,7 +36,7 @@ interface Bill {
 interface ReturnRequest {
   searchQuery: string
   searchType: 'customer' | 'phone' | 'invoice'
-  selectedItems: string[]
+  selectedItems: { id: string; quantity: number }[] // Modified to include quantity
   returnReason: string
   refundMethod: 'cash' | 'upi'
 }
@@ -58,7 +59,6 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
   const [isSearching, setIsSearching] = useState(false)
   const [showReturnForm, setShowReturnForm] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  
   const { toast } = useToast()
 
   const handleSearch = async () => {
@@ -72,37 +72,45 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
     }
 
     setIsSearching(true)
-    
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/returns/search`, {
+      const response = await apiClient('/api/returns/search', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           query: returnRequest.searchQuery,
           searchType: returnRequest.searchType
         }),
       });
 
-      if (!response.ok) {
-        throw new Error('Search failed')
+      let results: Bill[] = []
+      try {
+        results = await response.json()
+        console.log("API Search Results:", results)
+      } catch (jsonError) {
+        console.error("Error parsing API search results JSON:", jsonError)
+        toast({
+          title: "Data Error",
+          description: "Failed to parse search results from the server.",
+          variant: "destructive",
+        })
       }
 
-      const results = await response.json()
       setSearchResults(results)
-      
       if (results.length === 0) {
         toast({
           title: "No Results",
           description: "No bills found matching your search criteria",
+        })
+      } else {
+        toast({
+          title: "Search Complete",
+          description: `${results.length} bills found.`,
         })
       }
     } catch (error) {
       console.error("Error searching for bills:", error)
       toast({
         title: "Search Failed",
-        description: "Failed to search for bills. Please try again.",
+        description: (error as Error).message || "Failed to search for bills. Please try again.",
         variant: "destructive",
       })
     } finally {
@@ -110,14 +118,40 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
     }
   }
 
-  const handleItemSelection = (itemId: string, checked: boolean) => {
+  const handleItemSelection = (itemId: string, checked: boolean, maxQuantity: number) => {
     console.log("handleItemSelection called:", { itemId, checked });
+    setReturnRequest(prev => {
+      if (checked) {
+        return {
+          ...prev,
+          selectedItems: [...prev.selectedItems, { id: itemId, quantity: 1 }]
+        }
+      } else {
+        return {
+          ...prev,
+          selectedItems: prev.selectedItems.filter(item => item.id !== itemId)
+        }
+      }
+    })
+  }
+
+  const handleQuantityChange = (itemId: string, newQuantity: number, maxQuantity: number) => {
+    const clampedQuantity = Math.max(1, Math.min(newQuantity, maxQuantity))
     setReturnRequest(prev => ({
       ...prev,
-      selectedItems: checked 
-        ? [...prev.selectedItems, itemId]
-        : prev.selectedItems.filter(id => id !== itemId)
+      selectedItems: prev.selectedItems.map(item =>
+        item.id === itemId ? { ...item, quantity: clampedQuantity } : item
+      )
     }))
+  }
+
+  const isItemSelected = (itemId: string) => {
+    return returnRequest.selectedItems.some(item => item.id === itemId)
+  }
+
+  const getItemQuantity = (itemId: string) => {
+    const item = returnRequest.selectedItems.find(item => item.id === itemId)
+    return item?.quantity || 1
   }
 
   const handleSubmitReturn = async () => {
@@ -125,7 +159,7 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
     console.log("Current returnRequest.selectedItems:", returnRequest.selectedItems);
     console.log("Current searchResults:", searchResults);
     console.log("Calculated total before submit:", calculateSelectedTotal());
-
+    
     if (returnRequest.selectedItems.length === 0) {
       toast({
         title: "No Items Selected",
@@ -145,13 +179,9 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
     }
 
     setIsSubmitting(true)
-
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/returns/submit`, {
+      const response = await apiClient('/api/returns/submit', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           selectedItems: returnRequest.selectedItems,
           returnReason: returnRequest.returnReason,
@@ -161,25 +191,19 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
         }),
       });
 
-      if (!response.ok) {
-        throw new Error('Return submission failed')
-      }
-
       const result = await response.json()
-      
       toast({
         title: "Return Submitted",
         description: `Return request submitted successfully. Return ID: ${result.returnId}`,
       })
 
-      // Reset form and close modal
       resetForm()
       onClose()
     } catch (error) {
       console.error("Error submitting return:", error)
       toast({
         title: "Submission Failed",
-        description: "Failed to submit return request. Please try again.",
+        description: (error as Error).message || "Failed to submit return request. Please try again.",
         variant: "destructive",
       })
     } finally {
@@ -200,12 +224,15 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
   }
 
   const calculateSelectedTotal = () => {
-    const total = returnRequest.selectedItems.reduce((total, itemId) => {
-      const [billId, itemIdx] = itemId.split('-')
+    const total = returnRequest.selectedItems.reduce((total, selectedItem) => {
+      const lastHyphenIndex = selectedItem.id.lastIndexOf('-');
+      const billId = selectedItem.id.substring(0, lastHyphenIndex);
+      const itemIdx = selectedItem.id.substring(lastHyphenIndex + 1);
       const bill = searchResults.find(b => b.id === billId)
       const item = bill?.items[parseInt(itemIdx)]
-      console.log(`Calculating for itemId: ${itemId}, billId: ${billId}, itemIdx: ${itemIdx}, found bill: ${!!bill}, found item: ${!!item}, item total: ${item?.total || 0}`);
-      return total + (item?.total || 0)
+      const itemTotal = (item?.price || 0) * selectedItem.quantity
+      console.log(`Calculating for itemId: ${selectedItem.id}, quantity: ${selectedItem.quantity}, billId: ${billId}, itemIdx: ${itemIdx}, found bill: ${!!bill}, found item: ${!!item}, item total: ${itemTotal}`);
+      return total + itemTotal
     }, 0)
     console.log("calculateSelectedTotal result:", total);
     return total;
@@ -221,8 +248,8 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
@@ -232,9 +259,9 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
             Search for bills and process return requests
           </DialogDescription>
         </DialogHeader>
-        
+
         {!showReturnForm ? (
-          <div className="space-y-6">
+          <>
             {/* Search Form */}
             <Card>
               <CardHeader>
@@ -242,54 +269,55 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
                 <CardDescription>Find bills by customer name, phone number, or invoice number</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-3">
-                    <Label>Search By</Label>
-                    <RadioGroup
-                      value={returnRequest.searchType}
-                      onValueChange={(value) => setReturnRequest(prev => ({ ...prev, searchType: value as 'customer' | 'phone' | 'invoice' }))}
-                      className="space-y-2"
-                    >
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="customer" id="customer" />
-                        <Label htmlFor="customer" className="flex items-center gap-2">
-                          <User className="h-4 w-4" />
-                          Customer Name
-                        </Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="phone" id="phone" />
-                        <Label htmlFor="phone" className="flex items-center gap-2">
-                          <Phone className="h-4 w-4" />
-                          Mobile Number
-                        </Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="invoice" id="invoice" />
-                        <Label htmlFor="invoice" className="flex items-center gap-2">
-                          <CreditCard className="h-4 w-4" />
-                          Invoice Number
-                        </Label>
-                      </div>
-                    </RadioGroup>
-                  </div>
-                  
-                  <div className="space-y-3 md:col-span-2">
-                    <Label>Search Query</Label>
-                    <div className="flex space-x-2">
-                      <Input
-                        placeholder={getSearchPlaceholder()}
-                        value={returnRequest.searchQuery}
-                        onChange={(e) => setReturnRequest(prev => ({ ...prev, searchQuery: e.target.value }))}
-                        onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                        className="flex-1"
-                      />
-                      <Button onClick={handleSearch} disabled={isSearching}>
-                        <Search className="h-4 w-4 mr-2" />
-                        {isSearching ? 'Searching...' : 'Search'}
-                      </Button>
+                <div className="space-y-2">
+                  <Label>Search By</Label>
+                  <RadioGroup
+                    value={returnRequest.searchType}
+                    onValueChange={(value) => {
+                      console.log("RadioGroup onValueChange:", value);
+                      setReturnRequest(prev => ({ ...prev, searchType: value as 'customer' | 'phone' | 'invoice' }));
+                    }}
+                    className="space-y-2"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="customer" id="customer" />
+                      <Label htmlFor="customer" className="font-normal cursor-pointer">
+                        <User className="h-4 w-4 inline mr-1" />
+                        Customer Name
+                      </Label>
                     </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="phone" id="phone" />
+                      <Label htmlFor="phone" className="font-normal cursor-pointer">
+                        <Phone className="h-4 w-4 inline mr-1" />
+                        Mobile Number
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="invoice" id="invoice" />
+                      <Label htmlFor="invoice" className="font-normal cursor-pointer">
+                        <CreditCard className="h-4 w-4 inline mr-1" />
+                        Invoice Number
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <Label>Search Query</Label>
+                    <Input
+                      placeholder={getSearchPlaceholder()}
+                      value={returnRequest.searchQuery}
+                      onChange={(e) => setReturnRequest(prev => ({ ...prev, searchQuery: e.target.value }))}
+                      onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                      className="flex-1"
+                    />
                   </div>
+                  <Button onClick={handleSearch} disabled={isSearching} className="mt-6">
+                    <Search className="h-4 w-4 mr-2" />
+                    {isSearching ? 'Searching...' : 'Search'}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -298,191 +326,204 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
             {searchResults.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Search Results ({searchResults.length} bills found)</CardTitle>
+                  <CardTitle className="text-lg">Search Results ({searchResults.length} bills found)</CardTitle>
                   <CardDescription>Select items from the bills below to process returns</CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {searchResults.map((bill) => (
-                      <Card key={bill.id} className="border-2">
-                        <CardHeader className="pb-3">
-                          <div className="flex justify-between items-start">
-                            <div className="space-y-1">
-                              <CardTitle className="text-lg">Invoice: {bill.id}</CardTitle>
-                              <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-                                <span className="flex items-center gap-1">
-                                  <User className="h-4 w-4" />
-                                  {bill.customerName || 'N/A'}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <Phone className="h-4 w-4" />
-                                  {bill.customerPhone || 'N/A'}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <Clock className="h-4 w-4" />
-                                  {new Date(bill.timestamp).toLocaleDateString()}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <IndianRupee className="h-4 w-4" />
-                                  {bill.total.toFixed(2)}
-                                </span>
-                              </div>
-                              <Badge variant="outline">{bill.paymentMethod}</Badge>
+                <CardContent className="space-y-4">
+                  {searchResults.map((bill) => (
+                    <Card key={bill.id} className="border">
+                      <CardHeader className="pb-3">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <CardTitle className="text-md">Invoice: {bill.id}</CardTitle>
+                            <div className="flex gap-4 mt-2 text-sm text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <User className="h-3 w-3" />
+                                {bill.customerName || 'N/A'}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Phone className="h-3 w-3" />
+                                {bill.customerPhone || 'N/A'}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                {new Date(bill.timestamp).toLocaleDateString()}
+                              </span>
                             </div>
                           </div>
-                        </CardHeader>
-                        
-                        <CardContent>
-                          <div className="space-y-3">
-                            <h5 className="font-medium text-sm">Items Available for Return:</h5>
-                            {bill.items.map((item, idx) => (
-                              <div key={`${bill.id}-${idx}`} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50">
+                          <div className="text-right">
+                            <Badge variant="secondary" className="mb-1">
+                              <IndianRupee className="h-3 w-3 mr-1" />
+                              {bill.total.toFixed(2)}
+                            </Badge>
+                            <div className="text-xs text-muted-foreground">{bill.paymentMethod}</div>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <Label className="text-sm font-semibold">Items Available for Return:</Label>
+                        <div className="space-y-2 mt-2">
+                          {bill.items.map((item, idx) => {
+                            const itemId = `${bill.id}-${idx}`
+                            const isSelected = isItemSelected(itemId)
+                            const selectedQuantity = getItemQuantity(itemId)
+                            
+                            return (
+                              <div key={idx} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent/50">
                                 <Checkbox
-                                  id={`item-${bill.id}-${idx}`}
-                                  checked={returnRequest.selectedItems.includes(`${bill.id}-${idx}`)}
-                                  onCheckedChange={(checked) => handleItemSelection(`${bill.id}-${idx}`, checked as boolean)}
+                                  checked={isSelected}
+                                  onCheckedChange={(checked) => handleItemSelection(itemId, checked as boolean, item.quantity)}
                                 />
-                                <div className="flex-1 space-y-1">
-                                  <p className="font-medium">{item.productName}</p>
-                                  <div className="flex flex-wrap gap-4 text-xs text-gray-600">
-                                    <span>Quantity: {item.quantity}</span>
+                                <div className="flex-1">
+                                  <div className="font-medium">{item.productName}</div>
+                                  <div className="text-sm text-muted-foreground space-x-3">
+                                    <span>Available: {item.quantity}</span>
                                     <span>Unit Price: ₹{item.price.toFixed(2)}</span>
-                                    <span className="font-medium">Total: ₹{item.total.toFixed(2)}</span>
+                                    <span>Total: ₹{item.total.toFixed(2)}</span>
                                   </div>
                                 </div>
+                                {isSelected && (
+                                  <div className="flex items-center gap-2">
+                                    <Label htmlFor={`qty-${itemId}`} className="text-sm whitespace-nowrap">Return Qty:</Label>
+                                    <Input
+                                      id={`qty-${itemId}`}
+                                      type="number"
+                                      min={1}
+                                      max={item.quantity}
+                                      value={selectedQuantity}
+                                      onChange={(e) => handleQuantityChange(itemId, parseInt(e.target.value) || 1, item.quantity)}
+                                      className="w-20"
+                                    />
+                                  </div>
+                                )}
                               </div>
-                            ))}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
+                            )
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </CardContent>
               </Card>
             )}
 
             {/* Selected Items Summary */}
             {returnRequest.selectedItems.length > 0 && (
-              <Card className="bg-blue-50 border-blue-200">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg text-blue-800">Selected Items Summary</CardTitle>
+              <Card className="border-primary">
+                <CardHeader>
+                  <CardTitle className="text-lg">Selected Items Summary</CardTitle>
+                  <CardDescription>
+                    {returnRequest.selectedItems.length} item(s) selected for return
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
-                    <p className="text-sm text-blue-700">
-                      {returnRequest.selectedItems.length} item(s) selected for return
-                    </p>
-                    <p className="text-lg font-semibold text-blue-800">
-                      Total Return Amount: ₹{calculateSelectedTotal().toFixed(2)}
-                    </p>
-                    <Button 
-                      onClick={() => setShowReturnForm(true)}
-                      className="w-full mt-3"
-                      disabled={returnRequest.selectedItems.length === 0}
-                    >
-                      Proceed to Return Details
-                    </Button>
+                  <div className="flex justify-between items-center">
+                    <span className="text-lg font-semibold">Total Return Amount:</span>
+                    <span className="text-2xl font-bold text-primary">₹{calculateSelectedTotal().toFixed(2)}</span>
                   </div>
+                  <Button
+                    onClick={() => setShowReturnForm(true)}
+                    className="w-full mt-3"
+                    disabled={returnRequest.selectedItems.length === 0}
+                  >
+                    Proceed to Return Details
+                  </Button>
                 </CardContent>
               </Card>
             )}
-          </div>
+          </>
         ) : (
           /* Return Form */
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl font-semibold">Return Details</h3>
-              <Button variant="outline" onClick={() => setShowReturnForm(false)}>
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Search
-              </Button>
-            </div>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Return Form */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Return Information</CardTitle>
-                  <CardDescription>Provide details for the return request</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="return-reason">Return Reason *</Label>
-                    <Textarea
-                      id="return-reason"
-                      placeholder="Please describe the reason for return..."
-                      value={returnRequest.returnReason}
-                      onChange={(e) => setReturnRequest(prev => ({ ...prev, returnReason: e.target.value }))}
-                      rows={4}
-                    />
-                  </div>
-                  
-                  <div className="space-y-3">
-                    <Label>Refund Method *</Label>
-                    <RadioGroup
-                      value={returnRequest.refundMethod}
-                      onValueChange={(value) => setReturnRequest(prev => ({ ...prev, refundMethod: value as 'cash' | 'upi' }))}
-                      className="space-y-2"
-                    >
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="cash" id="refund-cash" />
-                        <Label htmlFor="refund-cash" className="flex items-center gap-2">
-                          <CreditCard className="h-4 w-4" />
-                          Cash Refund
-                        </Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="upi" id="refund-upi" />
-                        <Label htmlFor="refund-upi" className="flex items-center gap-2">
-                          <Phone className="h-4 w-4" />
-                          UPI Refund
-                        </Label>
-                      </div>
-                    </RadioGroup>
-                  </div>
-                </CardContent>
-              </Card>
+          <div className="space-y-4">
+            <Button variant="outline" onClick={() => setShowReturnForm(false)}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Search
+            </Button>
 
-              {/* Selected Items Summary */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Items for Return</CardTitle>
-                  <CardDescription>Review the selected items</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {returnRequest.selectedItems.length > 0 ? (
-                    <div className="space-y-3">
-                      {returnRequest.selectedItems.map(itemId => {
-                        const [billId, itemIdx] = itemId.split('-')
-                        const bill = searchResults.find(b => b.id === billId)
-                        const item = bill?.items[parseInt(itemIdx)]
-                        return (
-                          <div key={itemId} className="p-3 border rounded-lg">
-                            <p className="font-medium">{item?.productName}</p>
-                            <div className="text-sm text-gray-600 mt-1">
-                              <p>Invoice: {billId}</p>
-                              <p>Quantity: {item?.quantity} × ₹{item?.price.toFixed(2)}</p>
-                              <p className="font-medium">Amount: ₹{item?.total.toFixed(2)}</p>
+            {/* Return Form */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Return Information</CardTitle>
+                <CardDescription>Provide details for the return request</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="returnReason">Return Reason *</Label>
+                  <Textarea
+                    id="returnReason"
+                    placeholder="Explain why these items are being returned..."
+                    value={returnRequest.returnReason}
+                    onChange={(e) => setReturnRequest(prev => ({ ...prev, returnReason: e.target.value }))}
+                    rows={4}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Refund Method *</Label>
+                  <RadioGroup
+                    value={returnRequest.refundMethod}
+                    onValueChange={(value) => setReturnRequest(prev => ({ ...prev, refundMethod: value as 'cash' | 'upi' }))}
+                    className="space-y-2"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="cash" id="cash" />
+                      <Label htmlFor="cash" className="font-normal cursor-pointer">Cash Refund</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="upi" id="upi" />
+                      <Label htmlFor="upi" className="font-normal cursor-pointer">UPI Refund</Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Selected Items Summary */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Items for Return</CardTitle>
+                <CardDescription>Review the selected items</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {returnRequest.selectedItems.length > 0 ? (
+                  <>
+                    {returnRequest.selectedItems.map(selectedItem => {
+                      const lastHyphenIndex = selectedItem.id.lastIndexOf('-');
+                      const billId = selectedItem.id.substring(0, lastHyphenIndex);
+                      const itemIdx = selectedItem.id.substring(lastHyphenIndex + 1);
+                      const bill = searchResults.find(b => b.id === billId)
+                      const item = bill?.items[parseInt(itemIdx)]
+
+                      return (
+                        <div key={selectedItem.id} className="flex justify-between items-center p-3 border rounded-lg">
+                          <div>
+                            <div className="font-medium">{item?.productName}</div>
+                            <div className="text-sm text-muted-foreground">Invoice: {billId}</div>
+                            <div className="text-sm text-muted-foreground">
+                              Quantity: {selectedItem.quantity} × ₹{item?.price.toFixed(2)}
                             </div>
                           </div>
-                        )
-                      })}
-                      <Separator />
-                      <div className="flex justify-between items-center font-semibold text-lg">
-                        <span>Total Return Amount:</span>
-                        <span>₹{calculateSelectedTotal().toFixed(2)}</span>
-                      </div>
+                          <div className="text-right">
+                            <div className="font-semibold">Amount: ₹{((item?.price || 0) * selectedItem.quantity).toFixed(2)}</div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                    <Separator />
+                    <div className="flex justify-between items-center text-lg font-semibold pt-2">
+                      <span>Total Return Amount:</span>
+                      <span className="text-primary">₹{calculateSelectedTotal().toFixed(2)}</span>
                     </div>
-                  ) : (
-                    <p className="text-gray-500 text-center py-4">No items selected</p>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
+                  </>
+                ) : (
+                  <p className="text-center text-muted-foreground py-4">No items selected</p>
+                )}
+              </CardContent>
+            </Card>
           </div>
         )}
 
-        <DialogFooter className="flex gap-2">
+        <DialogFooter>
           <Button variant="outline" onClick={resetForm}>
             Reset
           </Button>
@@ -490,10 +531,7 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
             Cancel
           </Button>
           {showReturnForm && (
-            <Button 
-              onClick={handleSubmitReturn}
-              disabled={isSubmitting || returnRequest.selectedItems.length === 0}
-            >
+            <Button onClick={handleSubmitReturn} disabled={isSubmitting}>
               {isSubmitting ? 'Submitting...' : 'Submit Return Request'}
             </Button>
           )}

@@ -71,7 +71,10 @@ def get_system_settings_data():
     return read_json_file(SYSTEM_SETTINGS_FILE, {})
 
 def get_returns_data():
-    """Load returns from JSON"""
+    """Load returns from MySQL first, fallback to JSON"""
+    mysql_data = get_mysql_data('Returns')
+    if mysql_data is not None:
+        return mysql_data
     return read_json_file(RETURNS_FILE, [])
 
 def save_returns_data(returns):
