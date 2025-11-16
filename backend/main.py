@@ -8,6 +8,8 @@ from datetime import datetime, timedelta, timezone, date
 from decimal import Decimal
 from urllib.parse import urlparse
 from flask import Flask, request, jsonify, make_response, g, session
+from flask_session import Session # Import Flask-Session
+from flask_sqlalchemy import SQLAlchemy # Import Flask-SQLAlchemy
 import threading
 import uuid
 from functools import wraps
@@ -37,13 +39,26 @@ from routes.health_routes import health_bp
 
 app = Flask(__name__)
 
-# Configure Flask sessions
+# Configure Flask-SQLAlchemy for session storage
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('SQLALCHEMY_DATABASE_URI', 'sqlite:///sessions.db')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
+
+# Configure Flask sessions to use SQLAlchemy
+app.config['SESSION_TYPE'] = 'sqlalchemy'
+app.config['SESSION_SQLALCHEMY'] = db
+app.config['SESSION_SQLALCHEMY_TABLE'] = 'flask_sessions' # Custom table name
+
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_key_for_dev')
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SECURE'] = False
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_DOMAIN'] = None
 app.config['SESSION_COOKIE_PATH'] = '/'
+
+# Initialize Flask-Session
+server_session = Session(app)
 
 # Initialize connection pool and sync controller
 initialize_pool()
@@ -111,6 +126,11 @@ if __name__ == '__main__':
     
     # Start background pull sync (every 5 minutes)
     start_background_tasks(app)
+    
+    # Create session table if it doesn't exist
+    with app.app_context():
+        db.create_all()
+        app.logger.info("SQLAlchemy session table ensured.")
     
     try:
         app.run(debug=True, port=port, host=host)

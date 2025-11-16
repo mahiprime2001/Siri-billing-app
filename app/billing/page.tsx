@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
-import { LogOut, Gem, RefreshCw, CloudOff, Cloud, Package, Download, Database } from "lucide-react" // Added Download and Database icons
+import { LogOut, Gem, RefreshCw, CloudOff, Cloud, Package, Download, Database, Menu } from "lucide-react" // Added Download, Database, and Menu icons
 import BillingHistory from "@/components/billing-history"
 import BillingAndCart from "@/components/billing-and-cart"
 import PrintableInvoice from "@/components/printable-invoice"
 import ReturnsDialog from "@/components/returns-dialog"
 import ReturnsManagement from "@/components/returns-management"
 import { useToast } from "@/hooks/use-toast"
+import { useIsMobile } from "@/hooks/use-mobile" // Import useIsMobile hook
 import Image from "next/image"
 import { apiClient } from "@/lib/api-client"
 import { check } from '@tauri-apps/plugin-updater' // Import updater check
@@ -34,6 +35,7 @@ export default function BillingPage() {
   const [isSyncing, setIsSyncing] = useState(false) // State for sync operation
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false) // State for update check
   const [pendingReturnsCount, setPendingReturnsCount] = useState(0) // State for pending returns count
+  const isMobile = useIsMobile() // Use the hook
   const router = useRouter()
   const { toast } = useToast()
 
@@ -255,30 +257,32 @@ export default function BillingPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+        <div className={`max-w-7xl mx-auto px-4 ${isMobile ? "py-2" : "py-4"} flex justify-between items-center`}>
           <div className="flex items-center space-x-3">
-            <Image src="/logo.png" alt="Company Logo" width={40} height={40} className="rounded-lg" />
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Siri Billing</h1>
+            <Image src="/logo.png" alt="Company Logo" width={isMobile ? 32 : 40} height={isMobile ? 32 : 40} className="rounded-lg" />
+            <h1 className={`font-bold text-gray-900 dark:text-white ${isMobile ? "text-xl" : "text-2xl"}`}>Siri Billing</h1>
           </div>
 
           <div className="flex items-center space-x-4">
             {/* Online/Offline Status Indicator */}
-            <div className="flex items-center space-x-2 text-sm">
-              {isOnline ? (
-                <>
-                  <Cloud className="h-5 w-5 text-green-500" />
-                  <span className="text-green-600 dark:text-green-400 font-medium">Online</span>
-                </>
-              ) : (
-                <>
-                  <CloudOff className="h-5 w-5 text-red-500" />
-                  <span className="text-red-600 dark:text-red-400 font-medium">Offline</span>
-                </>
-              )}
-            </div>
+            {!isMobile && (
+              <div className="flex items-center space-x-2 text-sm">
+                {isOnline ? (
+                  <>
+                    <Cloud className="h-5 w-5 text-green-500" />
+                    <span className="text-green-600 dark:text-green-400 font-medium">Online</span>
+                  </>
+                ) : (
+                  <>
+                    <CloudOff className="h-5 w-5 text-red-500" />
+                    <span className="text-red-600 dark:text-red-400 font-medium">Offline</span>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Last Sync Time */}
-            {lastSyncTime && (
+            {!isMobile && lastSyncTime && (
               <div className="text-xs text-gray-500 dark:text-gray-400">
                 Last sync: {lastSyncTime}
               </div>
@@ -288,8 +292,8 @@ export default function BillingPage() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="flex items-center space-x-2">
-                  <Gem className="h-5 w-5" />
-                  <span className="font-medium">{user.name}</span>
+                  {isMobile ? <Menu className="h-5 w-5" /> : <Gem className="h-5 w-5" />}
+                  {!isMobile && <span className="font-medium">{user.name}</span>}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
@@ -315,9 +319,9 @@ export default function BillingPage() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 ${isMobile ? "py-4" : "py-8"}`}>
         <Tabs defaultValue="billing" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className={`grid w-full ${isMobile ? "grid-cols-3 text-sm" : "grid-cols-3"}`}>
             <TabsTrigger value="billing">Billing & Cart</TabsTrigger>
             <TabsTrigger value="history">Billing History</TabsTrigger>
             <TabsTrigger value="returns" className="relative">

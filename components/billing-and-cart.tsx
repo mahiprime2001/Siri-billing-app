@@ -33,6 +33,7 @@ import { useRouter } from "next/navigation"
 import { useToast } from "@/components/ui/use-toast"
 import { LogOut } from "lucide-react"
 import { useOnlineStatus } from "@/hooks/use-online-status"
+import { useIsMobile } from "@/hooks/use-mobile" // Import useIsMobile hook
 import { apiClient } from "@/lib/api-client"; // Import apiClient
 
 interface User {
@@ -142,6 +143,7 @@ export default function BillingAndCart() {
   const router = useRouter()
   const { toast } = useToast()
   const isOnline = useOnlineStatus() // Get online status
+  const isMobile = useIsMobile() // Use the hook
   const [products, setProducts] = useState<Product[]>([])
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([])
   const [settings, setSettings] = useState<Settings | null>(null)
@@ -733,7 +735,7 @@ export default function BillingAndCart() {
 
   return (
     <>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className={`grid ${isMobile ? "grid-cols-1" : "grid-cols-1 lg:grid-cols-2"} gap-6`}>
         {/* Left Column - Product Search & Barcode Scanner */}
         <div className="space-y-6">
           {/* Barcode Scanner */}
@@ -831,7 +833,7 @@ export default function BillingAndCart() {
         <div className="space-y-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="flex items-center">
-              <TabsList>
+              <TabsList className={isMobile ? "w-full grid grid-cols-3" : ""}>
                 {billingTabs.map((tab, index) => (
                   <TabsTrigger key={tab.id} value={tab.id} className="relative pr-7">
                     Bill {index + 1}

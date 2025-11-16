@@ -356,7 +356,7 @@ class SyncController:
         
         # Default tables to sync
         if tables is None:
-            tables = ['Products', 'Customers', 'Users', 'Stores', 'SystemSettings', 'BillFormats', 'Returns', 'Notifications']
+            tables = ['Products', 'Customers', 'Users', 'Stores', 'SystemSettings', 'BillFormats', 'Returns', 'Notifications', 'Bills']
         
         try:
             connection = get_connection()
