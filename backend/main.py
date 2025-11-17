@@ -56,6 +56,8 @@ app.config['SESSION_COOKIE_SECURE'] = False
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_DOMAIN'] = None
 app.config['SESSION_COOKIE_PATH'] = '/'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7) # Set a long total lifetime, idle timeout handled manually
+app.config['SESSION_REFRESH_EACH_REQUEST'] = True # Refresh session on each request for idle timeout
 
 # Initialize Flask-Session
 server_session = Session(app)
@@ -100,6 +102,37 @@ def handle_preflight():
             response.headers['Access-Control-Max-Age'] = '3600'
         
         return response
+
+@app.before_request
+def update_last_activity():
+    """Update the last activity timestamp in the session."""
+    if 'user_id' in session: # Only update if a user is logged in
+        session['last_activity'] = datetime.now(timezone.utc).isoformat()
+        app.logger.debug(f"Session last activity updated for user_id: {session.get('user_id')}")
+
+@app.before_request
+def check_session_timeout():
+    """Check if the session has been idle for too long and clear it."""
+    if 'user_id' in session and 'last_activity' in session:
+        last_activity_str = session['last_activity']
+        last_activity = datetime.fromisoformat(last_activity_str)
+        
+        idle_timeout_minutes = 120 # 2 hours
+        
+        if (datetime.now(timezone.utc) - last_activity) > timedelta(minutes=idle_timeout_minutes):
+            app.logger.info(f"Session timed out for user_id: {session.get('user_id')}. Clearing session.")
+            session.clear()
+            # Optionally, you might want to redirect or return an error here
+            # For API, returning an unauthorized status is more appropriate
+            if request.path.startswith('/api') and not request.path.startswith('/api/auth/login'):
+                return jsonify({"message": "Session expired, please log in again."}), 401
+    
+    # If no user_id in session, or if it's a new session, mark it as permanent
+    # This ensures the session cookie is sent with an expiry
+    if 'user_id' in session:
+        session.permanent = True
+    else:
+        session.permanent = False # For non-logged in users, session is not permanent
 
 # Register blueprints
 app.register_blueprint(auth_bp, url_prefix='/api/auth')

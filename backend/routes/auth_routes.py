@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone # Added datetime and timezone
 from flask import Blueprint, request, jsonify, make_response, g, current_app as app, session
 from auth.auth import session_required  # Use session_required instead of token_required
 from data_access.data_access import get_users_data
@@ -35,9 +36,10 @@ def login():
             
             # Store user ID in Flask session (server-side)
             session['user_id'] = user_info['id']
-            session.permanent = False  # Session expires when browser closes
+            session.permanent = True  # Session is permanent, idle timeout handled by main.py
+            session['last_activity'] = datetime.now(timezone.utc).isoformat() # Set initial activity
             
-            app.logger.info(f"User ID {user_info['id']} stored in session after login.")
+            app.logger.info(f"User ID {user_info['id']} stored in session after login. Session set to permanent.")
             
             # Log login event
             log_session_event('LOGIN', user_info.get('id'), 'User logged in to billing app')

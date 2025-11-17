@@ -131,7 +131,7 @@ const DEFAULT_GST_RATE = 0
 const createNewBillingInstance = (id: string): BillingInstance => ({
   id,
   cartItems: [],
-  customerName: "",
+  customerName: "Walk-in Customer",
   customerPhone: "",
   discount: 0,
   editableTotal: 0,
@@ -151,7 +151,7 @@ export default function BillingAndCart() {
   const [barcodeInput, setBarcodeInput] = useState("")
   const [isScanning, setIsScanning] = useState(false)
   const [showAllProducts, setShowAllProducts] = useState(false)
-  const [paperSize, setPaperSize] = useState("Thermal 80mm")
+  // paperSize state moved to InvoicePreview
 
   const [users, setUsers] = useState<User[]>([])
   const [stores, setStores] = useState<Store[]>([])
@@ -199,6 +199,17 @@ export default function BillingAndCart() {
     const finalTotal = calculateTaxableAmount() + calculateTaxAmount()
     return Math.round(finalTotal * 100) / 100 // Round to 2 decimal places
   }, [calculateTaxableAmount, calculateTaxAmount])
+
+  // Effect to update editableTotal when cart, discount, or settings change, unless actively editing
+  useEffect(() => {
+    if (activeBillingInstance && !activeBillingInstance.isEditingTotal) {
+      const finalTotal = calculateFinalTotal();
+      // Only update if the calculated finalTotal is different from the current editableTotal
+      if (finalTotal !== activeBillingInstance.editableTotal) {
+        updateBillingInstance(activeTab, { editableTotal: finalTotal });
+      }
+    }
+  }, [activeBillingInstance?.cartItems, activeBillingInstance?.discount, settings, calculateFinalTotal, activeTab, activeBillingInstance?.isEditingTotal, activeBillingInstance?.editableTotal]);
 
   useEffect(() => {
     fetchProducts()
@@ -289,13 +300,6 @@ export default function BillingAndCart() {
     }
   };
 
-  useEffect(() => {
-    if (activeBillingInstance && !activeBillingInstance.isEditingTotal) {
-      updateBillingInstance(activeTab, {
-        editableTotal: Math.round(calculateFinalTotal()),
-      })
-    }
-  }, [activeBillingInstance?.cartItems, activeBillingInstance?.discount, activeBillingInstance?.isEditingTotal, settings])
 
   useEffect(() => {
     if (searchTerm.trim() === "") {
@@ -376,7 +380,7 @@ export default function BillingAndCart() {
         variant: "destructive",
       })
     }
-  };
+  }
 
 
   const addToCart = (productId: string, qty = 1) => {
@@ -576,7 +580,7 @@ export default function BillingAndCart() {
     setShowPreview(true)
   }
 
-  const handleSaveInvoice = async (invoice: Invoice, isReplay = false) => {
+  const handleSaveInvoice = async (invoiceToSave: Invoice, isReplay = false) => {
     // If offline, we cannot save to the Flask backend.
     // The user's instruction is to use the Flask server for ALL functions,
     // implying no offline local storage. Therefore, if offline, we will
@@ -593,7 +597,7 @@ export default function BillingAndCart() {
     try {
       const response = await apiClient("/api/billing/save", {
         method: "POST",
-        body: JSON.stringify(invoice),
+        body: JSON.stringify(invoiceToSave),
       })
 
       if (response.ok) {
@@ -633,10 +637,9 @@ export default function BillingAndCart() {
     }
   }
 
-  const handlePrintAndSave = async (invoice: Invoice) => {
-    const saved = await handleSaveInvoice(invoice)
+  const handlePrintAndSave = async (invoiceToPrintAndSave: Invoice) => {
+    const saved = await handleSaveInvoice(invoiceToPrintAndSave)
     if (saved) {
-      // window.print() call removed as per user request.
       // Printing functionality is now expected to be handled by the InvoicePreview component.
     }
   }
@@ -880,42 +883,8 @@ export default function BillingAndCart() {
                   </Card>
                 )}
 
-                {/* Customer Information */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center">
-                      <User className="h-5 w-5 mr-2" />
-                      Customer Information (Optional)
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor={`customerName-${tab.id}`}>Customer Name</Label>
-                        <Input
-                          id={`customerName-${tab.id}`}
-                          name="customerName"
-                          value={tab.customerName}
-                          onChange={(e) => updateBillingInstance(tab.id, { customerName: e.target.value })}
-                          placeholder="Enter customer name (optional)"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor={`customerPhone-${tab.id}`}>Customer Phone</Label>
-                        <Input
-                          id={`customerPhone-${tab.id}`}
-                          name="customerPhone"
-                          value={tab.customerPhone}
-                          onChange={(e) => updateBillingInstance(tab.id, { customerPhone: e.target.value })}
-                          placeholder="Enter customer phone (optional)"
-                        />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
                 {/* Shopping Cart */}
-                <Card className="mt-6">
+                <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between">
                       <div className="flex items-center">
@@ -1102,39 +1071,6 @@ export default function BillingAndCart() {
 
                         {/* Invoice Settings & Actions */}
                         <div className="mt-6 space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor={`paymentMethod-${tab.id}`}>Payment Method</Label>
-                            <Select
-                              value={tab.paymentMethod}
-                              onValueChange={(value) => updateBillingInstance(tab.id, { paymentMethod: value })}
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="Cash">💵 Cash</SelectItem>
-                                <SelectItem value="UPI">📱 UPI</SelectItem>
-                                <SelectItem value="Card">💳 Card</SelectItem>
-                                <SelectItem value="UPI+Cash">UPI+Cash</SelectItem>
-                                <SelectItem value="Card+Cash">Card+Cash</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="paperSize">Paper Size</Label>
-                            <Select value={paperSize} onValueChange={setPaperSize}>
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="Thermal 80mm">Thermal 80mm</SelectItem>
-                                <SelectItem value="Thermal 58mm">Thermal 58mm</SelectItem>
-                                <SelectItem value="A4">A4</SelectItem>
-                                <SelectItem value="Letter">Letter</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
                           <Button
                             onClick={handlePreview}
                             disabled={tab.cartItems.length === 0 || !currentStore}
@@ -1160,9 +1096,12 @@ export default function BillingAndCart() {
           invoice={currentInvoice}
           isOpen={showPreview}
           onClose={() => setShowPreview(false)}
-          onSave={handleSaveInvoice ? () => handleSaveInvoice(currentInvoice) : undefined}
-          onPrintAndSave={handlePrintAndSave ? () => handlePrintAndSave(currentInvoice) : undefined}
-          paperSize={paperSize}
+          onSave={handleSaveInvoice ? (updatedInvoice) => handleSaveInvoice(updatedInvoice) : undefined}
+          onPrintAndSave={handlePrintAndSave ? (updatedInvoice) => handlePrintAndSave(updatedInvoice) : undefined}
+          initialPaperSize={"Thermal 80mm"}
+          initialCustomerName={activeBillingInstance.customerName}
+          initialCustomerPhone={activeBillingInstance.customerPhone}
+          initialPaymentMethod={activeBillingInstance.paymentMethod}
         />
       )}
     </>

@@ -13,6 +13,75 @@ from utils.connection_pool import get_connection
 billing_bp = Blueprint('billing_bp', __name__)
 
 
+def get_or_create_customer(customer_name: str, customer_phone: str, customer_email: str = '', customer_address: str = '') -> str:
+    """
+    Get existing customer by phone or create new one
+    Returns customer_id
+    """
+    connection = None
+    try:
+        connection = get_connection()
+        if not connection:
+            app.logger.error("No database connection for customer lookup")
+            return None
+        
+        cursor = connection.cursor(dictionary=True)
+        
+        try:
+            # Check if customer exists by phone
+            if customer_phone:
+                cursor.execute(
+                    "SELECT id FROM Customers WHERE phone = %s",
+                    (customer_phone,)
+                )
+                existing_customer = cursor.fetchone()
+                
+                if existing_customer:
+                    # Update customer info if provided
+                    if customer_name:
+                        cursor.execute("""
+                            UPDATE Customers 
+                            SET name = %s, email = %s, address = %s, updatedAt = %s
+                            WHERE id = %s
+                        """, (customer_name, customer_email, customer_address, datetime.now(), existing_customer['id']))
+                        connection.commit()
+                    
+                    return existing_customer['id']
+            
+            # Create new customer
+            customer_id = f"CUST-{uuid.uuid4().hex[:12]}"
+            now = datetime.now()
+            
+            cursor.execute("""
+                INSERT INTO Customers (id, name, phone, email, address, createdAt, updatedAt)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (
+                customer_id,
+                customer_name or 'Walk-in Customer',
+                customer_phone or '',
+                customer_email or '',
+                customer_address or '',
+                now,
+                now
+            ))
+            connection.commit()
+            
+            app.logger.info(f"Created new customer: {customer_id}")
+            return customer_id
+            
+        finally:
+            cursor.close()
+            
+    except Exception as e:
+        app.logger.error(f"Error in get_or_create_customer: {e}")
+        if connection:
+            connection.rollback()
+        return None
+    finally:
+        if connection:
+            connection.close()
+
+
 def update_product_stock_mysql(product_id: str, quantity_sold: int) -> bool:
     """
     Atomically update product stock in MySQL database
@@ -110,14 +179,29 @@ def update_product_stock_local(product_id: str, quantity_sold: int) -> bool:
         return False
 
 
-@billing_bp.route('/billing/save', methods=['POST'])
+@billing_bp.route('/bills', methods=['POST'])
 @session_required
-def save_bill():
-    """
-    Save a bill with enhanced validation, stock management, and immediate MySQL sync.
-    Creates customer if doesn't exist, validates user, updates stock, syncs bill and bill items.
-    """
+def create_bill():
+    """Create a new bill"""
     try:
+        data = request.json
+        
+        # Get or create customer
+        customer_id = get_or_create_customer(
+            customer_name=data.get('customerName', 'Walk-in Customer'),
+            customer_phone=data.get('customerPhone', ''),
+            customer_email=data.get('customerEmail', ''),
+            customer_address=data.get('customerAddress', '')
+        )
+        
+        if not customer_id:
+            return jsonify({"error": "Failed to create/get customer"}), 500
+        
+        # Continue with bill creation...
+        # Now you can store only customerId in the Bills table
+        
+        # ... rest of your bill creation logic
+        
         bill_data = request.json
         if not bill_data:
             return jsonify({"error": "No bill data provided"}), 400
@@ -133,32 +217,8 @@ def save_bill():
         if not check_user_exists_mysql(created_by):
             return jsonify({"error": f"User {created_by} does not exist"}), 400
         
-        # CRITICAL FIX: Handle customer FIRST before bill
-        customer_id = bill_data.get('customerId')
-        customer_created = False
-        
-        if customer_id:
-            if not check_customer_exists_mysql(customer_id):
-                # Auto-create customer BEFORE inserting bill
-                customer = {
-                    'id': customer_id,
-                    'name': bill_data.get('customerName', 'Unknown'),
-                    'phone': bill_data.get('customerPhone', ''),
-                    'email': bill_data.get('customerEmail', ''),
-                    'address': bill_data.get('customerAddress', ''),
-                    'createdAt': datetime.now().isoformat(),
-                    'updatedAt': datetime.now().isoformat()
-                }
-                
-                # Sync customer FIRST (parent record)
-                if not sync_to_mysql_immediately('Customers', customer, 'INSERT'):
-                    return jsonify({"error": "Failed to create customer"}), 500
-                
-                customer_created = True
-                app.logger.info(f"Auto-created customer: {customer_id}")
-        else:
-            # If no customerId, set to None to avoid foreign key error
-            bill_data['customerId'] = None
+        # Set customerId from the helper function
+        bill_data['customerId'] = customer_id
         
         # Add timestamps
         bill_data['timestamp'] = bill_data.get('timestamp') or datetime.now().isoformat()
@@ -237,7 +297,7 @@ def save_bill():
             "billId": bill_data['id'],
             "mysql_synced": bill_sync_success,
             "items_synced": items_synced,
-            "customer_created": customer_created,
+            "customer_created": True, # Customer is always created/updated by get_or_create_customer
             "stock_updates": stock_updates
         }), 200
     

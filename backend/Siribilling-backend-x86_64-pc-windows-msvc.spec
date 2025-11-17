@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('data', 'data'), ('.env', '.'), ('utils', 'utils'), ('config', 'config'), ('logger', 'logger'), ('background_tasks', 'background_tasks'), ('routes', 'routes'), ('auth', 'auth'), ('data_access', 'data_access'), ('helpers', 'helpers'), ('notifications', 'notifications'), ('session_logging', 'session_logging')],
+    datas=[('.env', '.'), ('utils', 'utils'), ('config', 'config'), ('logger', 'logger'), ('background_tasks', 'background_tasks'), ('routes', 'routes'), ('auth', 'auth'), ('data_access', 'data_access'), ('helpers', 'helpers'), ('notifications', 'notifications'), ('session_logging', 'session_logging')],
     hiddenimports=['mysql.connector.locales.eng.client_error', 'mysql.connector.plugins.mysql_native_password'],
     hookspath=[],
     hooksconfig={},
