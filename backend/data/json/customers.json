@@ -1,11 +1,83 @@
 [
     {
+        "id": "CUST-9bbc046f3ec4",
+        "name": "Walk-in Customer",
+        "phone": "",
+        "email": "",
+        "address": "",
+        "createdat": "2025-11-30T22:43:30.287587",
+        "updatedat": "2025-11-30T22:43:30.287587"
+    },
+    {
+        "id": "CUST-e94dd587b323",
+        "name": "Walk-in Customer",
+        "phone": "",
+        "email": "",
+        "address": "",
+        "createdat": "2025-11-30T22:40:56.680614",
+        "updatedat": "2025-11-30T22:40:56.680614"
+    },
+    {
+        "id": "CUST-8d2ed34b0eaa",
+        "name": "Walk-in Customer",
+        "phone": "",
+        "email": "",
+        "address": "",
+        "createdat": "2025-11-30T22:31:35.849166",
+        "updatedat": "2025-11-30T22:31:35.849166"
+    },
+    {
         "id": "CUST-1754821420265",
         "name": "Walk-in Customer",
         "phone": null,
         "email": null,
         "address": null,
-        "createdAt": "2025-08-10T15:53:40",
-        "updatedAt": "2025-08-10T15:53:40"
+        "createdat": "2025-08-10T15:53:40",
+        "updatedat": "2025-08-10T15:53:40"
+    },
+    {
+        "id": "CUST-3fcd79680d79",
+        "name": "Walk-in Customer",
+        "phone": "",
+        "email": "",
+        "address": "",
+        "createdat": "2025-12-01T22:30:42.969058",
+        "updatedat": "2025-12-01T22:30:42.969058"
+    },
+    {
+        "id": "CUST-1cec46d07b27",
+        "name": "Walk-in Customer",
+        "phone": "",
+        "email": "",
+        "address": "",
+        "createdat": "2025-12-01T22:32:08.476768",
+        "updatedat": "2025-12-01T22:32:08.476768"
+    },
+    {
+        "id": "CUST-b2c274cd540f",
+        "name": "Walk-in Customer",
+        "phone": "",
+        "email": "",
+        "address": "",
+        "createdat": "2025-12-01T22:43:50.818957",
+        "updatedat": "2025-12-01T22:43:50.818957"
+    },
+    {
+        "id": "CUST-2306e1bfd560",
+        "name": "Walk-in Customer",
+        "phone": "",
+        "email": "",
+        "address": "",
+        "createdat": "2025-12-01T22:48:10.964852",
+        "updatedat": "2025-12-01T22:48:10.964852"
+    },
+    {
+        "id": "CUST-689cd767f106",
+        "name": "Walk-in Customer",
+        "phone": "",
+        "email": "",
+        "address": "",
+        "createdat": "2025-12-01T23:15:38.113592",
+        "updatedat": "2025-12-01T23:15:38.113592"
     }
 ]

@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, make_response, request, current_app as app
 
 from auth.auth import session_required # Changed from token_required
 from data_access.data_access import get_users_data
-from data_access.mysql_data_access import get_mysql_data
+from data_access.supabase_data_access import get_supabase_data
 
 user_bp = Blueprint('user_bp', __name__)
 
@@ -38,8 +38,8 @@ def get_user_stores():
         return response, 200
     
     try:
-        # Get user-store associations from MySQL
-        user_stores = get_mysql_data('UserStores')
+        # Get user-store associations from Supabase
+        user_stores = get_supabase_data('UserStores')
         if user_stores is None:
             user_stores = []
         
@@ -60,8 +60,8 @@ def get_user_stores_by_id(user_id):
         return response, 200
     
     try:
-        # Get user-store associations for specific user
-        user_stores = get_mysql_data('UserStores', 'userId = %s', (user_id,))
+        # Get user-store associations for specific user from Supabase
+        user_stores = get_supabase_data('UserStores', {'userId': user_id})
         if user_stores is None:
             user_stores = []
         

@@ -1,131 +1,81 @@
 """
-MySQL Connection Pool Manager
-Manages a pool of MySQL connections for efficient database access
+Supabase Client Manager
+Manages a single Supabase client instance for efficient database access
 """
 
 import os
-os.environ["MYSQLCONNECTOR_PY_NO_CEXT"] = "1"
-
-import mysql.connector
-from mysql.connector import pooling, Error
 from dotenv import load_dotenv
 import logging
+from typing import Optional
+from supabase import create_client, Client
 
 # Load environment variables
 DOTENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
 load_dotenv(dotenv_path=DOTENV_PATH)
 
-plugin_dir = os.path.join(os.path.dirname(mysql.connector.__file__), "authentication.py")
-os.environ["MYSQL_PLUGIN_DIR"] = os.path.dirname(plugin_dir)
-
 # Configure logging
-logger = logging.getLogger('connection_pool')
+logger = logging.getLogger('supabase_client')
 
-# Connection pool configuration
-POOL_NAME = "siri_billing_pool"
-POOL_SIZE = 10  # Number of connections in the pool
+# Global Supabase client instance
+_supabase_client: Optional[Client] = None
 
-# Global pool instance
-_connection_pool = None
-
-def initialize_pool():
-    """Initialize the MySQL connection pool"""
-    global _connection_pool
+def initialize_supabase_client():
+    """Initialize the Supabase client"""
+    global _supabase_client
     
-    if _connection_pool is not None:
-        logger.info("Connection pool already initialized")
-        return _connection_pool
+    if _supabase_client is not None:
+        logger.info("Supabase client already initialized")
+        return _supabase_client
     
     try:
-        db_config = {
-            "host": os.getenv("MYSQL_HOST"),
-            "user": os.getenv("MYSQL_USER"),
-            "password": os.getenv("MYSQL_PASSWORD"),
-            "database": os.getenv("MYSQL_DATABASE"),
-            "autocommit": False,  # We'll manage transactions manually
-            "connection_timeout": 10,
-            "auth_plugin": "mysql_native_password",
-        }
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_KEY")
         
-        # Validate env vars
-        missing = [k for k, v in db_config.items() if v is None and k not in ["autocommit", "connection_timeout", "auth_plugin"]]
-        if missing:
-            raise ValueError(f"Missing database config values: {', '.join(missing)}")
+        if not supabase_url or not supabase_key:
+            raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in environment variables.")
         
-        _connection_pool = pooling.MySQLConnectionPool(
-            pool_name=POOL_NAME,
-            pool_size=POOL_SIZE,
-            pool_reset_session=True,
-            **db_config
-        )
+        _supabase_client = create_client(supabase_url, supabase_key)
         
-        logger.info(f"MySQL connection pool initialized with {POOL_SIZE} connections")
-        return _connection_pool
+        logger.info("Supabase client initialized successfully")
+        return _supabase_client
     
-    except Error as e:
-        logger.error(f"Error creating connection pool: {e}")
-        return None
     except Exception as e:
-        logger.error(f"Unexpected error creating connection pool: {e}")
+        logger.error(f"Error initializing Supabase client: {e}")
         return None
 
-def get_connection(dictionary: bool = True):
+def get_supabase_client():
     """
-    Get a connection from the pool.
-    If `dictionary=True`, all cursors will default to dict mode.
+    Get the initialized Supabase client.
+    Initializes it if not already initialized.
     """
-    global _connection_pool
+    global _supabase_client
     
-    if _connection_pool is None:
-        initialize_pool()
+    if _supabase_client is None:
+        initialize_supabase_client()
     
-    if _connection_pool is None:
-        logger.error("Connection pool not available")
+    if _supabase_client is None:
+        logger.error("Supabase client not available")
         return None
     
-    try:
-        connection = _connection_pool.get_connection()
-        
-        # Monkey patch cursor() to always use dictionary=True if requested
-        if dictionary:
-            orig_cursor = connection.cursor
-            def dict_cursor(*args, **kwargs):
-                kwargs["dictionary"] = True
-                return orig_cursor(*args, **kwargs)
-            connection.cursor = dict_cursor
-        
-        return connection
-    
-    except Error as e:
-        logger.error(f"Error getting connection from pool: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Unexpected error getting connection from pool: {e}")
-        return None
+    return _supabase_client
 
-def close_pool():
-    """Close all connections in the pool"""
-    global _connection_pool
-    
-    if _connection_pool is not None:
-        try:
-            _connection_pool = None
-            logger.info("Connection pool closed (connections will close automatically)")
-        except Exception as e:
-            logger.error(f"Error closing connection pool: {e}")
+def close_supabase_client():
+    """No explicit close needed for Supabase client (managed by library)"""
+    global _supabase_client
+    if _supabase_client is not None:
+        _supabase_client = None
+        logger.info("Supabase client instance cleared.")
 
-def get_pool_status():
-    """Get the current status of the connection pool"""
-    if _connection_pool is None:
+def get_client_status():
+    """Get the current status of the Supabase client"""
+    if _supabase_client is None:
         return {
             "initialized": False,
-            "pool_size": 0,
-            "available_connections": 0,
+            "status": "not initialized",
         }
     
     return {
         "initialized": True,
-        "pool_name": POOL_NAME,
-        "pool_size": POOL_SIZE,
         "status": "active",
     }
+

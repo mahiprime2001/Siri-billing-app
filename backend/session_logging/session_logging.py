@@ -2,23 +2,17 @@ import json
 from datetime import datetime
 from flask import current_app as app
 
-from utils.connection_pool import get_connection
+from utils.connection_pool import get_supabase_client
+from supabase import Client
 
 def log_session_event(change_type, user_id=None, details=None):
-    """Log session events to sync_table in MySQL"""
+    """Log session events to sync_table in Supabase"""
+    supabase: Client = None
     try:
-        connection = get_connection()
-        if not connection:
-            app.logger.warning("No MySQL connection for session logging")
+        supabase = get_supabase_client()
+        if not supabase:
+            app.logger.warning("No Supabase client for session logging")
             return
-        
-        cursor = connection.cursor(dictionary=True)
-        
-        # Insert into sync_table
-        query = """
-        INSERT INTO sync_table (table_name, record_id, operation_type, change_data, source, status, created_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """
         
         change_data = json.dumps({
             'event': change_type,
@@ -28,24 +22,22 @@ def log_session_event(change_type, user_id=None, details=None):
             'app': 'billing'
         })
         
-        params = (
-            'session_events',  # table_name
-            user_id or 'system',  # record_id
-            'CREATE',  # operation_type
-            change_data,  # change_data
-            'local',  # source
-            'synced',  # status
-            datetime.now().isoformat()  # created_at
-        )
+        insert_data = {
+            "table_name": 'session_events',  # table_name
+            "record_id": user_id or 'system',  # record_id
+            "operation_type": 'CREATE',  # operation_type
+            "change_data": change_data,  # change_data
+            "source": 'local',  # source
+            "status": 'synced',  # status
+            "created_at": datetime.now().isoformat()  # created_at
+        }
         
-        cursor.execute(query, params)
-        connection.commit()
-        app.logger.info(f"Session event logged: {change_type} for user {user_id}")
+        response = supabase.from_("sync_table").insert(insert_data).execute()
+        
+        if response.data:
+            app.logger.info(f"Session event logged: {change_type} for user {user_id}")
+        else:
+            app.logger.error(f"Failed to log session event: {response.status_code} {response.json()}")
     
     except Exception as e:
         app.logger.error(f"Failed to log session event: {e}")
-        if connection:
-            connection.rollback()
-    finally:
-        if connection:
-            connection.close()

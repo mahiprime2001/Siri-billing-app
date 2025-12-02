@@ -4,7 +4,7 @@ from flask import Blueprint, jsonify, request, g, current_app as app
 from auth.auth import session_required # Changed from token_required
 from data_access.data_access import get_bills_data, get_returns_data, save_returns_data
 from notifications.notifications import create_notification
-from data_access.mysql_data_access import sync_to_mysql_immediately
+from data_access.supabase_data_access import sync_to_supabase_immediately
 
 return_bp = Blueprint('return_bp', __name__)
 

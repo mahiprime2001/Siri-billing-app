@@ -22,7 +22,9 @@ export default function Updater() {
 
   useEffect(() => {
     // Check for updates on component mount (app load)
-    checkForUpdates();
+    if (window.__TAURI__) { // Only check for updates if running in a Tauri environment
+      checkForUpdates();
+    }
   }, []);
 
   async function checkForUpdates() {

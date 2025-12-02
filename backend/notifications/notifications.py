@@ -1,10 +1,10 @@
 from datetime import datetime
 from flask import current_app as app
 
-from data_access.mysql_data_access import sync_to_mysql_immediately
+from data_access.supabase_data_access import sync_to_supabase_immediately
 
 def create_notification(notification_type, message, related_id=None):
-    """Create a notification and sync to MySQL"""
+    """Create a notification and sync to Supabase"""
     notification = {
         'id': int(datetime.now().timestamp() * 1000),  # Use timestamp as ID
         'type': notification_type,
@@ -15,6 +15,6 @@ def create_notification(notification_type, message, related_id=None):
         'updated_at': datetime.now().isoformat()
     }
     
-    sync_to_mysql_immediately('Notifications', notification, 'INSERT')
+    sync_to_supabase_immediately('Notifications', notification, 'INSERT')
     app.logger.info(f"Created notification: {notification_type} - {message}")
     return notification

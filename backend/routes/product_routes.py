@@ -3,7 +3,6 @@ from datetime import datetime
 
 from auth.auth import session_required # Changed from token_required
 from data_access.data_access import get_products_data, save_products_data
-from utils.connection_pool import get_connection
 
 product_bp = Blueprint('product_bp', __name__)
 

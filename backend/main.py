@@ -17,7 +17,7 @@ from functools import wraps
 # from flask_cors import CORS
 
 # Import connection pool and sync controller
-from utils.connection_pool import initialize_pool, get_connection, close_pool
+from utils.connection_pool import initialize_supabase_client, get_supabase_client, close_supabase_client
 from utils.sync_controller import SyncController, json_serial as sync_json_serial
 
 # Import refactored modules
@@ -40,15 +40,15 @@ from routes.health_routes import health_bp
 app = Flask(__name__)
 
 # Configure Flask-SQLAlchemy for session storage
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('SQLALCHEMY_DATABASE_URI', 'sqlite:///sessions.db')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('SQLALCHEMY_DATABASE_URI', 'sqlite:///sessions.db')
+# app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db = SQLAlchemy(app)
+# db = SQLAlchemy(app)
 
 # Configure Flask sessions to use SQLAlchemy
-app.config['SESSION_TYPE'] = 'sqlalchemy'
-app.config['SESSION_SQLALCHEMY'] = db
-app.config['SESSION_SQLALCHEMY_TABLE'] = 'flask_sessions' # Custom table name
+# app.config['SESSION_TYPE'] = 'sqlalchemy'
+# app.config['SESSION_SQLALCHEMY'] = db
+# app.config['SESSION_SQLALCHEMY_TABLE'] = 'flask_sessions' # Custom table name
 
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_key_for_dev')
 app.config['SESSION_COOKIE_HTTPONLY'] = True
@@ -60,10 +60,10 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7) # Set a long total 
 app.config['SESSION_REFRESH_EACH_REQUEST'] = True # Refresh session on each request for idle timeout
 
 # Initialize Flask-Session
-server_session = Session(app)
+# server_session = Session(app)
 
 # Initialize connection pool and sync controller
-initialize_pool()
+initialize_supabase_client()
 sync_controller = SyncController()
 
 # Configure logging
@@ -161,13 +161,13 @@ if __name__ == '__main__':
     start_background_tasks(app)
     
     # Create session table if it doesn't exist
-    with app.app_context():
-        db.create_all()
-        app.logger.info("SQLAlchemy session table ensured.")
+    # with app.app_context():
+    #     db.create_all()
+    #     app.logger.info("SQLAlchemy session table ensured.")
     
     try:
         app.run(debug=True, port=port, host=host)
     except Exception as e:
         app.logger.error(f"Failed to start billing Flask server: {e}")
     finally:
-        close_pool()
+        close_supabase_client()

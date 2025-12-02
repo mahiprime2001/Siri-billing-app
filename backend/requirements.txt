@@ -1,7 +1,5 @@
 Flask
 Flask-Cors
 python-dotenv
-mysql-connector-python==8.4.0
 python-dateutil>=2.9.0.post0
-Flask-Session
-Flask-SQLAlchemy
+supabase

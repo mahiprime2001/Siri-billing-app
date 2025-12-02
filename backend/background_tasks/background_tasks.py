@@ -2,14 +2,11 @@ import time
 import threading
 import os
 from flask import Flask
-
 from config.config import (
-    PRODUCTS_FILE, CUSTOMERS_FILE, USERS_FILE, STORES_FILE, SYSTEM_SETTINGS_FILE, RETURNS_FILE, BILLS_FILE
+    PRODUCTS_FILE, CUSTOMERS_FILE, USERS_FILE, STORES_FILE, SYSTEM_SETTINGS_FILE, RETURNS_FILE, BILLS_FILE, BILL_FORMATS_FILE
 )
 from helpers.utils import write_json_file, read_json_file
-from utils.sync_controller import SyncController
-
-sync_controller = SyncController()
+from utils.sync_controller import SyncController # Global instance is fine as it manages client pool
 
 # Map table names to their corresponding file paths
 TABLE_FILE_MAP = {
@@ -20,10 +17,14 @@ TABLE_FILE_MAP = {
     'SystemSettings': SYSTEM_SETTINGS_FILE,
     'Returns': RETURNS_FILE,
     'Bills': BILLS_FILE,
+    'BillFormats': BILL_FORMATS_FILE,
 }
 
-# Store last sync timestamp for each table
+# Store last sync timestamp for each table (for pull sync from Supabase)
 last_sync_timestamps = {table: None for table in TABLE_FILE_MAP.keys()}
+
+# Global SyncController instance
+sync_controller = SyncController()
 
 def initial_full_sync(app: Flask):
     """Perform an initial full sync for any missing JSON files."""
@@ -55,7 +56,7 @@ def initial_full_sync(app: Flask):
         app.logger.info("Initial full sync completed.")
 
 def background_pull_sync_scheduler(app: Flask, interval_minutes=5):
-    """Periodically pull updates from MySQL"""
+    """Periodically pull updates from Supabase (primary source) to local JSON files (backup)"""
     with app.app_context():
         # Perform initial full sync once at startup
         initial_full_sync(app)
@@ -63,11 +64,10 @@ def background_pull_sync_scheduler(app: Flask, interval_minutes=5):
         while True:
             app.logger.info(f"Background pull sync starting. Next sync in {interval_minutes} minutes.")
             try:
-                # Perform delta sync for all tables
                 # We need to iterate through each table to pass its specific last_sync_timestamp
                 for table_name, file_path in TABLE_FILE_MAP.items():
                     current_last_sync = last_sync_timestamps[table_name]
-                    app.logger.debug(f"Delta sync for {table_name} with last_sync: {current_last_sync}")
+                    app.logger.debug(f"Delta pull for {table_name} with last_sync: {current_last_sync}")
                     
                     result = sync_controller.pull_sync(last_sync=current_last_sync, tables=[table_name])
                     
@@ -102,7 +102,7 @@ def background_pull_sync_scheduler(app: Flask, interval_minutes=5):
                             write_json_file(file_path, merged_data)
                             app.logger.info(f"Merged and updated {file_path} for {table_name}.")
                         else:
-                            app.logger.info(f"No new records for {table_name} during delta sync.")
+                            app.logger.info(f"No new records for {table_name} during delta pull.")
                         
                         # Update last sync timestamp for this table
                         last_sync_timestamps[table_name] = result['sync_timestamp']
@@ -113,10 +113,58 @@ def background_pull_sync_scheduler(app: Flask, interval_minutes=5):
             
             time.sleep(interval_minutes * 60)
 
+def background_json_to_supabase_sync_scheduler(app: Flask, interval_minutes=5):
+    """Periodically push data from local JSON files (backup) to Supabase (primary)"""
+    with app.app_context():
+        app.logger.info("Starting background JSON to Supabase push sync scheduler.")
+        while True:
+            app.logger.info(f"Background JSON to Supabase push sync starting. Next push in {interval_minutes} minutes.")
+            full_sync_data = {}
+            
+            for table_name, file_path in TABLE_FILE_MAP.items():
+                if os.path.exists(file_path):
+                    try:
+                        data = read_json_file(file_path, default_value=[] if table_name != 'SystemSettings' else {})
+                        if data:
+                            # push_sync expects a list of records for all table types
+                            if table_name == 'SystemSettings' and isinstance(data, dict):
+                                full_sync_data[table_name] = [data]
+                            elif isinstance(data, list):
+                                full_sync_data[table_name] = data
+                            else:
+                                app.logger.warning(f"Unexpected data format in {file_path} for {table_name}. Skipping for push sync.")
+                                continue
+                    except Exception as e:
+                        app.logger.error(f"Error reading JSON file {file_path} for push sync: {e}")
+                else:
+                    app.logger.debug(f"JSON file for {table_name} not found at {file_path}. Skipping for push sync.")
+            
+            if full_sync_data:
+                try:
+                    push_results = sync_controller.push_sync(full_sync_data)
+                    if push_results['success']:
+                        app.logger.info(f"Background JSON to Supabase push sync completed successfully. Stats: {push_results['stats']}")
+                    else:
+                        app.logger.error(f"Background JSON to Supabase push sync failed with errors: {push_results['errors']}")
+                except Exception as e:
+                    app.logger.error(f"Error during background JSON to Supabase push sync: {e}")
+            else:
+                app.logger.info("No data found in JSON files to push to Supabase.")
+            
+            time.sleep(interval_minutes * 60)
+
 def start_background_tasks(app: Flask):
     """Starts all background tasks."""
+    # Pull sync (Supabase to JSON)
     pull_scheduler_thread = threading.Thread(
         target=background_pull_sync_scheduler, daemon=True, args=(app, 5,)
     )
     pull_scheduler_thread.start()
-    app.logger.info("Background pull sync scheduler started.")
+    app.logger.info("Background pull sync scheduler (Supabase -> JSON) started.")
+
+    # Push sync (JSON to Supabase)
+    json_push_scheduler_thread = threading.Thread(
+        target=background_json_to_supabase_sync_scheduler, daemon=True, args=(app, 5,)
+    )
+    json_push_scheduler_thread.start()
+    app.logger.info("Background JSON to Supabase push sync scheduler (JSON -> Supabase) started.")

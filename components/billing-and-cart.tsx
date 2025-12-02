@@ -125,7 +125,7 @@ interface BillingInstance {
   paymentMethod: string
 }
 
-const SUGGESTED_DISCOUNTS = [5, 10, 15, 20]
+const SUGGESTED_DISCOUNTS = [5]
 const DEFAULT_GST_RATE = 0
 
 const createNewBillingInstance = (id: string): BillingInstance => ({
@@ -496,7 +496,7 @@ export default function BillingAndCart() {
 
     if (subtotal > 0) {
       const newDiscountAmount = subtotal - targetTaxableAmount
-      const newDiscountPercentage = Math.max(0, (newDiscountAmount / subtotal) * 100)
+      const newDiscountPercentage = Math.min(5, Math.max(0, (newDiscountAmount / subtotal) * 100))
       updateBillingInstance(activeTab, {
         discount: Math.round(newDiscountPercentage * 100) / 100,
       })
@@ -504,6 +504,14 @@ export default function BillingAndCart() {
   }
 
   const handleDiscountChange = (newDiscount: number) => {
+    if (newDiscount > 5) {
+      newDiscount = 5
+      toast({
+        title: "Heads up!",
+        description: `The maximum discount allowed is 5%. We've automatically adjusted it for you.`,
+        variant: "default",
+      })
+    }
     updateBillingInstance(activeTab, { discount: newDiscount, isEditingTotal: false })
   }
 
