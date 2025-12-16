@@ -1,31 +1,36 @@
 import os
-from dotenv import load_dotenv
+from datetime import datetime
 
-# Define base directories
-APP_BASE_DIR = os.getcwd()
-os.environ['APP_BASE_DIR'] = APP_BASE_DIR
+# Define the base data directory path
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
 
-DOTENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env')
-load_dotenv(dotenv_path=DOTENV_PATH)
-
-# Data directories
-DATA_DIR = os.path.join(APP_BASE_DIR, 'data')
+# ✅ NEW: Subdirectories for organized storage
 JSON_DIR = os.path.join(DATA_DIR, 'json')
-LOG_DIR = os.path.join(DATA_DIR, 'logs')
+LOGS_DIR = os.path.join(DATA_DIR, 'logs')
 
-# JSON file paths (local fallback storage)
-USERS_FILE = os.path.join(JSON_DIR, 'users.json')
-PRODUCTS_FILE = os.path.join(JSON_DIR, 'products.json')
-BILLS_FILE = os.path.join(JSON_DIR, 'bills.json')
-CUSTOMERS_FILE = os.path.join(JSON_DIR, 'customers.json')
-SYSTEM_SETTINGS_FILE = os.path.join(JSON_DIR, 'systemsettings.json')
-STORES_FILE = os.path.join(JSON_DIR, 'stores.json')
-BILL_FORMATS_FILE = os.path.join(JSON_DIR, 'billformats.json')
-RETURNS_FILE = os.path.join(JSON_DIR, 'returns.json')
-
-# Ensure directories exist
+# ✅ Create directory structure
 os.makedirs(JSON_DIR, exist_ok=True)
-os.makedirs(LOG_DIR, exist_ok=True)
+os.makedirs(LOGS_DIR, exist_ok=True)
 
-LOG_FILE = os.path.join(LOG_DIR, 'billing_flask.log')
-SYNC_STATUS_FILE = os.path.join(LOG_DIR, 'billing_sync_status.log')
+# ✅ UPDATED: JSON files now in data/json/
+USERS_FILE = os.path.join(JSON_DIR, "users.json")
+PRODUCTS_FILE = os.path.join(JSON_DIR, "products.json")
+BILLS_FILE = os.path.join(JSON_DIR, "bills.json")
+CUSTOMERS_FILE = os.path.join(JSON_DIR, "customers.json")
+SYSTEM_SETTINGS_FILE = os.path.join(JSON_DIR, "system_settings.json")
+STORES_FILE = os.path.join(JSON_DIR, "stores.json")
+RETURNS_FILE = os.path.join(JSON_DIR, "returns.json")
+BILL_FORMATS_FILE = os.path.join(JSON_DIR, "bill_formats.json")
+USER_STORES_FILE = os.path.join(JSON_DIR, "userstores.json")
+
+# ✅ UPDATED: Log file now in data/logs/ with date suffix
+def get_log_file_path():
+    """Generate log file path with current date"""
+    today = datetime.now().strftime("%Y-%m-%d")
+    return os.path.join(LOGS_DIR, f"billing_app-{today}.log")
+
+LOG_FILE = get_log_file_path()
+
+# ✅ NEW: Log retention settings
+LOG_RETENTION_DAYS = 30  # Delete logs older than 30 days

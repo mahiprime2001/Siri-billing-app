@@ -1,0 +1,916 @@
+2025-12-13 21:28:11,709 - main - INFO - logger.py:128 - ================================================================================
+2025-12-13 21:28:11,714 - main - INFO - logger.py:129 - ✅ Logging configured for Windows
+2025-12-13 21:28:11,715 - main - INFO - logger.py:130 - 📁 Log file: D:\Siri-apps\Siri-billing-app\backend\data\logs\billing_app-2025-12-13.log
+2025-12-13 21:28:11,717 - main - INFO - logger.py:131 - 🗓️ Retention: 30 days
+2025-12-13 21:28:11,720 - main - INFO - logger.py:134 - 🔄 Rotation: Manual (Windows mode - prevents file locking)
+2025-12-13 21:28:11,721 - main - INFO - logger.py:138 - ================================================================================
+2025-12-13 21:28:11,724 - main - INFO - main.py:60 - 🚀 Billing Flask server starting up...
+2025-12-13 21:28:11,726 - main - INFO - main.py:61 - 🔐 JWT Configuration:
+2025-12-13 21:28:11,728 - main - INFO - main.py:62 -   - JWT_TOKEN_LOCATION: ['cookies']
+2025-12-13 21:28:11,730 - main - INFO - main.py:63 -   - JWT_COOKIE_NAME: access_token_cookie
+2025-12-13 21:28:11,731 - main - INFO - main.py:64 -   - JWT_COOKIE_SECURE: False
+2025-12-13 21:28:11,731 - main - INFO - main.py:65 -   - JWT_COOKIE_SAMESITE: Lax
+2025-12-13 21:28:11,732 - main - INFO - main.py:66 -   - JWT_ACCESS_TOKEN_EXPIRES: 1 day, 0:00:00
+2025-12-13 21:28:11,766 - main - INFO - main.py:197 - 🚀 Billing Flask server starting...
+2025-12-13 21:28:11,770 - main - INFO - main.py:202 - 🌐 Billing app will run on localhost:8080
+2025-12-13 21:28:11,774 - main - INFO - main.py:203 - 🔓 CORS: Accepting all requests from local machine
+2025-12-13 21:28:11,786 - main - INFO - background_tasks.py:35 - Starting initial full sync for missing JSON files.
+2025-12-13 21:28:11,786 - main - INFO - background_tasks.py:185 - Background pull sync scheduler (Supabase -> JSON) started.
+2025-12-13 21:28:11,787 - main - INFO - background_tasks.py:65 - JSON file for Products already exists at D:\Siri-apps\Siri-billing-app\backend\data\json\products.json. Skipping initial full pull.
+2025-12-13 21:28:11,790 - main - INFO - background_tasks.py:65 - JSON file for Customers already exists at D:\Siri-apps\Siri-billing-app\backend\data\json\customers.json. Skipping initial full pull.
+2025-12-13 21:28:11,793 - main - INFO - background_tasks.py:65 - JSON file for Users already exists at D:\Siri-apps\Siri-billing-app\backend\data\json\users.json. Skipping initial full pull.
+2025-12-13 21:28:11,795 - main - INFO - background_tasks.py:65 - JSON file for Stores already exists at D:\Siri-apps\Siri-billing-app\backend\data\json\stores.json. Skipping initial full pull.
+2025-12-13 21:28:11,797 - main - INFO - background_tasks.py:65 - JSON file for SystemSettings already exists at D:\Siri-apps\Siri-billing-app\backend\data\json\system_settings.json. Skipping initial full pull.
+2025-12-13 21:28:11,800 - main - INFO - background_tasks.py:65 - JSON file for Returns already exists at D:\Siri-apps\Siri-billing-app\backend\data\json\returns.json. Skipping initial full pull.
+2025-12-13 21:28:11,803 - main - INFO - background_tasks.py:65 - JSON file for Bills already exists at D:\Siri-apps\Siri-billing-app\backend\data\json\bills.json. Skipping initial full pull.
+2025-12-13 21:28:11,804 - main - INFO - background_tasks.py:65 - JSON file for BillFormats already exists at D:\Siri-apps\Siri-billing-app\backend\data\json\bill_formats.json. Skipping initial full pull.
+2025-12-13 21:28:11,805 - main - INFO - background_tasks.py:140 - Starting background JSON to Supabase push sync scheduler.
+2025-12-13 21:28:11,805 - main - INFO - background_tasks.py:192 - Background JSON to Supabase push sync scheduler (JSON -> Supabase) started.
+2025-12-13 21:28:11,807 - main - INFO - background_tasks.py:65 - JSON file for UserStores already exists at D:\Siri-apps\Siri-billing-app\backend\data\json\userstores.json. Skipping initial full pull.
+2025-12-13 21:28:11,814 - main - INFO - background_tasks.py:142 - Background JSON to Supabase push sync starting. Next push in 5 minutes.
+2025-12-13 21:28:11,824 - main - INFO - background_tasks.py:66 - Initial full sync completed.
+2025-12-13 21:28:11,830 - main - INFO - background_tasks.py:76 - Background pull sync starting. Next sync in 5 minutes.
+2025-12-13 21:28:11,834 - main - DEBUG - background_tasks.py:81 - Delta pull for Products with last_sync: None
+2025-12-13 21:28:13,426 - main - INFO - background_tasks.py:86 - Delta pull sync for Products completed successfully.
+2025-12-13 21:28:13,428 - main - INFO - background_tasks.py:90 - Found 7 new/updated records for Products.
+2025-12-13 21:28:13,431 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\products.json for Products.
+2025-12-13 21:28:13,433 - main - DEBUG - background_tasks.py:81 - Delta pull for Customers with last_sync: None
+2025-12-13 21:28:13,646 - main - INFO - background_tasks.py:86 - Delta pull sync for Customers completed successfully.
+2025-12-13 21:28:13,650 - main - INFO - background_tasks.py:90 - Found 1 new/updated records for Customers.
+2025-12-13 21:28:13,654 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\customers.json for Customers.
+2025-12-13 21:28:13,654 - main - DEBUG - background_tasks.py:81 - Delta pull for Users with last_sync: None
+2025-12-13 21:28:13,893 - main - INFO - background_tasks.py:86 - Delta pull sync for Users completed successfully.
+2025-12-13 21:28:13,895 - main - INFO - background_tasks.py:90 - Found 3 new/updated records for Users.
+2025-12-13 21:28:13,897 - main - INFO - background_tasks.py:98 - Filtered out admin/super_admin users. 2 users remaining.
+2025-12-13 21:28:13,900 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\users.json for Users.
+2025-12-13 21:28:13,900 - main - DEBUG - background_tasks.py:81 - Delta pull for Stores with last_sync: None
+2025-12-13 21:28:14,097 - main - INFO - background_tasks.py:86 - Delta pull sync for Stores completed successfully.
+2025-12-13 21:28:14,102 - main - INFO - background_tasks.py:90 - Found 8 new/updated records for Stores.
+2025-12-13 21:28:14,104 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\stores.json for Stores.
+2025-12-13 21:28:14,104 - main - DEBUG - background_tasks.py:81 - Delta pull for SystemSettings with last_sync: None
+2025-12-13 21:28:14,310 - main - INFO - background_tasks.py:86 - Delta pull sync for SystemSettings completed successfully.
+2025-12-13 21:28:14,312 - main - INFO - background_tasks.py:90 - Found 1 new/updated records for SystemSettings.
+2025-12-13 21:28:14,313 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\system_settings.json for SystemSettings.
+2025-12-13 21:28:14,313 - main - DEBUG - background_tasks.py:81 - Delta pull for Returns with last_sync: None
+2025-12-13 21:28:14,514 - main - INFO - background_tasks.py:86 - Delta pull sync for Returns completed successfully.
+2025-12-13 21:28:14,514 - main - INFO - background_tasks.py:90 - Found 2 new/updated records for Returns.
+2025-12-13 21:28:14,516 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\returns.json for Returns.
+2025-12-13 21:28:14,516 - main - DEBUG - background_tasks.py:81 - Delta pull for Bills with last_sync: None
+2025-12-13 21:28:14,600 - main - INFO - background_tasks.py:167 - Background JSON to Supabase push sync completed successfully. Stats: {'Products': {'pushed': 7}, 'Customers': {'pushed': 1}, 'Users': {'pushed': 2}, 'Stores': {'pushed': 8}, 'SystemSettings': {'pushed': 1}, 'Bills': {'pushed': 5}, 'BillFormats': {'pushed': 5}}
+2025-12-13 21:28:14,722 - main - INFO - background_tasks.py:86 - Delta pull sync for Bills completed successfully.
+2025-12-13 21:28:14,731 - main - INFO - background_tasks.py:90 - Found 5 new/updated records for Bills.
+2025-12-13 21:28:14,731 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\bills.json for Bills.
+2025-12-13 21:28:14,737 - main - DEBUG - background_tasks.py:81 - Delta pull for BillFormats with last_sync: None
+2025-12-13 21:28:14,919 - main - INFO - background_tasks.py:86 - Delta pull sync for BillFormats completed successfully.
+2025-12-13 21:28:14,921 - main - INFO - background_tasks.py:90 - Found 5 new/updated records for BillFormats.
+2025-12-13 21:28:14,923 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\bill_formats.json for BillFormats.
+2025-12-13 21:28:14,925 - main - DEBUG - background_tasks.py:81 - Delta pull for UserStores with last_sync: None
+2025-12-13 21:28:15,120 - main - INFO - background_tasks.py:86 - Delta pull sync for UserStores completed successfully.
+2025-12-13 21:28:15,122 - main - INFO - background_tasks.py:90 - Found 1 new/updated records for UserStores.
+2025-12-13 21:28:15,122 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\userstores.json for UserStores.
+2025-12-13 21:28:15,435 - main - INFO - logger.py:128 - ================================================================================
+2025-12-13 21:28:15,437 - main - INFO - logger.py:129 - ✅ Logging configured for Windows
+2025-12-13 21:28:15,438 - main - INFO - logger.py:130 - 📁 Log file: D:\Siri-apps\Siri-billing-app\backend\data\logs\billing_app-2025-12-13.log
+2025-12-13 21:28:15,443 - main - INFO - logger.py:131 - 🗓️ Retention: 30 days
+2025-12-13 21:28:15,447 - main - INFO - logger.py:134 - 🔄 Rotation: Manual (Windows mode - prevents file locking)
+2025-12-13 21:28:15,449 - main - INFO - logger.py:138 - ================================================================================
+2025-12-13 21:28:15,450 - main - INFO - main.py:60 - 🚀 Billing Flask server starting up...
+2025-12-13 21:28:15,450 - main - INFO - main.py:61 - 🔐 JWT Configuration:
+2025-12-13 21:28:15,453 - main - INFO - main.py:62 -   - JWT_TOKEN_LOCATION: ['cookies']
+2025-12-13 21:28:15,455 - main - INFO - main.py:63 -   - JWT_COOKIE_NAME: access_token_cookie
+2025-12-13 21:28:15,513 - main - INFO - main.py:64 -   - JWT_COOKIE_SECURE: False
+2025-12-13 21:28:15,513 - main - INFO - main.py:65 -   - JWT_COOKIE_SAMESITE: Lax
+2025-12-13 21:28:15,513 - main - INFO - main.py:66 -   - JWT_ACCESS_TOKEN_EXPIRES: 1 day, 0:00:00
+2025-12-13 21:28:15,548 - main - INFO - main.py:197 - 🚀 Billing Flask server starting...
+2025-12-13 21:28:15,563 - main - INFO - main.py:202 - 🌐 Billing app will run on localhost:8080
+2025-12-13 21:28:15,587 - main - INFO - main.py:203 - 🔓 CORS: Accepting all requests from local machine
+2025-12-13 21:28:15,589 - main - INFO - background_tasks.py:35 - Starting initial full sync for missing JSON files.
+2025-12-13 21:28:15,589 - main - INFO - background_tasks.py:185 - Background pull sync scheduler (Supabase -> JSON) started.
+2025-12-13 21:28:15,590 - main - INFO - background_tasks.py:65 - JSON file for Products already exists at D:\Siri-apps\Siri-billing-app\backend\data\json\products.json. Skipping initial full pull.
+2025-12-13 21:28:15,590 - main - INFO - background_tasks.py:65 - JSON file for Customers already exists at D:\Siri-apps\Siri-billing-app\backend\data\json\customers.json. Skipping initial full pull.
+2025-12-13 21:28:15,591 - main - INFO - background_tasks.py:140 - Starting background JSON to Supabase push sync scheduler.
+2025-12-13 21:28:15,591 - main - INFO - background_tasks.py:192 - Background JSON to Supabase push sync scheduler (JSON -> Supabase) started.
+2025-12-13 21:28:15,591 - main - INFO - background_tasks.py:65 - JSON file for Users already exists at D:\Siri-apps\Siri-billing-app\backend\data\json\users.json. Skipping initial full pull.
+2025-12-13 21:28:15,592 - main - INFO - background_tasks.py:142 - Background JSON to Supabase push sync starting. Next push in 5 minutes.
+2025-12-13 21:28:15,593 - main - INFO - background_tasks.py:65 - JSON file for Stores already exists at D:\Siri-apps\Siri-billing-app\backend\data\json\stores.json. Skipping initial full pull.
+2025-12-13 21:28:15,597 - main - INFO - background_tasks.py:65 - JSON file for SystemSettings already exists at D:\Siri-apps\Siri-billing-app\backend\data\json\system_settings.json. Skipping initial full pull.
+2025-12-13 21:28:15,598 - main - INFO - background_tasks.py:65 - JSON file for Returns already exists at D:\Siri-apps\Siri-billing-app\backend\data\json\returns.json. Skipping initial full pull.
+2025-12-13 21:28:15,600 - main - INFO - background_tasks.py:65 - JSON file for Bills already exists at D:\Siri-apps\Siri-billing-app\backend\data\json\bills.json. Skipping initial full pull.
+2025-12-13 21:28:15,603 - main - INFO - background_tasks.py:65 - JSON file for BillFormats already exists at D:\Siri-apps\Siri-billing-app\backend\data\json\bill_formats.json. Skipping initial full pull.
+2025-12-13 21:28:15,608 - main - INFO - background_tasks.py:65 - JSON file for UserStores already exists at D:\Siri-apps\Siri-billing-app\backend\data\json\userstores.json. Skipping initial full pull.
+2025-12-13 21:28:15,612 - main - INFO - background_tasks.py:66 - Initial full sync completed.
+2025-12-13 21:28:15,612 - main - INFO - background_tasks.py:76 - Background pull sync starting. Next sync in 5 minutes.
+2025-12-13 21:28:15,614 - main - DEBUG - background_tasks.py:81 - Delta pull for Products with last_sync: None
+2025-12-13 21:28:15,878 - main - INFO - background_tasks.py:86 - Delta pull sync for Products completed successfully.
+2025-12-13 21:28:15,884 - main - INFO - background_tasks.py:90 - Found 7 new/updated records for Products.
+2025-12-13 21:28:15,889 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\products.json for Products.
+2025-12-13 21:28:15,897 - main - DEBUG - background_tasks.py:81 - Delta pull for Customers with last_sync: None
+2025-12-13 21:28:16,071 - main - INFO - background_tasks.py:86 - Delta pull sync for Customers completed successfully.
+2025-12-13 21:28:16,071 - main - INFO - background_tasks.py:90 - Found 1 new/updated records for Customers.
+2025-12-13 21:28:16,073 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\customers.json for Customers.
+2025-12-13 21:28:16,073 - main - DEBUG - background_tasks.py:81 - Delta pull for Users with last_sync: None
+2025-12-13 21:28:16,296 - main - INFO - background_tasks.py:86 - Delta pull sync for Users completed successfully.
+2025-12-13 21:28:16,296 - main - INFO - background_tasks.py:90 - Found 3 new/updated records for Users.
+2025-12-13 21:28:16,296 - main - INFO - background_tasks.py:98 - Filtered out admin/super_admin users. 2 users remaining.
+2025-12-13 21:28:16,305 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\users.json for Users.
+2025-12-13 21:28:16,305 - main - DEBUG - background_tasks.py:81 - Delta pull for Stores with last_sync: None
+2025-12-13 21:28:16,486 - main - INFO - background_tasks.py:86 - Delta pull sync for Stores completed successfully.
+2025-12-13 21:28:16,486 - main - INFO - background_tasks.py:90 - Found 8 new/updated records for Stores.
+2025-12-13 21:28:16,488 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\stores.json for Stores.
+2025-12-13 21:28:16,488 - main - DEBUG - background_tasks.py:81 - Delta pull for SystemSettings with last_sync: None
+2025-12-13 21:28:16,696 - main - INFO - background_tasks.py:86 - Delta pull sync for SystemSettings completed successfully.
+2025-12-13 21:28:16,696 - main - INFO - background_tasks.py:90 - Found 1 new/updated records for SystemSettings.
+2025-12-13 21:28:16,704 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\system_settings.json for SystemSettings.
+2025-12-13 21:28:16,704 - main - DEBUG - background_tasks.py:81 - Delta pull for Returns with last_sync: None
+2025-12-13 21:28:16,895 - main - INFO - background_tasks.py:86 - Delta pull sync for Returns completed successfully.
+2025-12-13 21:28:16,895 - main - INFO - background_tasks.py:90 - Found 2 new/updated records for Returns.
+2025-12-13 21:28:16,897 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\returns.json for Returns.
+2025-12-13 21:28:16,897 - main - DEBUG - background_tasks.py:81 - Delta pull for Bills with last_sync: None
+2025-12-13 21:28:17,127 - main - INFO - background_tasks.py:86 - Delta pull sync for Bills completed successfully.
+2025-12-13 21:28:17,129 - main - INFO - background_tasks.py:90 - Found 5 new/updated records for Bills.
+2025-12-13 21:28:17,131 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\bills.json for Bills.
+2025-12-13 21:28:17,131 - main - DEBUG - background_tasks.py:81 - Delta pull for BillFormats with last_sync: None
+2025-12-13 21:28:17,304 - main - INFO - background_tasks.py:86 - Delta pull sync for BillFormats completed successfully.
+2025-12-13 21:28:17,304 - main - INFO - background_tasks.py:90 - Found 5 new/updated records for BillFormats.
+2025-12-13 21:28:17,306 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\bill_formats.json for BillFormats.
+2025-12-13 21:28:17,306 - main - DEBUG - background_tasks.py:81 - Delta pull for UserStores with last_sync: None
+2025-12-13 21:28:17,364 - main - INFO - background_tasks.py:167 - Background JSON to Supabase push sync completed successfully. Stats: {'Products': {'pushed': 7}, 'Customers': {'pushed': 1}, 'Users': {'pushed': 2}, 'Stores': {'pushed': 8}, 'SystemSettings': {'pushed': 1}, 'Bills': {'pushed': 5}, 'BillFormats': {'pushed': 5}}
+2025-12-13 21:28:17,480 - main - INFO - background_tasks.py:86 - Delta pull sync for UserStores completed successfully.
+2025-12-13 21:28:17,480 - main - INFO - background_tasks.py:90 - Found 1 new/updated records for UserStores.
+2025-12-13 21:28:17,484 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\userstores.json for UserStores.
+2025-12-13 21:29:02,338 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/auth/me
+2025-12-13 21:29:02,338 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:02,338 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:02,338 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/auth/me
+2025-12-13 21:29:02,338 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:02,645 - main - DEBUG - main.py:90 - 🔍 [JWT] No token provided: Missing cookie "access_token_cookie"
+2025-12-13 21:29:02,645 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:02,645 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/auth/me
+2025-12-13 21:29:02,645 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:19,714 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/auth/login
+2025-12-13 21:29:19,714 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:19,714 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:19,717 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/auth/login
+2025-12-13 21:29:19,717 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:19,720 - main - INFO - auth_routes.py:23 - 🔐 [BACKEND-LOGIN] Login attempt for email: mailbox2249@gmail.com
+2025-12-13 21:29:19,720 - main - INFO - auth_routes.py:24 - 📍 [BACKEND-LOGIN] Request origin: http://localhost:3000
+2025-12-13 21:29:20,050 - main - INFO - auth_routes.py:51 - ✅ [BACKEND-LOGIN] User authenticated: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:20,051 - main - INFO - auth_routes.py:52 - 👤 [BACKEND-LOGIN] User name: V.NECKLECE
+2025-12-13 21:29:20,051 - main - INFO - auth_routes.py:53 - 🎭 [BACKEND-LOGIN] User role: billing_user
+2025-12-13 21:29:20,053 - main - INFO - auth_routes.py:66 - 🎫 [BACKEND-LOGIN] JWT token created for user: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:20,054 - main - INFO - auth_routes.py:83 - 📤 [BACKEND-LOGIN] Sending response with JWT cookie
+2025-12-13 21:29:20,054 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:20,054 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/auth/login
+2025-12-13 21:29:20,054 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:27,317 - main - INFO - auth_routes.py:125 - 👤 [BACKEND-ME] Fetching current user info for: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:27,317 - main - DEBUG - auth_routes.py:126 - 🎫 [BACKEND-ME] JWT claims: {'fresh': False, 'iat': 1765641560, 'jti': 'f7936664-3a92-4441-8c70-565ce17458c6', 'type': 'access', 'sub': '0497138a-918d-4859-9fda-56f413f1f97e', 'nbf': 1765641560, 'exp': 1765727960, 'email': 'mailbox2249@gmail.com', 'name': 'V.NECKLECE', 'role': 'billing_user'}
+2025-12-13 21:29:27,517 - main - INFO - auth_routes.py:147 - ✅ [BACKEND-ME] Returning user: V.NECKLECE (mailbox2249@gmail.com)
+2025-12-13 21:29:27,517 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:27,517 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/auth/me
+2025-12-13 21:29:27,517 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:27,578 - main - INFO - auth_routes.py:125 - 👤 [BACKEND-ME] Fetching current user info for: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:27,581 - main - DEBUG - auth_routes.py:126 - 🎫 [BACKEND-ME] JWT claims: {'fresh': False, 'iat': 1765641560, 'jti': 'f7936664-3a92-4441-8c70-565ce17458c6', 'type': 'access', 'sub': '0497138a-918d-4859-9fda-56f413f1f97e', 'nbf': 1765641560, 'exp': 1765727960, 'email': 'mailbox2249@gmail.com', 'name': 'V.NECKLECE', 'role': 'billing_user'}
+2025-12-13 21:29:27,779 - main - INFO - auth_routes.py:147 - ✅ [BACKEND-ME] Returning user: V.NECKLECE (mailbox2249@gmail.com)
+2025-12-13 21:29:27,780 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:27,780 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/auth/me
+2025-12-13 21:29:27,781 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:27,849 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/stores/current
+2025-12-13 21:29:27,850 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:27,851 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:27,851 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/stores/current
+2025-12-13 21:29:27,852 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/sync/status
+2025-12-13 21:29:27,857 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:27,858 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:27,859 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:27,859 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/sync/status
+2025-12-13 21:29:27,859 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:27,886 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/returns/pending/count
+2025-12-13 21:29:27,887 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:27,887 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:27,887 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/returns/pending/count
+2025-12-13 21:29:27,887 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:27,897 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/notifications
+2025-12-13 21:29:27,898 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:27,898 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:27,900 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/notifications
+2025-12-13 21:29:27,900 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:27,903 - main - INFO - auth_routes.py:125 - 👤 [BACKEND-ME] Fetching current user info for: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:27,930 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/stores/current
+2025-12-13 21:29:27,932 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:27,932 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:27,932 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/stores/current
+2025-12-13 21:29:27,932 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:27,942 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/sync/status
+2025-12-13 21:29:27,942 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:27,942 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:27,942 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/sync/status
+2025-12-13 21:29:27,942 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:27,964 - main - DEBUG - auth_routes.py:126 - 🎫 [BACKEND-ME] JWT claims: {'fresh': False, 'iat': 1765641560, 'jti': 'f7936664-3a92-4441-8c70-565ce17458c6', 'type': 'access', 'sub': '0497138a-918d-4859-9fda-56f413f1f97e', 'nbf': 1765641560, 'exp': 1765727960, 'email': 'mailbox2249@gmail.com', 'name': 'V.NECKLECE', 'role': 'billing_user'}
+2025-12-13 21:29:28,092 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:28,146 - main - INFO - auth_routes.py:147 - ✅ [BACKEND-ME] Returning user: V.NECKLECE (mailbox2249@gmail.com)
+2025-12-13 21:29:28,147 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:28,147 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/auth/me
+2025-12-13 21:29:28,147 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:28,179 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/returns/pending/count
+2025-12-13 21:29:28,180 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:28,180 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:28,180 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/returns/pending/count
+2025-12-13 21:29:28,180 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:28,182 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/notifications
+2025-12-13 21:29:28,182 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:28,182 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:28,183 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/notifications
+2025-12-13 21:29:28,184 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:28,185 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:28,187 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:28,213 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/products
+2025-12-13 21:29:28,213 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:28,213 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:28,213 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/products
+2025-12-13 21:29:28,213 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:28,215 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:28,228 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/settings
+2025-12-13 21:29:28,230 - main - INFO - auth_routes.py:125 - 👤 [BACKEND-ME] Fetching current user info for: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:28,231 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:28,231 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:28,231 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/settings
+2025-12-13 21:29:28,231 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:28,232 - main - DEBUG - auth_routes.py:126 - 🎫 [BACKEND-ME] JWT claims: {'fresh': False, 'iat': 1765641560, 'jti': 'f7936664-3a92-4441-8c70-565ce17458c6', 'type': 'access', 'sub': '0497138a-918d-4859-9fda-56f413f1f97e', 'nbf': 1765641560, 'exp': 1765727960, 'email': 'mailbox2249@gmail.com', 'name': 'V.NECKLECE', 'role': 'billing_user'}
+2025-12-13 21:29:28,243 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/users
+2025-12-13 21:29:28,244 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:28,245 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:28,245 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/users
+2025-12-13 21:29:28,246 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:28,252 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/stores
+2025-12-13 21:29:28,252 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:28,252 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:28,252 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/stores
+2025-12-13 21:29:28,252 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:28,364 - main - INFO - sync_routes.py:15 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching sync status
+2025-12-13 21:29:28,385 - main - INFO - store_routes.py:65 - 📍 User 0497138a-918d-4859-9fda-56f413f1f97e fetching their assigned store
+2025-12-13 21:29:28,471 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:28,486 - main - INFO - auth_routes.py:147 - ✅ [BACKEND-ME] Returning user: V.NECKLECE (mailbox2249@gmail.com)
+2025-12-13 21:29:28,488 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:28,488 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/auth/me
+2025-12-13 21:29:28,488 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:28,496 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/user-stores
+2025-12-13 21:29:28,496 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:28,496 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:28,497 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/user-stores
+2025-12-13 21:29:28,498 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:28,507 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/products
+2025-12-13 21:29:28,507 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:28,507 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:28,507 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/products
+2025-12-13 21:29:28,507 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:28,527 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/settings
+2025-12-13 21:29:28,527 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:28,527 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:28,527 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/settings
+2025-12-13 21:29:28,527 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:28,540 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/users
+2025-12-13 21:29:28,540 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:28,542 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:28,542 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/users
+2025-12-13 21:29:28,542 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:28,558 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/stores
+2025-12-13 21:29:28,558 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/user-stores
+2025-12-13 21:29:28,559 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:28,559 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:28,559 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:28,560 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:28,560 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/stores
+2025-12-13 21:29:28,560 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/user-stores
+2025-12-13 21:29:28,560 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:28,560 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:28,564 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:28,565 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/sync/status
+2025-12-13 21:29:28,565 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:28,721 - main - INFO - product_routes.py:14 - 📦 User 0497138a-918d-4859-9fda-56f413f1f97e fetching store inventory products
+2025-12-13 21:29:28,739 - main - INFO - notification_routes.py:18 - 📬 User 0497138a-918d-4859-9fda-56f413f1f97e fetching notifications
+2025-12-13 21:29:28,800 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:28,869 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:28,902 - main - INFO - product_routes.py:33 - 📍 Fetching inventory for store: store3
+2025-12-13 21:29:28,916 - main - DEBUG - return_routes.py:348 - 📊 User 0497138a-918d-4859-9fda-56f413f1f97e fetched pending returns count: 2
+2025-12-13 21:29:28,917 - main - INFO - store_routes.py:80 - 📍 User 0497138a-918d-4859-9fda-56f413f1f97e is assigned to store store3
+2025-12-13 21:29:28,918 - main - INFO - notification_routes.py:29 - ✅ Fetched 0 notifications
+2025-12-13 21:29:28,918 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:28,920 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/returns/pending/count
+2025-12-13 21:29:28,922 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:28,922 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:28,922 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/notifications
+2025-12-13 21:29:28,922 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:28,981 - main - INFO - settings_routes.py:14 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching settings
+2025-12-13 21:29:29,079 - main - INFO - user_routes.py:14 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching all users
+2025-12-13 21:29:29,082 - main - INFO - product_routes.py:47 - 📦 Found 2 inventory items
+2025-12-13 21:29:29,116 - main - INFO - store_routes.py:93 - ✅ Found store: SIRI ART JEWELLERY - Mall (ID: store3)
+2025-12-13 21:29:29,116 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:29,116 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/stores/current
+2025-12-13 21:29:29,116 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:29,181 - main - INFO - settings_routes.py:45 - ✅ Settings fetched with tax: 12.1%
+2025-12-13 21:29:29,182 - main - INFO - settings_routes.py:46 - 📊 Transformed settings: {'id': 1, 'gstin': '27AAFCV2449G1Z7', 'taxPercentage': 12.1, 'companyName': 'SIRI ART JEWELLERY', 'companyAddress': '123 Jewelry Street, Mumbai, Maharashtra 400001', 'companyPhone': '+91 889771771', 'companyEmail': 'info@siri.ifleon.com', 'created_at': '2025-11-30T11:49:07.503041', 'updated_at': '2025-12-13T15:58:16.323073'}
+2025-12-13 21:29:29,182 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:29,182 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/settings
+2025-12-13 21:29:29,182 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:29,232 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:29,234 - main - INFO - auth_routes.py:125 - 👤 [BACKEND-ME] Fetching current user info for: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:29,238 - main - DEBUG - auth_routes.py:126 - 🎫 [BACKEND-ME] JWT claims: {'fresh': False, 'iat': 1765641560, 'jti': 'f7936664-3a92-4441-8c70-565ce17458c6', 'type': 'access', 'sub': '0497138a-918d-4859-9fda-56f413f1f97e', 'nbf': 1765641560, 'exp': 1765727960, 'email': 'mailbox2249@gmail.com', 'name': 'V.NECKLECE', 'role': 'billing_user'}
+2025-12-13 21:29:29,250 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/notifications/unread/count
+2025-12-13 21:29:29,250 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:29,251 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:29,251 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/notifications/unread/count
+2025-12-13 21:29:29,251 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:29,278 - main - INFO - user_routes.py:26 - ✅ Fetched 2 users (super_admin excluded)
+2025-12-13 21:29:29,282 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:29,282 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/users
+2025-12-13 21:29:29,282 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:29,310 - main - INFO - product_routes.py:113 - ✅ Returning 2 products from store inventory
+2025-12-13 21:29:29,314 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:29,314 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/products
+2025-12-13 21:29:29,314 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:29,418 - main - INFO - store_routes.py:14 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching stores
+2025-12-13 21:29:29,425 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:29,457 - main - INFO - auth_routes.py:147 - ✅ [BACKEND-ME] Returning user: V.NECKLECE (mailbox2249@gmail.com)
+2025-12-13 21:29:29,457 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:29,457 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/auth/me
+2025-12-13 21:29:29,457 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:29,488 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:29,589 - main - INFO - store_routes.py:21 - ✅ Fetched 8 stores
+2025-12-13 21:29:29,589 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:29,589 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/stores
+2025-12-13 21:29:29,589 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:29,602 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:29,605 - main - INFO - store_routes.py:35 - 📍 User 0497138a-918d-4859-9fda-56f413f1f97e fetching their user-stores
+2025-12-13 21:29:29,625 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:29,687 - main - INFO - sync_routes.py:15 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching sync status
+2025-12-13 21:29:29,773 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:29,798 - main - INFO - notification_routes.py:18 - 📬 User 0497138a-918d-4859-9fda-56f413f1f97e fetching notifications
+2025-12-13 21:29:29,802 - main - INFO - store_routes.py:47 - ✅ Found 1 user-store associations for user 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:29,802 - main - DEBUG - store_routes.py:48 - User-stores data: [{'userId': '0497138a-918d-4859-9fda-56f413f1f97e', 'storeId': 'store3', 'created_at': '2025-12-05T14:15:59.19755', 'updated_at': '2025-12-05T14:15:59.19755'}]
+2025-12-13 21:29:29,803 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:29,803 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/user-stores
+2025-12-13 21:29:29,803 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:29,864 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:29,865 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/sync/status
+2025-12-13 21:29:29,865 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:29,910 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:29,968 - main - INFO - store_routes.py:65 - 📍 User 0497138a-918d-4859-9fda-56f413f1f97e fetching their assigned store
+2025-12-13 21:29:29,970 - main - INFO - notification_routes.py:29 - ✅ Fetched 0 notifications
+2025-12-13 21:29:29,973 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:29,973 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/notifications
+2025-12-13 21:29:29,973 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:29,996 - main - DEBUG - return_routes.py:348 - 📊 User 0497138a-918d-4859-9fda-56f413f1f97e fetched pending returns count: 2
+2025-12-13 21:29:29,996 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:29,996 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/returns/pending/count
+2025-12-13 21:29:29,996 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:30,103 - main - INFO - settings_routes.py:14 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching settings
+2025-12-13 21:29:30,117 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:30,148 - main - INFO - store_routes.py:80 - 📍 User 0497138a-918d-4859-9fda-56f413f1f97e is assigned to store store3
+2025-12-13 21:29:30,180 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:30,276 - main - INFO - settings_routes.py:45 - ✅ Settings fetched with tax: 12.1%
+2025-12-13 21:29:30,278 - main - INFO - settings_routes.py:46 - 📊 Transformed settings: {'id': 1, 'gstin': '27AAFCV2449G1Z7', 'taxPercentage': 12.1, 'companyName': 'SIRI ART JEWELLERY', 'companyAddress': '123 Jewelry Street, Mumbai, Maharashtra 400001', 'companyPhone': '+91 889771771', 'companyEmail': 'info@siri.ifleon.com', 'created_at': '2025-11-30T11:49:07.503041', 'updated_at': '2025-12-13T15:58:16.323073'}
+2025-12-13 21:29:30,278 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:30,278 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/settings
+2025-12-13 21:29:30,278 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:30,278 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:30,300 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:30,313 - main - INFO - store_routes.py:93 - ✅ Found store: SIRI ART JEWELLERY - Mall (ID: store3)
+2025-12-13 21:29:30,321 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:30,321 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/stores/current
+2025-12-13 21:29:30,321 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:30,369 - main - INFO - user_routes.py:14 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching all users
+2025-12-13 21:29:30,462 - main - INFO - product_routes.py:14 - 📦 User 0497138a-918d-4859-9fda-56f413f1f97e fetching store inventory products
+2025-12-13 21:29:30,478 - main - INFO - store_routes.py:14 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching stores
+2025-12-13 21:29:30,518 - main - DEBUG - notification_routes.py:51 - 📊 User 0497138a-918d-4859-9fda-56f413f1f97e has 0 unread notifications
+2025-12-13 21:29:30,518 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:30,518 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/notifications/unread/count
+2025-12-13 21:29:30,518 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:30,546 - main - INFO - user_routes.py:26 - ✅ Fetched 2 users (super_admin excluded)
+2025-12-13 21:29:30,546 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:30,546 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/users
+2025-12-13 21:29:30,546 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:30,586 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:30,652 - main - INFO - product_routes.py:33 - 📍 Fetching inventory for store: store3
+2025-12-13 21:29:30,660 - main - INFO - store_routes.py:21 - ✅ Fetched 8 stores
+2025-12-13 21:29:30,660 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:30,661 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/stores
+2025-12-13 21:29:30,661 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:30,761 - main - INFO - store_routes.py:35 - 📍 User 0497138a-918d-4859-9fda-56f413f1f97e fetching their user-stores
+2025-12-13 21:29:30,827 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:30,856 - main - INFO - product_routes.py:47 - 📦 Found 2 inventory items
+2025-12-13 21:29:30,935 - main - INFO - store_routes.py:47 - ✅ Found 1 user-store associations for user 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:30,935 - main - DEBUG - store_routes.py:48 - User-stores data: [{'userId': '0497138a-918d-4859-9fda-56f413f1f97e', 'storeId': 'store3', 'created_at': '2025-12-05T14:15:59.19755', 'updated_at': '2025-12-05T14:15:59.19755'}]
+2025-12-13 21:29:30,935 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:30,935 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/user-stores
+2025-12-13 21:29:30,935 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:30,968 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:31,050 - main - INFO - product_routes.py:113 - ✅ Returning 2 products from store inventory
+2025-12-13 21:29:31,050 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:31,050 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/products
+2025-12-13 21:29:31,050 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:31,147 - main - INFO - store_routes.py:14 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching stores
+2025-12-13 21:29:31,206 - main - DEBUG - notification_routes.py:51 - 📊 User 0497138a-918d-4859-9fda-56f413f1f97e has 0 unread notifications
+2025-12-13 21:29:31,208 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:31,208 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/notifications/unread/count
+2025-12-13 21:29:31,208 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:31,249 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:31,322 - main - INFO - store_routes.py:21 - ✅ Fetched 8 stores
+2025-12-13 21:29:31,322 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:31,322 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/stores
+2025-12-13 21:29:31,322 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:31,456 - main - INFO - store_routes.py:35 - 📍 User 0497138a-918d-4859-9fda-56f413f1f97e fetching their user-stores
+2025-12-13 21:29:31,630 - main - INFO - store_routes.py:47 - ✅ Found 1 user-store associations for user 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:31,630 - main - DEBUG - store_routes.py:48 - User-stores data: [{'userId': '0497138a-918d-4859-9fda-56f413f1f97e', 'storeId': 'store3', 'created_at': '2025-12-05T14:15:59.19755', 'updated_at': '2025-12-05T14:15:59.19755'}]
+2025-12-13 21:29:31,630 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:31,630 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/user-stores
+2025-12-13 21:29:31,630 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:31,641 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:31,817 - main - INFO - store_routes.py:14 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching stores
+2025-12-13 21:29:31,946 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:32,030 - main - INFO - store_routes.py:21 - ✅ Fetched 8 stores
+2025-12-13 21:29:32,032 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:32,032 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/stores
+2025-12-13 21:29:32,033 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:32,127 - main - INFO - store_routes.py:65 - 📍 User 0497138a-918d-4859-9fda-56f413f1f97e fetching their assigned store
+2025-12-13 21:29:32,328 - main - INFO - store_routes.py:80 - 📍 User 0497138a-918d-4859-9fda-56f413f1f97e is assigned to store store3
+2025-12-13 21:29:32,343 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:32,856 - main - INFO - store_routes.py:93 - ✅ Found store: SIRI ART JEWELLERY - Mall (ID: store3)
+2025-12-13 21:29:32,856 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:32,856 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/stores/current
+2025-12-13 21:29:32,856 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:32,915 - main - INFO - store_routes.py:35 - 📍 User 0497138a-918d-4859-9fda-56f413f1f97e fetching their user-stores
+2025-12-13 21:29:33,113 - main - INFO - store_routes.py:47 - ✅ Found 1 user-store associations for user 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:33,113 - main - DEBUG - store_routes.py:48 - User-stores data: [{'userId': '0497138a-918d-4859-9fda-56f413f1f97e', 'storeId': 'store3', 'created_at': '2025-12-05T14:15:59.19755', 'updated_at': '2025-12-05T14:15:59.19755'}]
+2025-12-13 21:29:33,113 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:33,113 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/user-stores
+2025-12-13 21:29:33,113 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:33,176 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:33,179 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:33,352 - main - INFO - product_routes.py:14 - 📦 User 0497138a-918d-4859-9fda-56f413f1f97e fetching store inventory products
+2025-12-13 21:29:33,383 - main - INFO - settings_routes.py:14 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching settings
+2025-12-13 21:29:33,427 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:33,527 - main - INFO - product_routes.py:33 - 📍 Fetching inventory for store: store3
+2025-12-13 21:29:33,567 - main - INFO - settings_routes.py:45 - ✅ Settings fetched with tax: 12.1%
+2025-12-13 21:29:33,567 - main - INFO - settings_routes.py:46 - 📊 Transformed settings: {'id': 1, 'gstin': '27AAFCV2449G1Z7', 'taxPercentage': 12.1, 'companyName': 'SIRI ART JEWELLERY', 'companyAddress': '123 Jewelry Street, Mumbai, Maharashtra 400001', 'companyPhone': '+91 889771771', 'companyEmail': 'info@siri.ifleon.com', 'created_at': '2025-11-30T11:49:07.503041', 'updated_at': '2025-12-13T15:58:16.323073'}
+2025-12-13 21:29:33,570 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:33,570 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/settings
+2025-12-13 21:29:33,570 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:33,625 - main - INFO - store_routes.py:65 - 📍 User 0497138a-918d-4859-9fda-56f413f1f97e fetching their assigned store
+2025-12-13 21:29:33,711 - main - INFO - product_routes.py:47 - 📦 Found 2 inventory items
+2025-12-13 21:29:33,819 - main - INFO - store_routes.py:80 - 📍 User 0497138a-918d-4859-9fda-56f413f1f97e is assigned to store store3
+2025-12-13 21:29:33,907 - main - INFO - product_routes.py:113 - ✅ Returning 2 products from store inventory
+2025-12-13 21:29:33,907 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:33,907 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/products
+2025-12-13 21:29:33,907 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:34,004 - main - INFO - store_routes.py:93 - ✅ Found store: SIRI ART JEWELLERY - Mall (ID: store3)
+2025-12-13 21:29:34,004 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:34,004 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/stores/current
+2025-12-13 21:29:34,004 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:34,325 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:34,326 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:34,513 - main - INFO - settings_routes.py:14 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching settings
+2025-12-13 21:29:34,519 - main - INFO - product_routes.py:14 - 📦 User 0497138a-918d-4859-9fda-56f413f1f97e fetching store inventory products
+2025-12-13 21:29:34,707 - main - INFO - product_routes.py:33 - 📍 Fetching inventory for store: store3
+2025-12-13 21:29:34,708 - main - INFO - settings_routes.py:45 - ✅ Settings fetched with tax: 12.1%
+2025-12-13 21:29:34,709 - main - INFO - settings_routes.py:46 - 📊 Transformed settings: {'id': 1, 'gstin': '27AAFCV2449G1Z7', 'taxPercentage': 12.1, 'companyName': 'SIRI ART JEWELLERY', 'companyAddress': '123 Jewelry Street, Mumbai, Maharashtra 400001', 'companyPhone': '+91 889771771', 'companyEmail': 'info@siri.ifleon.com', 'created_at': '2025-11-30T11:49:07.503041', 'updated_at': '2025-12-13T15:58:16.323073'}
+2025-12-13 21:29:34,710 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:34,710 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/settings
+2025-12-13 21:29:34,710 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:34,881 - main - INFO - product_routes.py:47 - 📦 Found 2 inventory items
+2025-12-13 21:29:35,064 - main - INFO - product_routes.py:113 - ✅ Returning 2 products from store inventory
+2025-12-13 21:29:35,065 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:35,065 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/products
+2025-12-13 21:29:35,065 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:38,304 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/bills
+2025-12-13 21:29:38,304 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:38,304 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:38,304 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/bills
+2025-12-13 21:29:38,305 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:38,308 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:38,510 - main - INFO - billing_routes.py:24 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching bills
+2025-12-13 21:29:38,610 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/bills
+2025-12-13 21:29:38,610 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:38,610 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:38,610 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/bills
+2025-12-13 21:29:38,610 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:38,707 - main - INFO - billing_routes.py:48 - ✅ Fetched 5 bills
+2025-12-13 21:29:38,708 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:38,708 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/bills
+2025-12-13 21:29:38,708 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:39,016 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:39,204 - main - INFO - billing_routes.py:24 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching bills
+2025-12-13 21:29:39,391 - main - INFO - billing_routes.py:48 - ✅ Fetched 5 bills
+2025-12-13 21:29:39,391 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:39,391 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/bills
+2025-12-13 21:29:39,391 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:42,907 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/returns
+2025-12-13 21:29:42,907 - main - DEBUG - main.py:154 - 🔍 [CORS-PREFLIGHT] Handling OPTIONS request for /api/returns
+2025-12-13 21:29:42,908 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:42,908 - main - DEBUG - main.py:166 - ✅ [CORS-PREFLIGHT] Allowed for local origin: http://localhost:3000
+2025-12-13 21:29:42,908 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:42,908 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:42,908 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/returns
+2025-12-13 21:29:42,908 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/returns
+2025-12-13 21:29:42,908 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:42,908 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:43,230 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:43,402 - main - INFO - return_routes.py:18 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching returns
+2025-12-13 21:29:43,600 - main - INFO - return_routes.py:53 - ✅ Fetched 2 returns
+2025-12-13 21:29:43,602 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:43,603 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/returns
+2025-12-13 21:29:43,603 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:43,618 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:43,808 - main - INFO - return_routes.py:18 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching returns
+2025-12-13 21:29:44,005 - main - INFO - return_routes.py:53 - ✅ Fetched 2 returns
+2025-12-13 21:29:44,005 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:44,005 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/returns
+2025-12-13 21:29:44,005 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:47,193 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:47,195 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:47,196 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:47,197 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:47,198 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:47,203 - main - INFO - auth_routes.py:125 - 👤 [BACKEND-ME] Fetching current user info for: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:47,207 - main - DEBUG - auth_routes.py:126 - 🎫 [BACKEND-ME] JWT claims: {'fresh': False, 'iat': 1765641560, 'jti': 'f7936664-3a92-4441-8c70-565ce17458c6', 'type': 'access', 'sub': '0497138a-918d-4859-9fda-56f413f1f97e', 'nbf': 1765641560, 'exp': 1765727960, 'email': 'mailbox2249@gmail.com', 'name': 'V.NECKLECE', 'role': 'billing_user'}
+2025-12-13 21:29:47,381 - main - INFO - product_routes.py:14 - 📦 User 0497138a-918d-4859-9fda-56f413f1f97e fetching store inventory products
+2025-12-13 21:29:47,384 - main - INFO - store_routes.py:14 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching stores
+2025-12-13 21:29:47,389 - main - INFO - settings_routes.py:14 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching settings
+2025-12-13 21:29:47,397 - main - INFO - auth_routes.py:147 - ✅ [BACKEND-ME] Returning user: V.NECKLECE (mailbox2249@gmail.com)
+2025-12-13 21:29:47,398 - main - INFO - store_routes.py:35 - 📍 User 0497138a-918d-4859-9fda-56f413f1f97e fetching their user-stores
+2025-12-13 21:29:47,398 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:47,398 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/auth/me
+2025-12-13 21:29:47,398 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:47,560 - main - INFO - product_routes.py:33 - 📍 Fetching inventory for store: store3
+2025-12-13 21:29:47,560 - main - INFO - settings_routes.py:45 - ✅ Settings fetched with tax: 12.1%
+2025-12-13 21:29:47,560 - main - INFO - store_routes.py:21 - ✅ Fetched 8 stores
+2025-12-13 21:29:47,560 - main - INFO - settings_routes.py:46 - 📊 Transformed settings: {'id': 1, 'gstin': '27AAFCV2449G1Z7', 'taxPercentage': 12.1, 'companyName': 'SIRI ART JEWELLERY', 'companyAddress': '123 Jewelry Street, Mumbai, Maharashtra 400001', 'companyPhone': '+91 889771771', 'companyEmail': 'info@siri.ifleon.com', 'created_at': '2025-11-30T11:49:07.503041', 'updated_at': '2025-12-13T15:58:16.323073'}
+2025-12-13 21:29:47,574 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:47,574 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/stores
+2025-12-13 21:29:47,574 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:47,574 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:47,574 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/settings
+2025-12-13 21:29:47,580 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:47,591 - main - INFO - store_routes.py:47 - ✅ Found 1 user-store associations for user 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:47,597 - main - DEBUG - store_routes.py:48 - User-stores data: [{'userId': '0497138a-918d-4859-9fda-56f413f1f97e', 'storeId': 'store3', 'created_at': '2025-12-05T14:15:59.19755', 'updated_at': '2025-12-05T14:15:59.19755'}]
+2025-12-13 21:29:47,599 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:47,599 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/user-stores
+2025-12-13 21:29:47,599 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:47,637 - main - INFO - user_routes.py:14 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching all users
+2025-12-13 21:29:47,718 - main - INFO - auth_routes.py:125 - 👤 [BACKEND-ME] Fetching current user info for: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:47,718 - main - DEBUG - auth_routes.py:126 - 🎫 [BACKEND-ME] JWT claims: {'fresh': False, 'iat': 1765641560, 'jti': 'f7936664-3a92-4441-8c70-565ce17458c6', 'type': 'access', 'sub': '0497138a-918d-4859-9fda-56f413f1f97e', 'nbf': 1765641560, 'exp': 1765727960, 'email': 'mailbox2249@gmail.com', 'name': 'V.NECKLECE', 'role': 'billing_user'}
+2025-12-13 21:29:47,775 - main - INFO - product_routes.py:47 - 📦 Found 2 inventory items
+2025-12-13 21:29:47,821 - main - INFO - user_routes.py:26 - ✅ Fetched 2 users (super_admin excluded)
+2025-12-13 21:29:47,822 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:47,822 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/users
+2025-12-13 21:29:47,823 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:47,890 - main - INFO - auth_routes.py:147 - ✅ [BACKEND-ME] Returning user: V.NECKLECE (mailbox2249@gmail.com)
+2025-12-13 21:29:47,891 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:47,891 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/auth/me
+2025-12-13 21:29:47,891 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:47,897 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:47,900 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:47,913 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:47,959 - main - INFO - product_routes.py:113 - ✅ Returning 2 products from store inventory
+2025-12-13 21:29:47,959 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:47,959 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/products
+2025-12-13 21:29:47,959 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:48,082 - main - INFO - store_routes.py:14 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching stores
+2025-12-13 21:29:48,092 - main - INFO - settings_routes.py:14 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching settings
+2025-12-13 21:29:48,115 - main - INFO - store_routes.py:35 - 📍 User 0497138a-918d-4859-9fda-56f413f1f97e fetching their user-stores
+2025-12-13 21:29:48,131 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:48,267 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:48,267 - main - INFO - store_routes.py:21 - ✅ Fetched 8 stores
+2025-12-13 21:29:48,267 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:48,267 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/stores
+2025-12-13 21:29:48,267 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:48,280 - main - INFO - settings_routes.py:45 - ✅ Settings fetched with tax: 12.1%
+2025-12-13 21:29:48,281 - main - INFO - settings_routes.py:46 - 📊 Transformed settings: {'id': 1, 'gstin': '27AAFCV2449G1Z7', 'taxPercentage': 12.1, 'companyName': 'SIRI ART JEWELLERY', 'companyAddress': '123 Jewelry Street, Mumbai, Maharashtra 400001', 'companyPhone': '+91 889771771', 'companyEmail': 'info@siri.ifleon.com', 'created_at': '2025-11-30T11:49:07.503041', 'updated_at': '2025-12-13T15:58:16.323073'}
+2025-12-13 21:29:48,281 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:48,281 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/settings
+2025-12-13 21:29:48,281 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:48,297 - main - INFO - store_routes.py:47 - ✅ Found 1 user-store associations for user 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:48,298 - main - DEBUG - store_routes.py:48 - User-stores data: [{'userId': '0497138a-918d-4859-9fda-56f413f1f97e', 'storeId': 'store3', 'created_at': '2025-12-05T14:15:59.19755', 'updated_at': '2025-12-05T14:15:59.19755'}]
+2025-12-13 21:29:48,298 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:48,298 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/user-stores
+2025-12-13 21:29:48,298 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:48,311 - main - INFO - user_routes.py:14 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching all users
+2025-12-13 21:29:48,457 - main - INFO - product_routes.py:14 - 📦 User 0497138a-918d-4859-9fda-56f413f1f97e fetching store inventory products
+2025-12-13 21:29:48,507 - main - INFO - user_routes.py:26 - ✅ Fetched 2 users (super_admin excluded)
+2025-12-13 21:29:48,507 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:48,507 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/users
+2025-12-13 21:29:48,507 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:48,581 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:48,636 - main - INFO - product_routes.py:33 - 📍 Fetching inventory for store: store3
+2025-12-13 21:29:48,760 - main - INFO - store_routes.py:14 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching stores
+2025-12-13 21:29:48,815 - main - INFO - product_routes.py:47 - 📦 Found 2 inventory items
+2025-12-13 21:29:48,945 - main - INFO - store_routes.py:21 - ✅ Fetched 8 stores
+2025-12-13 21:29:48,946 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:48,946 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/stores
+2025-12-13 21:29:48,946 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:49,014 - main - INFO - product_routes.py:113 - ✅ Returning 2 products from store inventory
+2025-12-13 21:29:49,016 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:49,016 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/products
+2025-12-13 21:29:49,016 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:49,264 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:49,266 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:49,436 - main - INFO - store_routes.py:14 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching stores
+2025-12-13 21:29:49,486 - main - INFO - store_routes.py:35 - 📍 User 0497138a-918d-4859-9fda-56f413f1f97e fetching their user-stores
+2025-12-13 21:29:49,621 - main - INFO - store_routes.py:21 - ✅ Fetched 8 stores
+2025-12-13 21:29:49,621 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:49,621 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/stores
+2025-12-13 21:29:49,621 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:49,681 - main - INFO - store_routes.py:47 - ✅ Found 1 user-store associations for user 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:49,681 - main - DEBUG - store_routes.py:48 - User-stores data: [{'userId': '0497138a-918d-4859-9fda-56f413f1f97e', 'storeId': 'store3', 'created_at': '2025-12-05T14:15:59.19755', 'updated_at': '2025-12-05T14:15:59.19755'}]
+2025-12-13 21:29:49,681 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:49,681 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/user-stores
+2025-12-13 21:29:49,681 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:49,997 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:50,002 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:50,183 - main - INFO - store_routes.py:35 - 📍 User 0497138a-918d-4859-9fda-56f413f1f97e fetching their user-stores
+2025-12-13 21:29:50,208 - main - INFO - store_routes.py:65 - 📍 User 0497138a-918d-4859-9fda-56f413f1f97e fetching their assigned store
+2025-12-13 21:29:50,358 - main - INFO - store_routes.py:47 - ✅ Found 1 user-store associations for user 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:50,358 - main - DEBUG - store_routes.py:48 - User-stores data: [{'userId': '0497138a-918d-4859-9fda-56f413f1f97e', 'storeId': 'store3', 'created_at': '2025-12-05T14:15:59.19755', 'updated_at': '2025-12-05T14:15:59.19755'}]
+2025-12-13 21:29:50,359 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:50,359 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/user-stores
+2025-12-13 21:29:50,359 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:50,403 - main - INFO - store_routes.py:80 - 📍 User 0497138a-918d-4859-9fda-56f413f1f97e is assigned to store store3
+2025-12-13 21:29:50,580 - main - INFO - store_routes.py:93 - ✅ Found store: SIRI ART JEWELLERY - Mall (ID: store3)
+2025-12-13 21:29:50,580 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:50,580 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/stores/current
+2025-12-13 21:29:50,580 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:50,584 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:50,764 - main - INFO - store_routes.py:65 - 📍 User 0497138a-918d-4859-9fda-56f413f1f97e fetching their assigned store
+2025-12-13 21:29:50,897 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:50,901 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:50,940 - main - INFO - store_routes.py:80 - 📍 User 0497138a-918d-4859-9fda-56f413f1f97e is assigned to store store3
+2025-12-13 21:29:51,067 - main - INFO - settings_routes.py:14 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching settings
+2025-12-13 21:29:51,092 - main - INFO - product_routes.py:14 - 📦 User 0497138a-918d-4859-9fda-56f413f1f97e fetching store inventory products
+2025-12-13 21:29:51,135 - main - INFO - store_routes.py:93 - ✅ Found store: SIRI ART JEWELLERY - Mall (ID: store3)
+2025-12-13 21:29:51,136 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:51,136 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/stores/current
+2025-12-13 21:29:51,136 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:51,251 - main - INFO - settings_routes.py:45 - ✅ Settings fetched with tax: 12.1%
+2025-12-13 21:29:51,251 - main - INFO - settings_routes.py:46 - 📊 Transformed settings: {'id': 1, 'gstin': '27AAFCV2449G1Z7', 'taxPercentage': 12.1, 'companyName': 'SIRI ART JEWELLERY', 'companyAddress': '123 Jewelry Street, Mumbai, Maharashtra 400001', 'companyPhone': '+91 889771771', 'companyEmail': 'info@siri.ifleon.com', 'created_at': '2025-11-30T11:49:07.503041', 'updated_at': '2025-12-13T15:58:16.323073'}
+2025-12-13 21:29:51,251 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:51,251 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/settings
+2025-12-13 21:29:51,251 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:51,271 - main - INFO - product_routes.py:33 - 📍 Fetching inventory for store: store3
+2025-12-13 21:29:51,457 - main - INFO - product_routes.py:47 - 📦 Found 2 inventory items
+2025-12-13 21:29:51,555 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:51,633 - main - INFO - product_routes.py:113 - ✅ Returning 2 products from store inventory
+2025-12-13 21:29:51,633 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:51,633 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/products
+2025-12-13 21:29:51,633 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:51,748 - main - INFO - settings_routes.py:14 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching settings
+2025-12-13 21:29:51,942 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:51,946 - main - INFO - settings_routes.py:45 - ✅ Settings fetched with tax: 12.1%
+2025-12-13 21:29:51,947 - main - INFO - settings_routes.py:46 - 📊 Transformed settings: {'id': 1, 'gstin': '27AAFCV2449G1Z7', 'taxPercentage': 12.1, 'companyName': 'SIRI ART JEWELLERY', 'companyAddress': '123 Jewelry Street, Mumbai, Maharashtra 400001', 'companyPhone': '+91 889771771', 'companyEmail': 'info@siri.ifleon.com', 'created_at': '2025-11-30T11:49:07.503041', 'updated_at': '2025-12-13T15:58:16.323073'}
+2025-12-13 21:29:51,948 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:51,949 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/settings
+2025-12-13 21:29:51,949 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:52,122 - main - INFO - product_routes.py:14 - 📦 User 0497138a-918d-4859-9fda-56f413f1f97e fetching store inventory products
+2025-12-13 21:29:52,306 - main - INFO - product_routes.py:33 - 📍 Fetching inventory for store: store3
+2025-12-13 21:29:52,492 - main - INFO - product_routes.py:47 - 📦 Found 2 inventory items
+2025-12-13 21:29:52,663 - main - INFO - product_routes.py:113 - ✅ Returning 2 products from store inventory
+2025-12-13 21:29:52,663 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:52,663 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/products
+2025-12-13 21:29:52,663 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:58,350 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:58,353 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:58,552 - main - INFO - notification_routes.py:18 - 📬 User 0497138a-918d-4859-9fda-56f413f1f97e fetching notifications
+2025-12-13 21:29:58,755 - main - INFO - notification_routes.py:29 - ✅ Fetched 0 notifications
+2025-12-13 21:29:58,755 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:58,756 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/notifications
+2025-12-13 21:29:58,756 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:58,764 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:29:59,004 - main - DEBUG - return_routes.py:348 - 📊 User 0497138a-918d-4859-9fda-56f413f1f97e fetched pending returns count: 2
+2025-12-13 21:29:59,005 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:59,005 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/returns/pending/count
+2025-12-13 21:29:59,005 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:29:59,118 - main - DEBUG - notification_routes.py:51 - 📊 User 0497138a-918d-4859-9fda-56f413f1f97e has 0 unread notifications
+2025-12-13 21:29:59,119 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:29:59,119 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/notifications/unread/count
+2025-12-13 21:29:59,119 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:30:28,351 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:30:28,353 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:30:28,355 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:30:28,535 - main - INFO - sync_routes.py:15 - User 0497138a-918d-4859-9fda-56f413f1f97e fetching sync status
+2025-12-13 21:30:28,557 - main - INFO - notification_routes.py:18 - 📬 User 0497138a-918d-4859-9fda-56f413f1f97e fetching notifications
+2025-12-13 21:30:28,714 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:30:28,714 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/sync/status
+2025-12-13 21:30:28,715 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:30:28,729 - main - INFO - notification_routes.py:29 - ✅ Fetched 0 notifications
+2025-12-13 21:30:28,731 - main - DEBUG - return_routes.py:348 - 📊 User 0497138a-918d-4859-9fda-56f413f1f97e fetched pending returns count: 2
+2025-12-13 21:30:28,732 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:30:28,732 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:30:28,732 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/notifications
+2025-12-13 21:30:28,732 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/returns/pending/count
+2025-12-13 21:30:28,733 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:30:28,733 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:30:28,743 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:30:29,122 - main - DEBUG - notification_routes.py:51 - 📊 User 0497138a-918d-4859-9fda-56f413f1f97e has 0 unread notifications
+2025-12-13 21:30:29,122 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:30:29,122 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/notifications/unread/count
+2025-12-13 21:30:29,123 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:30:58,349 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:30:58,352 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:30:58,533 - main - INFO - notification_routes.py:18 - 📬 User 0497138a-918d-4859-9fda-56f413f1f97e fetching notifications
+2025-12-13 21:30:58,714 - main - INFO - notification_routes.py:29 - ✅ Fetched 0 notifications
+2025-12-13 21:30:58,715 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:30:58,715 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/notifications
+2025-12-13 21:30:58,715 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:30:58,721 - main - INFO - auth.py:20 - Authenticating user_id from JWT: 0497138a-918d-4859-9fda-56f413f1f97e
+2025-12-13 21:30:58,724 - main - DEBUG - return_routes.py:348 - 📊 User 0497138a-918d-4859-9fda-56f413f1f97e fetched pending returns count: 2
+2025-12-13 21:30:58,724 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:30:58,724 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/returns/pending/count
+2025-12-13 21:30:58,724 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:30:59,116 - main - DEBUG - notification_routes.py:51 - 📊 User 0497138a-918d-4859-9fda-56f413f1f97e has 0 unread notifications
+2025-12-13 21:30:59,116 - main - DEBUG - main.py:130 - 🔍 [CORS] Request from origin: http://localhost:3000
+2025-12-13 21:30:59,117 - main - DEBUG - main.py:131 - 🔍 [CORS] Request path: /api/notifications/unread/count
+2025-12-13 21:30:59,117 - main - DEBUG - main.py:140 - ✅ [CORS] Added CORS headers for local origin: http://localhost:3000
+2025-12-13 21:33:14,612 - main - INFO - background_tasks.py:142 - Background JSON to Supabase push sync starting. Next push in 5 minutes.
+2025-12-13 21:33:15,129 - main - INFO - background_tasks.py:76 - Background pull sync starting. Next sync in 5 minutes.
+2025-12-13 21:33:15,129 - main - DEBUG - background_tasks.py:81 - Delta pull for Products with last_sync: 2025-12-13T21:28:11.834645
+2025-12-13 21:33:15,828 - main - INFO - background_tasks.py:86 - Delta pull sync for Products completed successfully.
+2025-12-13 21:33:15,828 - main - INFO - background_tasks.py:124 - No new records for Products during delta pull.
+2025-12-13 21:33:15,829 - main - DEBUG - background_tasks.py:81 - Delta pull for Customers with last_sync: 2025-12-13T21:28:13.433900
+2025-12-13 21:33:16,170 - main - INFO - background_tasks.py:86 - Delta pull sync for Customers completed successfully.
+2025-12-13 21:33:16,171 - main - INFO - background_tasks.py:124 - No new records for Customers during delta pull.
+2025-12-13 21:33:16,171 - main - DEBUG - background_tasks.py:81 - Delta pull for Users with last_sync: 2025-12-13T21:28:13.654842
+2025-12-13 21:33:16,442 - main - INFO - background_tasks.py:86 - Delta pull sync for Users completed successfully.
+2025-12-13 21:33:16,443 - main - INFO - background_tasks.py:124 - No new records for Users during delta pull.
+2025-12-13 21:33:16,443 - main - DEBUG - background_tasks.py:81 - Delta pull for Stores with last_sync: 2025-12-13T21:28:13.900401
+2025-12-13 21:33:16,740 - main - INFO - background_tasks.py:86 - Delta pull sync for Stores completed successfully.
+2025-12-13 21:33:16,740 - main - INFO - background_tasks.py:124 - No new records for Stores during delta pull.
+2025-12-13 21:33:16,740 - main - DEBUG - background_tasks.py:81 - Delta pull for SystemSettings with last_sync: 2025-12-13T21:28:14.104664
+2025-12-13 21:33:16,977 - main - INFO - background_tasks.py:86 - Delta pull sync for SystemSettings completed successfully.
+2025-12-13 21:33:16,977 - main - INFO - background_tasks.py:124 - No new records for SystemSettings during delta pull.
+2025-12-13 21:33:16,978 - main - DEBUG - background_tasks.py:81 - Delta pull for Returns with last_sync: 2025-12-13T21:28:14.313507
+2025-12-13 21:33:17,228 - main - INFO - background_tasks.py:86 - Delta pull sync for Returns completed successfully.
+2025-12-13 21:33:17,230 - main - INFO - background_tasks.py:124 - No new records for Returns during delta pull.
+2025-12-13 21:33:17,230 - main - DEBUG - background_tasks.py:81 - Delta pull for Bills with last_sync: 2025-12-13T21:28:14.516578
+2025-12-13 21:33:17,372 - main - INFO - background_tasks.py:142 - Background JSON to Supabase push sync starting. Next push in 5 minutes.
+2025-12-13 21:33:17,401 - main - INFO - background_tasks.py:167 - Background JSON to Supabase push sync completed successfully. Stats: {'Products': {'pushed': 7}, 'Customers': {'pushed': 1}, 'Users': {'pushed': 2}, 'Stores': {'pushed': 8}, 'SystemSettings': {'pushed': 1}, 'Bills': {'pushed': 5}, 'BillFormats': {'pushed': 5}}
+2025-12-13 21:33:17,475 - main - INFO - background_tasks.py:86 - Delta pull sync for Bills completed successfully.
+2025-12-13 21:33:17,475 - main - INFO - background_tasks.py:124 - No new records for Bills during delta pull.
+2025-12-13 21:33:17,476 - main - DEBUG - background_tasks.py:81 - Delta pull for BillFormats with last_sync: 2025-12-13T21:28:14.737277
+2025-12-13 21:33:17,496 - main - INFO - background_tasks.py:76 - Background pull sync starting. Next sync in 5 minutes.
+2025-12-13 21:33:17,496 - main - DEBUG - background_tasks.py:81 - Delta pull for Products with last_sync: 2025-12-13T21:28:15.615233
+2025-12-13 21:33:17,695 - main - INFO - background_tasks.py:86 - Delta pull sync for BillFormats completed successfully.
+2025-12-13 21:33:17,696 - main - INFO - background_tasks.py:90 - Found 5 new/updated records for BillFormats.
+2025-12-13 21:33:17,697 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\bill_formats.json for BillFormats.
+2025-12-13 21:33:17,697 - main - DEBUG - background_tasks.py:81 - Delta pull for UserStores with last_sync: 2025-12-13T21:28:14.925916
+2025-12-13 21:33:17,770 - main - INFO - background_tasks.py:86 - Delta pull sync for Products completed successfully.
+2025-12-13 21:33:17,770 - main - INFO - background_tasks.py:124 - No new records for Products during delta pull.
+2025-12-13 21:33:17,771 - main - DEBUG - background_tasks.py:81 - Delta pull for Customers with last_sync: 2025-12-13T21:28:15.897255
+2025-12-13 21:33:17,893 - main - INFO - background_tasks.py:86 - Delta pull sync for UserStores completed successfully.
+2025-12-13 21:33:17,893 - main - INFO - background_tasks.py:124 - No new records for UserStores during delta pull.
+2025-12-13 21:33:17,969 - main - INFO - background_tasks.py:86 - Delta pull sync for Customers completed successfully.
+2025-12-13 21:33:17,969 - main - INFO - background_tasks.py:124 - No new records for Customers during delta pull.
+2025-12-13 21:33:17,969 - main - DEBUG - background_tasks.py:81 - Delta pull for Users with last_sync: 2025-12-13T21:28:16.073128
+2025-12-13 21:33:18,141 - main - INFO - background_tasks.py:86 - Delta pull sync for Users completed successfully.
+2025-12-13 21:33:18,142 - main - INFO - background_tasks.py:124 - No new records for Users during delta pull.
+2025-12-13 21:33:18,143 - main - DEBUG - background_tasks.py:81 - Delta pull for Stores with last_sync: 2025-12-13T21:28:16.305970
+2025-12-13 21:33:18,329 - main - INFO - background_tasks.py:86 - Delta pull sync for Stores completed successfully.
+2025-12-13 21:33:18,330 - main - INFO - background_tasks.py:124 - No new records for Stores during delta pull.
+2025-12-13 21:33:18,330 - main - DEBUG - background_tasks.py:81 - Delta pull for SystemSettings with last_sync: 2025-12-13T21:28:16.488225
+2025-12-13 21:33:18,522 - main - INFO - background_tasks.py:86 - Delta pull sync for SystemSettings completed successfully.
+2025-12-13 21:33:18,522 - main - INFO - background_tasks.py:124 - No new records for SystemSettings during delta pull.
+2025-12-13 21:33:18,522 - main - DEBUG - background_tasks.py:81 - Delta pull for Returns with last_sync: 2025-12-13T21:28:16.704515
+2025-12-13 21:33:18,709 - main - INFO - background_tasks.py:86 - Delta pull sync for Returns completed successfully.
+2025-12-13 21:33:18,709 - main - INFO - background_tasks.py:124 - No new records for Returns during delta pull.
+2025-12-13 21:33:18,710 - main - DEBUG - background_tasks.py:81 - Delta pull for Bills with last_sync: 2025-12-13T21:28:16.897648
+2025-12-13 21:33:18,832 - main - INFO - background_tasks.py:167 - Background JSON to Supabase push sync completed successfully. Stats: {'Products': {'pushed': 7}, 'Customers': {'pushed': 1}, 'Users': {'pushed': 2}, 'Stores': {'pushed': 8}, 'SystemSettings': {'pushed': 1}, 'Bills': {'pushed': 5}, 'BillFormats': {'pushed': 5}}
+2025-12-13 21:33:18,906 - main - INFO - background_tasks.py:86 - Delta pull sync for Bills completed successfully.
+2025-12-13 21:33:18,906 - main - INFO - background_tasks.py:124 - No new records for Bills during delta pull.
+2025-12-13 21:33:18,907 - main - DEBUG - background_tasks.py:81 - Delta pull for BillFormats with last_sync: 2025-12-13T21:28:17.131355
+2025-12-13 21:33:19,086 - main - INFO - background_tasks.py:86 - Delta pull sync for BillFormats completed successfully.
+2025-12-13 21:33:19,086 - main - INFO - background_tasks.py:90 - Found 5 new/updated records for BillFormats.
+2025-12-13 21:33:19,089 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\bill_formats.json for BillFormats.
+2025-12-13 21:33:19,089 - main - DEBUG - background_tasks.py:81 - Delta pull for UserStores with last_sync: 2025-12-13T21:28:17.306995
+2025-12-13 21:33:19,339 - main - INFO - background_tasks.py:86 - Delta pull sync for UserStores completed successfully.
+2025-12-13 21:33:19,339 - main - INFO - background_tasks.py:124 - No new records for UserStores during delta pull.
+2025-12-13 21:38:17,406 - main - INFO - background_tasks.py:142 - Background JSON to Supabase push sync starting. Next push in 5 minutes.
+2025-12-13 21:38:17,900 - main - INFO - background_tasks.py:76 - Background pull sync starting. Next sync in 5 minutes.
+2025-12-13 21:38:17,900 - main - DEBUG - background_tasks.py:81 - Delta pull for Products with last_sync: 2025-12-13T21:33:15.129407
+2025-12-13 21:38:18,301 - main - INFO - background_tasks.py:86 - Delta pull sync for Products completed successfully.
+2025-12-13 21:38:18,301 - main - INFO - background_tasks.py:124 - No new records for Products during delta pull.
+2025-12-13 21:38:18,302 - main - DEBUG - background_tasks.py:81 - Delta pull for Customers with last_sync: 2025-12-13T21:33:15.829315
+2025-12-13 21:38:18,474 - main - INFO - background_tasks.py:86 - Delta pull sync for Customers completed successfully.
+2025-12-13 21:38:18,476 - main - INFO - background_tasks.py:124 - No new records for Customers during delta pull.
+2025-12-13 21:38:18,477 - main - DEBUG - background_tasks.py:81 - Delta pull for Users with last_sync: 2025-12-13T21:33:16.171988
+2025-12-13 21:38:18,650 - main - INFO - background_tasks.py:86 - Delta pull sync for Users completed successfully.
+2025-12-13 21:38:18,651 - main - INFO - background_tasks.py:124 - No new records for Users during delta pull.
+2025-12-13 21:38:18,651 - main - DEBUG - background_tasks.py:81 - Delta pull for Stores with last_sync: 2025-12-13T21:33:16.443722
+2025-12-13 21:38:18,841 - main - INFO - background_tasks.py:86 - Delta pull sync for Stores completed successfully.
+2025-12-13 21:38:18,841 - main - INFO - background_tasks.py:142 - Background JSON to Supabase push sync starting. Next push in 5 minutes.
+2025-12-13 21:38:18,841 - main - INFO - background_tasks.py:124 - No new records for Stores during delta pull.
+2025-12-13 21:38:18,841 - main - DEBUG - background_tasks.py:81 - Delta pull for SystemSettings with last_sync: 2025-12-13T21:33:16.741632
+2025-12-13 21:38:19,108 - main - INFO - background_tasks.py:86 - Delta pull sync for SystemSettings completed successfully.
+2025-12-13 21:38:19,108 - main - INFO - background_tasks.py:124 - No new records for SystemSettings during delta pull.
+2025-12-13 21:38:19,108 - main - DEBUG - background_tasks.py:81 - Delta pull for Returns with last_sync: 2025-12-13T21:33:16.978299
+2025-12-13 21:38:19,297 - main - INFO - background_tasks.py:86 - Delta pull sync for Returns completed successfully.
+2025-12-13 21:38:19,297 - main - INFO - background_tasks.py:124 - No new records for Returns during delta pull.
+2025-12-13 21:38:19,297 - main - DEBUG - background_tasks.py:81 - Delta pull for Bills with last_sync: 2025-12-13T21:33:17.230272
+2025-12-13 21:38:19,340 - main - INFO - background_tasks.py:76 - Background pull sync starting. Next sync in 5 minutes.
+2025-12-13 21:38:19,340 - main - DEBUG - background_tasks.py:81 - Delta pull for Products with last_sync: 2025-12-13T21:33:17.496379
+2025-12-13 21:38:19,484 - main - INFO - background_tasks.py:86 - Delta pull sync for Bills completed successfully.
+2025-12-13 21:38:19,484 - main - INFO - background_tasks.py:124 - No new records for Bills during delta pull.
+2025-12-13 21:38:19,484 - main - DEBUG - background_tasks.py:81 - Delta pull for BillFormats with last_sync: 2025-12-13T21:33:17.476373
+2025-12-13 21:38:19,595 - main - INFO - background_tasks.py:86 - Delta pull sync for Products completed successfully.
+2025-12-13 21:38:19,595 - main - INFO - background_tasks.py:124 - No new records for Products during delta pull.
+2025-12-13 21:38:19,595 - main - DEBUG - background_tasks.py:81 - Delta pull for Customers with last_sync: 2025-12-13T21:33:17.771669
+2025-12-13 21:38:19,655 - main - INFO - background_tasks.py:86 - Delta pull sync for BillFormats completed successfully.
+2025-12-13 21:38:19,655 - main - INFO - background_tasks.py:90 - Found 5 new/updated records for BillFormats.
+2025-12-13 21:38:19,656 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\bill_formats.json for BillFormats.
+2025-12-13 21:38:19,658 - main - DEBUG - background_tasks.py:81 - Delta pull for UserStores with last_sync: 2025-12-13T21:33:17.697651
+2025-12-13 21:38:19,686 - main - INFO - background_tasks.py:167 - Background JSON to Supabase push sync completed successfully. Stats: {'Products': {'pushed': 7}, 'Customers': {'pushed': 1}, 'Users': {'pushed': 2}, 'Stores': {'pushed': 8}, 'SystemSettings': {'pushed': 1}, 'Bills': {'pushed': 5}, 'BillFormats': {'pushed': 5}}
+2025-12-13 21:38:19,808 - main - INFO - background_tasks.py:86 - Delta pull sync for Customers completed successfully.
+2025-12-13 21:38:19,810 - main - INFO - background_tasks.py:124 - No new records for Customers during delta pull.
+2025-12-13 21:38:19,810 - main - DEBUG - background_tasks.py:81 - Delta pull for Users with last_sync: 2025-12-13T21:33:17.969016
+2025-12-13 21:38:19,840 - main - INFO - background_tasks.py:86 - Delta pull sync for UserStores completed successfully.
+2025-12-13 21:38:19,840 - main - INFO - background_tasks.py:124 - No new records for UserStores during delta pull.
+2025-12-13 21:38:20,000 - main - INFO - background_tasks.py:86 - Delta pull sync for Users completed successfully.
+2025-12-13 21:38:20,004 - main - INFO - background_tasks.py:124 - No new records for Users during delta pull.
+2025-12-13 21:38:20,007 - main - DEBUG - background_tasks.py:81 - Delta pull for Stores with last_sync: 2025-12-13T21:33:18.143769
+2025-12-13 21:38:20,185 - main - INFO - background_tasks.py:86 - Delta pull sync for Stores completed successfully.
+2025-12-13 21:38:20,185 - main - INFO - background_tasks.py:124 - No new records for Stores during delta pull.
+2025-12-13 21:38:20,185 - main - DEBUG - background_tasks.py:81 - Delta pull for SystemSettings with last_sync: 2025-12-13T21:33:18.330273
+2025-12-13 21:38:20,359 - main - INFO - background_tasks.py:86 - Delta pull sync for SystemSettings completed successfully.
+2025-12-13 21:38:20,360 - main - INFO - background_tasks.py:124 - No new records for SystemSettings during delta pull.
+2025-12-13 21:38:20,360 - main - DEBUG - background_tasks.py:81 - Delta pull for Returns with last_sync: 2025-12-13T21:33:18.522539
+2025-12-13 21:38:20,416 - main - INFO - background_tasks.py:167 - Background JSON to Supabase push sync completed successfully. Stats: {'Products': {'pushed': 7}, 'Customers': {'pushed': 1}, 'Users': {'pushed': 2}, 'Stores': {'pushed': 8}, 'SystemSettings': {'pushed': 1}, 'Bills': {'pushed': 5}, 'BillFormats': {'pushed': 5}}
+2025-12-13 21:38:20,539 - main - INFO - background_tasks.py:86 - Delta pull sync for Returns completed successfully.
+2025-12-13 21:38:20,540 - main - INFO - background_tasks.py:124 - No new records for Returns during delta pull.
+2025-12-13 21:38:20,540 - main - DEBUG - background_tasks.py:81 - Delta pull for Bills with last_sync: 2025-12-13T21:33:18.710438
+2025-12-13 21:38:20,735 - main - INFO - background_tasks.py:86 - Delta pull sync for Bills completed successfully.
+2025-12-13 21:38:20,736 - main - INFO - background_tasks.py:124 - No new records for Bills during delta pull.
+2025-12-13 21:38:20,736 - main - DEBUG - background_tasks.py:81 - Delta pull for BillFormats with last_sync: 2025-12-13T21:33:18.907529
+2025-12-13 21:38:20,927 - main - INFO - background_tasks.py:86 - Delta pull sync for BillFormats completed successfully.
+2025-12-13 21:38:20,927 - main - INFO - background_tasks.py:90 - Found 5 new/updated records for BillFormats.
+2025-12-13 21:38:20,936 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\bill_formats.json for BillFormats.
+2025-12-13 21:38:20,938 - main - DEBUG - background_tasks.py:81 - Delta pull for UserStores with last_sync: 2025-12-13T21:33:19.089325
+2025-12-13 21:38:21,144 - main - INFO - background_tasks.py:86 - Delta pull sync for UserStores completed successfully.
+2025-12-13 21:38:21,145 - main - INFO - background_tasks.py:124 - No new records for UserStores during delta pull.
+2025-12-13 21:43:19,712 - main - INFO - background_tasks.py:142 - Background JSON to Supabase push sync starting. Next push in 5 minutes.
+2025-12-13 21:43:19,851 - main - INFO - background_tasks.py:76 - Background pull sync starting. Next sync in 5 minutes.
+2025-12-13 21:43:19,851 - main - DEBUG - background_tasks.py:81 - Delta pull for Products with last_sync: 2025-12-13T21:38:17.900472
+2025-12-13 21:43:20,398 - main - INFO - background_tasks.py:86 - Delta pull sync for Products completed successfully.
+2025-12-13 21:43:20,400 - main - INFO - background_tasks.py:124 - No new records for Products during delta pull.
+2025-12-13 21:43:20,402 - main - DEBUG - background_tasks.py:81 - Delta pull for Customers with last_sync: 2025-12-13T21:38:18.302136
+2025-12-13 21:43:20,425 - main - INFO - background_tasks.py:142 - Background JSON to Supabase push sync starting. Next push in 5 minutes.
+2025-12-13 21:43:20,615 - main - INFO - background_tasks.py:86 - Delta pull sync for Customers completed successfully.
+2025-12-13 21:43:20,617 - main - INFO - background_tasks.py:124 - No new records for Customers during delta pull.
+2025-12-13 21:43:20,617 - main - DEBUG - background_tasks.py:81 - Delta pull for Users with last_sync: 2025-12-13T21:38:18.477920
+2025-12-13 21:43:20,809 - main - INFO - background_tasks.py:86 - Delta pull sync for Users completed successfully.
+2025-12-13 21:43:20,810 - main - INFO - background_tasks.py:124 - No new records for Users during delta pull.
+2025-12-13 21:43:20,810 - main - DEBUG - background_tasks.py:81 - Delta pull for Stores with last_sync: 2025-12-13T21:38:18.651767
+2025-12-13 21:43:21,029 - main - INFO - background_tasks.py:86 - Delta pull sync for Stores completed successfully.
+2025-12-13 21:43:21,029 - main - INFO - background_tasks.py:124 - No new records for Stores during delta pull.
+2025-12-13 21:43:21,029 - main - DEBUG - background_tasks.py:81 - Delta pull for SystemSettings with last_sync: 2025-12-13T21:38:18.842557
+2025-12-13 21:43:21,155 - main - INFO - background_tasks.py:76 - Background pull sync starting. Next sync in 5 minutes.
+2025-12-13 21:43:21,156 - main - DEBUG - background_tasks.py:81 - Delta pull for Products with last_sync: 2025-12-13T21:38:19.342168
+2025-12-13 21:43:21,226 - main - INFO - background_tasks.py:86 - Delta pull sync for SystemSettings completed successfully.
+2025-12-13 21:43:21,226 - main - INFO - background_tasks.py:124 - No new records for SystemSettings during delta pull.
+2025-12-13 21:43:21,226 - main - DEBUG - background_tasks.py:81 - Delta pull for Returns with last_sync: 2025-12-13T21:38:19.108496
+2025-12-13 21:43:21,347 - main - INFO - background_tasks.py:167 - Background JSON to Supabase push sync completed successfully. Stats: {'Products': {'pushed': 7}, 'Customers': {'pushed': 1}, 'Users': {'pushed': 2}, 'Stores': {'pushed': 8}, 'SystemSettings': {'pushed': 1}, 'Bills': {'pushed': 5}, 'BillFormats': {'pushed': 5}}
+2025-12-13 21:43:21,430 - main - INFO - background_tasks.py:86 - Delta pull sync for Returns completed successfully.
+2025-12-13 21:43:21,430 - main - INFO - background_tasks.py:124 - No new records for Returns during delta pull.
+2025-12-13 21:43:21,430 - main - DEBUG - background_tasks.py:81 - Delta pull for Bills with last_sync: 2025-12-13T21:38:19.297502
+2025-12-13 21:43:21,444 - main - INFO - background_tasks.py:86 - Delta pull sync for Products completed successfully.
+2025-12-13 21:43:21,444 - main - INFO - background_tasks.py:124 - No new records for Products during delta pull.
+2025-12-13 21:43:21,444 - main - DEBUG - background_tasks.py:81 - Delta pull for Customers with last_sync: 2025-12-13T21:38:19.595556
+2025-12-13 21:43:21,617 - main - INFO - background_tasks.py:86 - Delta pull sync for Customers completed successfully.
+2025-12-13 21:43:21,617 - main - INFO - background_tasks.py:124 - No new records for Customers during delta pull.
+2025-12-13 21:43:21,618 - main - DEBUG - background_tasks.py:81 - Delta pull for Users with last_sync: 2025-12-13T21:38:19.810487
+2025-12-13 21:43:21,624 - main - INFO - background_tasks.py:86 - Delta pull sync for Bills completed successfully.
+2025-12-13 21:43:21,624 - main - INFO - background_tasks.py:124 - No new records for Bills during delta pull.
+2025-12-13 21:43:21,624 - main - DEBUG - background_tasks.py:81 - Delta pull for BillFormats with last_sync: 2025-12-13T21:38:19.484097
+2025-12-13 21:43:21,745 - main - INFO - background_tasks.py:167 - Background JSON to Supabase push sync completed successfully. Stats: {'Products': {'pushed': 7}, 'Customers': {'pushed': 1}, 'Users': {'pushed': 2}, 'Stores': {'pushed': 8}, 'SystemSettings': {'pushed': 1}, 'Bills': {'pushed': 5}, 'BillFormats': {'pushed': 5}}
+2025-12-13 21:43:21,791 - main - INFO - background_tasks.py:86 - Delta pull sync for Users completed successfully.
+2025-12-13 21:43:21,791 - main - INFO - background_tasks.py:124 - No new records for Users during delta pull.
+2025-12-13 21:43:21,791 - main - DEBUG - background_tasks.py:81 - Delta pull for Stores with last_sync: 2025-12-13T21:38:20.007040
+2025-12-13 21:43:21,811 - main - INFO - background_tasks.py:86 - Delta pull sync for BillFormats completed successfully.
+2025-12-13 21:43:21,811 - main - INFO - background_tasks.py:90 - Found 5 new/updated records for BillFormats.
+2025-12-13 21:43:21,812 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\bill_formats.json for BillFormats.
+2025-12-13 21:43:21,813 - main - DEBUG - background_tasks.py:81 - Delta pull for UserStores with last_sync: 2025-12-13T21:38:19.658320
+2025-12-13 21:43:21,968 - main - INFO - background_tasks.py:86 - Delta pull sync for Stores completed successfully.
+2025-12-13 21:43:21,968 - main - INFO - background_tasks.py:124 - No new records for Stores during delta pull.
+2025-12-13 21:43:21,968 - main - DEBUG - background_tasks.py:81 - Delta pull for SystemSettings with last_sync: 2025-12-13T21:38:20.187523
+2025-12-13 21:43:21,989 - main - INFO - background_tasks.py:86 - Delta pull sync for UserStores completed successfully.
+2025-12-13 21:43:21,990 - main - INFO - background_tasks.py:124 - No new records for UserStores during delta pull.
+2025-12-13 21:43:22,156 - main - INFO - background_tasks.py:86 - Delta pull sync for SystemSettings completed successfully.
+2025-12-13 21:43:22,156 - main - INFO - background_tasks.py:124 - No new records for SystemSettings during delta pull.
+2025-12-13 21:43:22,157 - main - DEBUG - background_tasks.py:81 - Delta pull for Returns with last_sync: 2025-12-13T21:38:20.361579
+2025-12-13 21:43:22,327 - main - INFO - background_tasks.py:86 - Delta pull sync for Returns completed successfully.
+2025-12-13 21:43:22,328 - main - INFO - background_tasks.py:124 - No new records for Returns during delta pull.
+2025-12-13 21:43:22,330 - main - DEBUG - background_tasks.py:81 - Delta pull for Bills with last_sync: 2025-12-13T21:38:20.540416
+2025-12-13 21:43:22,500 - main - INFO - background_tasks.py:86 - Delta pull sync for Bills completed successfully.
+2025-12-13 21:43:22,500 - main - INFO - background_tasks.py:124 - No new records for Bills during delta pull.
+2025-12-13 21:43:22,501 - main - DEBUG - background_tasks.py:81 - Delta pull for BillFormats with last_sync: 2025-12-13T21:38:20.736497
+2025-12-13 21:43:22,711 - main - INFO - background_tasks.py:86 - Delta pull sync for BillFormats completed successfully.
+2025-12-13 21:43:22,712 - main - INFO - background_tasks.py:90 - Found 5 new/updated records for BillFormats.
+2025-12-13 21:43:22,716 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\bill_formats.json for BillFormats.
+2025-12-13 21:43:22,717 - main - DEBUG - background_tasks.py:81 - Delta pull for UserStores with last_sync: 2025-12-13T21:38:20.938863
+2025-12-13 21:43:22,890 - main - INFO - background_tasks.py:86 - Delta pull sync for UserStores completed successfully.
+2025-12-13 21:43:22,891 - main - INFO - background_tasks.py:124 - No new records for UserStores during delta pull.

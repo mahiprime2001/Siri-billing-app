@@ -26,34 +26,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-interface Invoice {
-  id: string;
-  storeId: string;
-  storeName: string;
-  storeAddress: string;
-  customerName: string;
-  customerPhone: string;
-  customerEmail: string;
-  customerAddress: string;
-  customerId: string;
-  subtotal: number;
-  taxPercentage: number;
-  taxAmount: number;
-  discountPercentage: number;
-  discountAmount: number;
-  total: number;
-  paymentMethod: string;
-  timestamp: string;
-  notes: string;
-  gstin: string;
-  companyName: string;
-  companyAddress: string;
-  companyPhone: string;
-  companyEmail: string;
-  billFormat: string;
-  createdBy: string;
-  items: any[];
-}
+
 
 interface InvoicePreviewProps {
   invoice: Invoice

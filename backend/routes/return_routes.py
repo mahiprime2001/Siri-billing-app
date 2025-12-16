@@ -1,307 +1,354 @@
+from flask import Blueprint, request, jsonify, current_app as app
+from flask_jwt_extended import get_jwt_identity
+from auth.auth import require_auth
+from utils.connection_pool import get_supabase_client
+from datetime import datetime, timezone
 import uuid
-from datetime import datetime
-from flask import Blueprint, jsonify, request, g, current_app as app
-from auth.auth import session_required # Changed from token_required
-from data_access.data_access import get_bills_data, get_returns_data, save_returns_data
-from notifications.notifications import create_notification
-from data_access.supabase_data_access import sync_to_supabase_immediately
+import traceback
 
-return_bp = Blueprint('return_bp', __name__)
+return_bp = Blueprint('return', __name__)
+
+
+@return_bp.route('/returns', methods=['GET'])
+@require_auth
+def get_returns():
+    """Get all returns with product and customer details via JOIN"""
+    try:
+        current_user_id = get_jwt_identity()
+        app.logger.info(f"User {current_user_id} fetching returns")
+        
+        status = request.args.get('status')
+        store_id = request.args.get('store_id')
+        limit = request.args.get('limit', 100, type=int)
+        
+        supabase = get_supabase_client()
+        
+        # ✅ JOIN with products and customers to get names
+        query = supabase.table('returns').select(
+            '*, products(id, name, selling_price), customers(id, name, phone)'
+        )
+        
+        if status:
+            query = query.eq('status', status)
+        
+        if store_id:
+            query = query.eq('store_id', store_id)
+        
+        response = query.limit(limit).order('created_at', desc=True).execute()
+        returns = response.data if response.data else []
+        
+        # ✅ Transform to include product_name from JOIN (null-safe)
+        transformed_returns = []
+        for ret in returns:
+            product_data = ret.get('products') or {}  # ✅ Handle None
+            customer_data = ret.get('customers') or {}  # ✅ Handle None
+            
+            transformed_returns.append({
+                **ret,
+                'product_name': product_data.get('name', 'Unknown Product'),
+                'customer_name': customer_data.get('name', 'Walk-in Customer'),
+                'customer_phone': customer_data.get('phone', '')
+            })
+        
+        app.logger.info(f"✅ Fetched {len(transformed_returns)} returns")
+        
+        return jsonify(transformed_returns), 200
+        
+    except Exception as e:
+        app.logger.error(f"❌ Error fetching returns: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"message": "An error occurred"}), 500
+
 
 @return_bp.route('/returns/search', methods=['POST'])
-@session_required
-def search_bills_for_returns():
-    """Search bills for returns"""
+@require_auth
+def search_bills():
+    """Search bills for return processing"""
     try:
-        data = request.json
-        if not data:
-            return jsonify({"error": "Request data is required"}), 400
-
-        query = data.get('query', '').strip().lower()
+        current_user_id = get_jwt_identity()
+        data = request.get_json()
+        
+        query = data.get('query', '').strip()
         search_type = data.get('searchType', 'customer')
-
+        
+        app.logger.info(f"🔍 User {current_user_id} searching bills: {query} ({search_type})")
+        
         if not query:
-            return jsonify({"error": "Search query is required"}), 400
-
-        app.logger.debug(f"Search query: '{query}', Search type: '{search_type}'") # Added debug log
-
-        bills = get_bills_data()
-        matching_bills = []
-
+            return jsonify([]), 200
+        
+        supabase = get_supabase_client()
+        
+        # ✅ Search bills with JOIN to get customer data
+        if search_type == 'customer':
+            customer_response = supabase.table('customers').select('id').ilike('name', f'%{query}%').execute()
+            if customer_response.data:
+                customer_ids = [c['id'] for c in customer_response.data]
+                response = supabase.table('bills').select(
+                    '*, customers(id, name, phone)'
+                ).in_('customerid', customer_ids).execute()
+            else:
+                return jsonify([]), 200
+                
+        elif search_type == 'phone':
+            customer_response = supabase.table('customers').select('id').ilike('phone', f'%{query}%').execute()
+            if customer_response.data:
+                customer_ids = [c['id'] for c in customer_response.data]
+                response = supabase.table('bills').select(
+                    '*, customers(id, name, phone)'
+                ).in_('customerid', customer_ids).execute()
+            else:
+                return jsonify([]), 200
+                
+        elif search_type == 'invoice':
+            response = supabase.table('bills').select(
+                '*, customers(id, name, phone)'
+            ).ilike('id', f'%{query}%').execute()
+        else:
+            return jsonify({"message": "Invalid search type"}), 400
+        
+        bills = response.data if response.data else []
+        
+        # ✅ Transform bills to include items with product names via JOIN
+        transformed_bills = []
         for bill in bills:
-            match_found = False
-            app.logger.debug(f"Processing bill ID: {bill.get('id', '')}") # Added debug log
-
-            if search_type == 'customer':
-                if query in bill.get('customerName', '').lower():
-                    match_found = True
-            elif search_type == 'phone':
-                phone = bill.get('customerPhone', '').replace(' ', '').replace('-', '')
-                if query.replace(' ', '').replace('-', '') in phone:
-                    match_found = True
-            elif search_type == 'invoice':
-                bill_id_lower = bill.get('id', '').lower()
-                # Check for exact match of the full ID (e.g., "inv-123456")
-                if query == bill_id_lower:
-                    match_found = True
-                # Check for match of the numeric part (e.g., "123456")
-                elif bill_id_lower.startswith('inv-') and query == bill_id_lower[4:]:
-                    match_found = True
-                # Fallback to partial match if neither of the above
-                elif query in bill_id_lower:
-                    match_found = True
-
-            if match_found:
-                matching_bills.append(bill)
-
-        matching_bills.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
-        app.logger.debug(f"Final matching bills: {matching_bills}") # Added debug log
-
-        return jsonify(matching_bills), 200
-
+            # Get bill items with product details via JOIN
+            bill_items_response = supabase.table('billitems').select(
+                '*, products(id, name, selling_price)'
+            ).eq('billid', bill['id']).execute()
+            
+            bill_items = bill_items_response.data if bill_items_response.data else []
+            
+            customer_data = bill.get('customers') or {}
+            
+            transformed_bills.append({
+                'id': bill['id'],
+                'customerId': bill.get('customerid', ''),
+                'customerName': customer_data.get('name', 'Walk-in Customer'),
+                'customerPhone': customer_data.get('phone', ''),
+                'paymentMethod': bill.get('paymentmethod', 'cash'),
+                'total': float(bill.get('total', 0)),
+                'timestamp': bill.get('timestamp', bill.get('created_at', '')),
+                'items': [{
+                    'productId': item.get('productid', ''),
+                    'productName': item.get('products', {}).get('name', 'Unknown Product'),
+                    'price': float(item.get('price', 0)),
+                    'quantity': int(item.get('quantity', 0)),
+                    'total': float(item.get('total', 0))
+                } for item in bill_items]
+            })
+        
+        app.logger.info(f"✅ Found {len(transformed_bills)} bills")
+        
+        return jsonify(transformed_bills), 200
+        
     except Exception as e:
-        app.logger.error(f"Error searching bills: {e}")
-        return jsonify({"error": "Internal server error", "details": str(e)}), 500
+        app.logger.error(f"❌ Error searching bills: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"message": "An error occurred"}), 500
+
 
 @return_bp.route('/returns/submit', methods=['POST'])
-@session_required
-def submit_return_request():
-    """Submit a return request"""
+@require_auth
+def submit_return():
+    """Submit return request - only stores product_id and customer_id"""
     try:
-        data = request.json
-        if not data:
-            return jsonify({"error": "Request data is required"}), 400
-
+        current_user_id = get_jwt_identity()
+        data = request.get_json()
+        
         selected_items = data.get('selectedItems', [])
-        return_reason = data.get('returnReason', '').strip()
+        return_reason = data.get('returnReason', '')
         refund_method = data.get('refundMethod', 'cash')
         search_results = data.get('searchResults', [])
-        created_by = g.current_user['id']
-
+        created_by = data.get('createdBy', 'Unknown')
+        
+        app.logger.info(f"📦 User {current_user_id} submitting return with {len(selected_items)} items")
+        
         if not selected_items or not return_reason:
-            return jsonify({"error": "Selected items and return reason are required"}), 400
-
-        existing_returns = get_returns_data()
-        new_returns = []
-        total_return_amount = 0
-
-        # Handle selectedItems as objects with 'id' and 'quantity'
-        for item_obj in selected_items:
-            try:
-                # Extract id and quantity from the object
-                item_id = item_obj.get('id', '') if isinstance(item_obj, dict) else item_obj
-                return_quantity = item_obj.get('quantity', 1) if isinstance(item_obj, dict) else 1
-
-                # Parse the item ID to get bill_id and item_index
-                parts = item_id.rsplit('-', 1)
-                if len(parts) != 2:
-                    app.logger.error(f"Invalid item ID format: {item_id}")
-                    continue
-                    
-                bill_id = parts[0]
-                item_index = int(parts[1])
-
-                # Find the bill and item
-                bill = next((b for b in search_results if b['id'] == bill_id), None)
-                if not bill:
-                    app.logger.error(f"Bill not found: {bill_id}")
-                    continue
-                
-                if item_index >= len(bill.get('items', [])):
-                    app.logger.error(f"Item index {item_index} out of range for bill {bill_id}")
-                    continue
-
-                item = bill['items'][item_index]
-                
-                # Log the item structure for debugging
-                app.logger.debug(f"Item structure: {item}")
-                
-                # Flexible key access - try different possible key names
-                product_name = (
-                    item.get('productName') or 
-                    item.get('product_name') or 
-                    item.get('name') or 
-                    item.get('Name') or 
-                    'Unknown Product'
-                )
-                
-                product_id = (
-                    item.get('productId') or 
-                    item.get('product_id') or 
-                    item.get('id') or 
-                    ''
-                )
-                
-                unit_price = (
-                    item.get('price') or 
-                    item.get('unit_price') or 
-                    item.get('unitPrice') or 
-                    0
-                )
-                
-                # Validate return quantity
-                original_quantity = item.get('quantity', 1)
-                if return_quantity > original_quantity:
-                    app.logger.error(f"Return quantity {return_quantity} exceeds original {original_quantity}")
-                    return_quantity = original_quantity
-
-                # Calculate return amount based on selected quantity
-                return_amount = float(unit_price) * return_quantity
-
-                return_record = {
-                    'return_id': str(uuid.uuid4()),
-                    'product_name': product_name,
-                    'product_id': product_id,
-                    'customer_name': bill.get('customerName', ''),
-                    'customer_phone_number': bill.get('customerPhone', ''),
-                    'message': return_reason,
-                    'refund_method': refund_method,
-                    'bill_id': bill_id,
-                    'item_index': item_index,
-                    'original_quantity': original_quantity,
-                    'return_quantity': return_quantity,
-                    'unit_price': float(unit_price),
-                    'return_amount': return_amount,
-                    'status': 'pending',
-                    'created_by': created_by,
-                    'created_at': datetime.now().isoformat(),
-                    'updated_at': datetime.now().isoformat()
-                }
-
-                new_returns.append(return_record)
-                total_return_amount += return_amount
-
-                # Sync to MySQL
-                sync_to_mysql_immediately('Returns', return_record, 'INSERT')
-
-            except Exception as e:
-                app.logger.error(f"Error processing return item {item_obj}: {e}", exc_info=True)
+            return jsonify({"message": "Missing required fields"}), 400
+        
+        supabase = get_supabase_client()
+        created_returns = []
+        
+        # Create return for each selected item
+        for selected_item in selected_items:
+            # Parse item ID (format: billId-itemIndex)
+            item_id = selected_item['id']
+            last_hyphen = item_id.rfind('-')
+            bill_id = item_id[:last_hyphen]
+            item_index = int(item_id[last_hyphen + 1:])
+            
+            # Find the bill and item
+            bill = next((b for b in search_results if b['id'] == bill_id), None)
+            
+            if not bill or item_index >= len(bill['items']):
+                app.logger.warning(f"⚠️ Bill or item not found: {bill_id}, index {item_index}")
                 continue
-
-        if not new_returns:
-            return jsonify({"error": "No valid items found for return"}), 400
-
-        existing_returns.extend(new_returns)
-        save_returns_data(existing_returns)
-
-        # Create notification
-        notification_msg = f"New return request: {len(new_returns)} items, ₹{total_return_amount:.2f}"
-        create_notification('return_request', notification_msg, new_returns[0]['return_id'])
-
+            
+            item = bill['items'][item_index]
+            return_quantity = selected_item.get('quantity', 1)
+            original_quantity = item['quantity']
+            unit_price = item['price']
+            product_id = item['productId']
+            customer_id = bill.get('customerId', None)
+            
+            return_id = f"RET-{uuid.uuid4().hex[:12].upper()}"
+            
+            # ✅ Only store IDs - no product_name needed
+            return_data = {
+                'return_id': return_id,
+                'product_id': product_id,
+                'customer_id': customer_id,
+                'message': return_reason,
+                'refund_method': refund_method,
+                'bill_id': bill_id,
+                'original_quantity': original_quantity,
+                'return_quantity': return_quantity,
+                'return_amount': unit_price * return_quantity,
+                'status': 'pending',
+                'created_by': created_by,
+                'created_at': datetime.now(timezone.utc).isoformat(),
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }
+            
+            app.logger.info(f"📝 Creating return: {return_id}")
+            app.logger.info(f"   Product ID: {product_id}")
+            app.logger.info(f"   Customer ID: {customer_id}")
+            app.logger.info(f"   Quantity: {return_quantity}/{original_quantity}")
+            
+            response = supabase.table('returns').insert(return_data).execute()
+            
+            if response.data:
+                created_returns.append(response.data[0])
+                app.logger.info(f"✅ Created return: {return_id}")
+            else:
+                app.logger.error(f"❌ Failed to create return for item {item_id}")
+        
+        if not created_returns:
+            return jsonify({"message": "No returns were created"}), 400
+        
+        app.logger.info(f"✅ Created {len(created_returns)} return requests")
+        
         return jsonify({
-            "message": "Return request submitted successfully",
-            "returnId": new_returns[0]['return_id'],
-            "itemCount": len(new_returns),
-            "totalAmount": total_return_amount
-        }), 200
-
+            "message": "Return requests submitted successfully",
+            "returnId": created_returns[0]['return_id'] if created_returns else None,
+            "count": len(created_returns)
+        }), 201
+        
     except Exception as e:
-        app.logger.error(f"Error submitting return: {e}", exc_info=True)
-        return jsonify({"error": "Internal server error", "details": str(e)}), 500
+        app.logger.error(f"❌ Error submitting return: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"message": "An error occurred", "error": str(e)}), 500
 
-@return_bp.route('/returns/list', methods=['GET'])
-@session_required
-def get_returns_list():
-    """Get all return requests"""
-    try:
-        returns = get_returns_data()
-        # Sort by created_at descending (newest first)
-        returns.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-        return jsonify(returns), 200
-    except Exception as e:
-        app.logger.error(f"Error fetching returns: {e}")
-        return jsonify({"error": "Internal server error", "details": str(e)}), 500
-
-@return_bp.route('/returns/pending/count', methods=['GET'])
-@session_required
-def get_pending_returns_count():
-    """Get count of pending return requests"""
-    try:
-        returns = get_returns_data()
-        pending_count = sum(1 for r in returns if r.get('status') == 'pending')
-        return jsonify({"count": pending_count}), 200
-    except Exception as e:
-        app.logger.error(f"Error fetching pending returns count: {e}")
-        return jsonify({"error": "Internal server error", "details": str(e)}), 500
 
 @return_bp.route('/returns/<return_id>/approve', methods=['POST'])
-@session_required
+@require_auth
 def approve_return(return_id):
-    """Approve a return request"""
+    """Approve a return request and create notification"""
     try:
-        returns = get_returns_data()
-        return_item = next((r for r in returns if r['return_id'] == return_id), None)
+        current_user_id = get_jwt_identity()
+        app.logger.info(f"✅ User {current_user_id} approving return {return_id}")
         
-        if not return_item:
-            return jsonify({"error": "Return request not found"}), 404
+        supabase = get_supabase_client()
         
-        if return_item['status'] != 'pending':
-            return jsonify({"error": "Return request is not pending"}), 400
+        # Update return status
+        update_data = {
+            'status': 'approved',
+            'approved_by': current_user_id,
+            'approved_at': datetime.now(timezone.utc).isoformat(),
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }
         
-        # Update status to approved
-        return_item['status'] = 'approved'
-        return_item['updated_at'] = datetime.now().isoformat()
-        return_item['approved_by'] = g.current_user['id']
-        return_item['approved_at'] = datetime.now().isoformat()
+        response = supabase.table('returns').update(update_data).eq('return_id', return_id).execute()
         
-        # Save updated returns
-        save_returns_data(returns)
+        if not response.data or len(response.data) == 0:
+            return jsonify({"message": "Return not found"}), 404
         
-        # Sync to MySQL
-        sync_to_mysql_immediately('Returns', return_item, 'UPDATE')
+        return_data = response.data[0]
         
-        # Create notification
-        notification_msg = f"Return request approved: {return_item['product_name']} - ₹{return_item['return_amount']:.2f}"
-        create_notification('return_approved', notification_msg, return_id)
+        # ✅ Fetch product name for notification
+        product_name = 'Product'
+        if return_data.get('product_id'):
+            product_response = supabase.table('products').select('name').eq('id', return_data['product_id']).execute()
+            if product_response.data:
+                product_name = product_response.data[0]['name']
         
-        return jsonify({
-            "message": "Return request approved successfully",
-            "return": return_item
-        }), 200
+        # ✅ Create notification
+        notification_data = {
+            'type': 'return_approved',
+            'notification': f"Return approved for {product_name} - ₹{return_data.get('return_amount', 0)} (Qty: {return_data.get('return_quantity', 0)})",
+            'related_id': return_id,
+            'is_read': False,
+            'created_at': datetime.now(timezone.utc).isoformat(),
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        supabase.table('notifications').insert(notification_data).execute()
+        
+        app.logger.info(f"✅ Return {return_id} approved and notification created")
+        
+        return jsonify(return_data), 200
         
     except Exception as e:
-        app.logger.error(f"Error approving return: {e}", exc_info=True)
-        return jsonify({"error": "Internal server error", "details": str(e)}), 500
+        app.logger.error(f"❌ Error approving return: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"message": "An error occurred"}), 500
+
 
 @return_bp.route('/returns/<return_id>/deny', methods=['POST'])
-@session_required
+@require_auth
 def deny_return(return_id):
     """Deny a return request"""
     try:
-        data = request.json or {}
-        denial_reason = data.get('reason', 'No reason provided')
+        current_user_id = get_jwt_identity()
+        data = request.get_json()
+        reason = data.get('reason', '')
         
-        returns = get_returns_data()
-        return_item = next((r for r in returns if r['return_id'] == return_id), None)
+        app.logger.info(f"❌ User {current_user_id} denying return {return_id}")
         
-        if not return_item:
-            return jsonify({"error": "Return request not found"}), 404
+        if not reason:
+            return jsonify({"message": "Denial reason required"}), 400
         
-        if return_item['status'] != 'pending':
-            return jsonify({"error": "Return request is not pending"}), 400
+        supabase = get_supabase_client()
         
-        # Update status to denied
-        return_item['status'] = 'denied'
-        return_item['updated_at'] = datetime.now().isoformat()
-        return_item['denied_by'] = g.current_user['id']
-        return_item['denied_at'] = datetime.now().isoformat()
-        return_item['denial_reason'] = denial_reason
+        update_data = {
+            'status': 'denied',
+            'denial_reason': reason,
+            'denied_by': current_user_id,
+            'denied_at': datetime.now(timezone.utc).isoformat(),
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }
         
-        # Save updated returns
-        save_returns_data(returns)
+        response = supabase.table('returns').update(update_data).eq('return_id', return_id).execute()
         
-        # Sync to MySQL
-        sync_to_mysql_immediately('Returns', return_item, 'UPDATE')
+        if not response.data or len(response.data) == 0:
+            return jsonify({"message": "Return not found"}), 404
         
-        # Create notification
-        notification_msg = f"Return request denied: {return_item['product_name']} - Reason: {denial_reason}"
-        create_notification('return_denied', notification_msg, return_id)
+        app.logger.info(f"✅ Return {return_id} denied")
         
-        return jsonify({
-            "message": "Return request denied successfully",
-            "return": return_item
-        }), 200
+        return jsonify(response.data[0]), 200
         
     except Exception as e:
-        app.logger.error(f"Error denying return: {e}", exc_info=True)
-        return jsonify({"error": "Internal server error", "details": str(e)}), 500
+        app.logger.error(f"❌ Error denying return: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"message": "An error occurred"}), 500
+
+
+@return_bp.route('/returns/pending/count', methods=['GET'])
+@require_auth
+def get_pending_returns_count():
+    """Get count of pending returns"""
+    try:
+        current_user_id = get_jwt_identity()
+        
+        supabase = get_supabase_client()
+        response = supabase.table('returns').select('return_id', count='exact').eq('status', 'pending').execute()
+        
+        count = response.count if hasattr(response, 'count') else len(response.data or [])
+        
+        app.logger.debug(f"📊 User {current_user_id} fetched pending returns count: {count}")
+        
+        return jsonify({"count": count}), 200
+        
+    except Exception as e:
+        app.logger.error(f"❌ Error fetching pending returns count: {str(e)}")
+        return jsonify({"message": "An error occurred"}), 500

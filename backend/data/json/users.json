@@ -1,5 +1,19 @@
 [
     {
+        "id": "0497138a-918d-4859-9fda-56f413f1f97e",
+        "name": "V.NECKLECE",
+        "email": "mailbox2249@gmail.com",
+        "password": "bME$F4T!",
+        "role": "billing_user",
+        "status": "active",
+        "sessionduration": null,
+        "createdat": "2025-12-01T13:04:05.560272",
+        "updatedat": "2025-12-05T19:46:00.73472",
+        "lastlogin": null,
+        "lastlogout": null,
+        "totalsessionduration": 0
+    },
+    {
         "id": "eb083ade-4188-47c2-a7e2-a88b78fb68b2",
         "name": "A. Haram set",
         "email": "19jn1a0596@gmail.com",
@@ -9,34 +23,6 @@
         "sessionduration": null,
         "createdat": "2025-11-30T17:39:43.950128",
         "updatedat": "2025-11-30T17:39:43.950128",
-        "lastlogin": null,
-        "lastlogout": null,
-        "totalsessionduration": 0
-    },
-    {
-        "id": "1",
-        "name": "Super Admin",
-        "email": "admin@siriart.com",
-        "password": "admin123",
-        "role": "super_admin",
-        "status": "active",
-        "sessionduration": null,
-        "createdat": "2022-12-31T18:30:00",
-        "updatedat": "2023-01-01T00:00:00",
-        "lastlogin": null,
-        "lastlogout": null,
-        "totalsessionduration": 0
-    },
-    {
-        "id": "0497138a-918d-4859-9fda-56f413f1f97e",
-        "name": "V.NECKLECE",
-        "email": "mailbox2249@gmail.com",
-        "password": "bME$F4T!",
-        "role": "billing_user",
-        "status": "active",
-        "sessionduration": null,
-        "createdat": "2025-12-01T13:04:05.560272",
-        "updatedat": "2025-12-01T13:04:05.560272",
         "lastlogin": null,
         "lastlogout": null,
         "totalsessionduration": 0

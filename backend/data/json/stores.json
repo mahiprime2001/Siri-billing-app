@@ -45,13 +45,13 @@
         "updatedat": null
     },
     {
-        "id": "STR-1764438854928",
-        "name": "testing",
-        "address": "testing testing ",
+        "id": "fb304b5a-bc11-46a6-919c-ce3157a066c0",
+        "name": "testing the stores",
+        "address": "changed the store details ",
         "phone": "",
         "status": "active",
-        "createdat": "2025-11-29T23:24:14.928058",
-        "updatedat": "2025-11-29T23:24:14.928058"
+        "createdat": "2025-12-02T23:53:26.239124",
+        "updatedat": "2025-12-03T00:04:53.863043"
     },
     {
         "id": "STR-1764574507863",
@@ -61,5 +61,14 @@
         "status": "active",
         "createdat": "2025-12-01T13:05:07.863375",
         "updatedat": "2025-12-01T13:05:07.863375"
+    },
+    {
+        "id": "STR-1764438854928",
+        "name": "testing",
+        "address": "testing testing ",
+        "phone": "",
+        "status": "active",
+        "createdat": "2025-11-29T23:24:14.928058",
+        "updatedat": "2025-11-29T23:24:14.928058"
     }
 ]

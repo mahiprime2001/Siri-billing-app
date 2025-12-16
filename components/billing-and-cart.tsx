@@ -151,6 +151,7 @@ export default function BillingAndCart() {
   const [barcodeInput, setBarcodeInput] = useState("")
   const [isScanning, setIsScanning] = useState(false)
   const [showAllProducts, setShowAllProducts] = useState(false)
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false) 
   // paperSize state moved to InvoicePreview
 
   const [users, setUsers] = useState<User[]>([])
@@ -217,55 +218,81 @@ export default function BillingAndCart() {
     fetchUserData()
   }, [isOnline])
 
-  // Effect to fetch current user and store based on session token
+  // ✅ FIXED: Effect to fetch current user and store (no auth redirects)
+    // ✅ FIXED: Effect to fetch current user and store
   useEffect(() => {
     const fetchCurrentUserAndStore = async () => {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      if (!token) {
-        router.push("/login");
-        return;
-      }
-
       try {
+        // Fetch user data
         const userRes = await apiClient("/api/auth/me");
+        
         if (!userRes.ok) {
-          throw new Error("Failed to fetch user data");
+          console.log("Failed to fetch user, layout will handle auth");
+          return;
         }
-        const { user: userData } = await userRes.json();
-        setCurrentUser(userData);
+        
+        const userData = await userRes.json();
+        
+        // ✅ Handle both response formats: { user: {...} } or direct user object
+        const user = userData.user || userData;
+        setCurrentUser(user);
+        console.log('✅ User data loaded:', user);
 
-        const storesRes = await apiClient("/api/stores");
-        if (!storesRes.ok) {
-          throw new Error("Failed to fetch stores data");
+        // Fetch ALL stores
+        try {
+          const storesRes = await apiClient("/api/stores");
+          if (storesRes.ok) {
+            const storesData = await storesRes.json();
+            // ✅ Handle both array and { stores: [] } format
+            const storesArray = Array.isArray(storesData) ? storesData : storesData.stores || [];
+            setStores(storesArray);
+            console.log('✅ All stores loaded:', storesArray.length, 'stores');
+          }
+        } catch (err) {
+          console.error("Failed to fetch stores:", err);
         }
-        const { stores: storesData } = await storesRes.json();
-        setStores(storesData);
 
-        const userStoresRes = await apiClient("/api/user-stores");
-        if (!userStoresRes.ok) {
-          throw new Error("Failed to fetch user stores data");
+        // Fetch user-store associations
+        try {
+          const userStoresRes = await apiClient("/api/user-stores");
+          if (userStoresRes.ok) {
+            const userStoresData = await userStoresRes.json();
+            setUserStores(userStoresData);
+            console.log('✅ User-stores loaded:', userStoresData.length, 'associations');
+          }
+        } catch (err) {
+          console.error("Failed to fetch user stores:", err);
         }
-        const userStoresData = await userStoresRes.json();
-        setUserStores(userStoresData);
 
-        // Also fetch products and settings here as they depend on a logged-in user
+        // ✅ NEW: Fetch current user's assigned store directly (with full details)
+        try {
+          const currentStoreRes = await apiClient("/api/stores/current");
+          if (currentStoreRes.ok) {
+            const storeData = await currentStoreRes.json();
+            setCurrentStore(storeData);
+            console.log('✅ Current store loaded:', storeData.name, '(ID:', storeData.id + ')');
+          } else if (currentStoreRes.status === 404) {
+            console.warn('⚠️ No store assigned to user');
+            setCurrentStore(null);
+          }
+        } catch (err) {
+          console.error("Failed to fetch current store:", err);
+        }
+
+        // Fetch products and settings
         fetchProducts();
         fetchSettings();
 
       } catch (error) {
         console.error("Error fetching current user or store:", error);
-        toast({
-          title: "Authentication Error",
-          description: "Session expired or failed to load user data. Please log in again.",
-          variant: "destructive",
-        });
-        localStorage.clear(); // Clear any invalid session token
-        router.push("/login");
+        console.log("Auth-related error caught, layout will manage state");
       }
     };
 
     fetchCurrentUserAndStore();
-  }, [router]); // Depend on router to ensure it's available
+  }, [router]);
+
+
 
   // Effect to set the store based on the current user
   useEffect(() => {
@@ -321,43 +348,76 @@ export default function BillingAndCart() {
   }
 
 
-  const fetchProducts = async () => {
+    const fetchProducts = async () => {
     try {
-      const response = await apiClient("/api/products")
-      const data = await response.json()
-      console.log("Fetched products:", data); // Log fetched products
-      setProducts(data)
-      setFilteredProducts([])
+      setIsLoadingProducts(true);
+      
+      // ✅ This endpoint now returns store inventory data, not products table
+      const response = await apiClient("/api/products");
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log("✅ Fetched store inventory products:", data.length, "items");
+      console.log("📦 Sample product:", data[0]);
+      
+      setProducts(data);
+      setFilteredProducts([]);
     } catch (error) {
-      console.error("Error fetching products:", error)
+      console.error("❌ Error fetching store inventory products:", error);
       toast({
         title: "Network Error",
-        description: "Failed to fetch products from server. Check your connection.",
+        description: "Failed to fetch store products. Check your connection.",
         variant: "destructive",
-      })
+      });
+      setProducts([]);
+    } finally {
+      setIsLoadingProducts(false);
     }
-  }
+  };
+
 
   const fetchSettings = async () => {
-    try {
-      const response = await apiClient("/api/settings")
-      let data = await response.json()
-      if (Array.isArray(data) && data.length > 0) {
-        data = data[0]
-      }
-      if (data && data.taxPercentage) {
-        data.taxPercentage = parseFloat(data.taxPercentage)
-      }
-      setSettings(data)
-    } catch (error) {
-      console.error("Error fetching settings:", error)
+  try {
+    console.log("⚙️ Fetching system settings...")
+    const response = await apiClient("/api/settings")
+    
+    if (!response.ok) {
+      throw new Error("Failed to fetch settings")
+    }
+    
+    let data = await response.json()
+    if (Array.isArray(data) && data.length > 0) {
+      data = data[0]
+    }
+    if (data && data.taxPercentage) {
+      data.taxPercentage = parseFloat(data.taxPercentage)
+    }
+    
+    console.log("✅ Settings loaded:", data)
+    console.log("📊 Tax percentage:", data?.taxPercentage)
+    
+    setSettings(data)
+    
+    if (!data || data.taxPercentage === undefined) {
       toast({
-        title: "Network Error",
-        description: "Failed to fetch settings from server. Check your connection.",
-        variant: "destructive",
+        title: "Settings Warning",
+        description: "Tax percentage not configured. Please check system settings.",
+        variant: "destructive"
       })
     }
+  } catch (error) {
+    console.error("❌ Error fetching settings:", error)
+    toast({
+      title: "Settings Error",
+      description: "Failed to load system settings",
+      variant: "destructive",
+    })
   }
+}
+
 
   const fetchUserData = async () => {
     try {
@@ -384,42 +444,53 @@ export default function BillingAndCart() {
 
 
   const addToCart = (productId: string, qty = 1) => {
-    if (!activeBillingInstance) return
-    const product = products.find((p) => p.id === productId)
-    if (!product) return
+  if (!activeBillingInstance) return
+  const product = products.find((p) => p.id === productId)
+  if (!product) return
 
-    const existingItem = activeBillingInstance.cartItems.find((item) => item.productId === product.id)
+  console.log("🛒 Adding to cart:", {
+    product: product.name,
+    price: product.selling_price,
+    quantity: qty
+  })
 
-    let updatedCartItems: CartItem[]
-    if (existingItem) {
-      updatedCartItems = activeBillingInstance.cartItems.map((item) =>
-        item.productId === product.id
-          ? { ...item, quantity: item.quantity + qty, total: (item.quantity + qty) * item.price }
-          : item,
-      )
-    } else {
+  const existingItem = activeBillingInstance.cartItems.find((item) => item.productId === product.id)
+
+  let updatedCartItems: CartItem[]
+  if (existingItem) {
+    console.log("📦 Item exists, updating quantity:", existingItem.quantity, "→", existingItem.quantity + qty)
+    updatedCartItems = activeBillingInstance.cartItems.map((item) =>
+      item.productId === product.id
+        ? { ...item, quantity: item.quantity + qty, total: (item.quantity + qty) * item.price }
+        : item,
+    )
+  } else {
+    console.log("✨ New item added to cart")
     const newItem: CartItem = {
       id: Date.now().toString(),
       productId: product.id,
       name: product.name,
       quantity: qty,
-      price: Number(product.selling_price), // Use selling_price
-      total: Math.round(Number(product.selling_price) * qty * 100) / 100, // Use selling_price
-      gstRate: DEFAULT_GST_RATE, // Product-specific tax removed, set to default
-      barcodes: product.barcodes,
+      price: Number(product.selling_price),
+      total: Number(product.selling_price) * qty,
+      barcodes: product.barcodes?.split(',')[0] || '',
+      gstRate: 0,
     }
-      updatedCartItems = [...activeBillingInstance.cartItems, newItem]
-    }
-
-    updateBillingInstance(activeTab, { cartItems: updatedCartItems })
-    setSearchTerm("")
-    setShowAllProducts(false)
-    toast({
-      title: "Success",
-      description: `${product.name} added to cart!`,
-      variant: "default",
-    })
+    updatedCartItems = [...activeBillingInstance.cartItems, newItem]
   }
+
+  const newSubtotal = updatedCartItems.reduce((sum, item) => sum + item.total, 0)
+  console.log("🧮 Updated cart items:", updatedCartItems)
+  console.log("💰 New subtotal:", newSubtotal)
+
+  updateBillingInstance(activeTab, { cartItems: updatedCartItems })
+  
+  toast({
+    title: "Added to Cart",
+    description: `${product.name} x${qty}`,
+  })
+}
+
 
   const handleBarcodeSearch = () => {
     const trimmedBarcodeInput = barcodeInput.trim();
@@ -589,61 +660,136 @@ export default function BillingAndCart() {
   }
 
   const handleSaveInvoice = async (invoiceToSave: Invoice, isReplay = false) => {
-    // If offline, we cannot save to the Flask backend.
-    // The user's instruction is to use the Flask server for ALL functions,
-    // implying no offline local storage. Therefore, if offline, we will
-    // simply show an error and prevent saving.
-    if (!isOnline) {
+  // Check if online
+  if (!isOnline) {
+    toast({
+      title: "Error",
+      description: "Cannot save invoice while offline. Please connect to the internet.",
+      variant: "destructive",
+    });
+    return false;
+  }
+
+  try {
+    console.log("💾 Saving invoice:", invoiceToSave);
+
+    // ✅ Transform invoice data to match Flask backend expectations
+    const billData = {
+  store_id: invoiceToSave.storeId,
+  customer_name: invoiceToSave.customerName || 'Walk-in Customer',
+  customer_phone: invoiceToSave.customerPhone || '',
+  customer_email: invoiceToSave.customerEmail || '',
+  customer_address: invoiceToSave.customerAddress || '',
+  subtotal: invoiceToSave.subtotal,  // ✅ ADD THIS LINE
+  tax_percentage: invoiceToSave.taxPercentage,  // ✅ ADD THIS LINE
+  tax_amount: invoiceToSave.taxAmount,
+  discount_percentage: invoiceToSave.discountPercentage,  // ✅ ADD THIS LINE
+  discount_amount: invoiceToSave.discountAmount,
+  total_amount: invoiceToSave.total,
+  payment_method: invoiceToSave.paymentMethod,
+  notes: invoiceToSave.notes || '',
+  items: invoiceToSave.items.map((item: any) => ({
+    product_id: item.productId,
+    quantity: item.quantity,
+    unit_price: item.price,
+    item_total: item.total
+  }))
+};
+
+// ✅ ADD THESE DEBUG LOGS
+console.log("📤 Sending bill data to backend:", billData);
+console.log("📊 Breakdown:");
+console.log("  - Subtotal:", billData.subtotal);
+console.log("  - Tax %:", billData.tax_percentage);
+console.log("  - Tax Amount:", billData.tax_amount);
+console.log("  - Discount %:", billData.discount_percentage);
+console.log("  - Discount Amount:", billData.discount_amount);
+console.log("  - Total:", billData.total_amount);
+
+    // ✅ Changed from /api/billing/save to /api/bills
+    const response = await apiClient("/api/bills", {
+      method: "POST",
+      body: JSON.stringify(billData),
+    });
+
+    console.log("📥 Response status:", response.status);
+
+    if (response.ok) {
+      const result = await response.json();
+      console.log("✅ Bill saved successfully:", result);
+
+      toast({
+        title: "Success",
+        description: `Invoice ${isReplay ? "synced" : "saved"} successfully!`,
+        variant: "default",
+      });
+
+      // Reset the current tab only if it's not a replay
+      if (!isReplay) {
+        const newId = `bill-${Date.now()}`;
+        const newTabs = billingTabs.map((tab) =>
+          tab.id === activeTab ? createNewBillingInstance(newId) : tab
+        );
+        setBillingTabs(newTabs);
+        setActiveTab(newId);
+      }
+
+      setShowPreview(false);
+      return true;
+    } else {
+      // ✅ Better error handling - try to parse JSON error, fallback to text
+      let errorMessage = "Failed to save invoice";
+      let errorDetails = "";
+
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorData.error || errorMessage;
+        errorDetails = errorData.error || "";
+        console.error("❌ Server error response:", errorData);
+      } catch (parseError) {
+        // If response is not JSON (e.g., HTML 404 page)
+        const textError = await response.text();
+        console.error("❌ Non-JSON error response:", textError.substring(0, 200));
+        errorMessage = `Server error: ${response.status} ${response.statusText}`;
+      }
+
       toast({
         title: "Error",
-        description: "Cannot save invoice while offline. Please connect to the internet.",
+        description: errorMessage,
         variant: "destructive",
-      })
+      });
+
+      // Show additional error details in console
+      if (errorDetails) {
+        console.error("❌ Error details:", errorDetails);
+      }
+
       return false;
     }
+  } catch (error: any) {
+    console.error("❌ Error saving invoice:", error);
 
-    try {
-      const response = await apiClient("/api/billing/save", {
-        method: "POST",
-        body: JSON.stringify(invoiceToSave),
-      })
-
-      if (response.ok) {
-        toast({
-          title: "Success",
-          description: `Invoice ${isReplay ? "synced" : "saved"} successfully!`,
-          variant: "default",
-        })
-        // Reset the current tab only if it's not a replay (replay doesn't affect current UI state)
-        if (!isReplay) {
-          const newId = `bill-${Date.now()}`
-          const newTabs = billingTabs.map((tab) =>
-            tab.id === activeTab ? createNewBillingInstance(newId) : tab,
-          )
-          setBillingTabs(newTabs)
-          setActiveTab(newId)
-          setShowPreview(false)
-        }
-        return true
-      } else {
-        const errorData = await response.json();
-        toast({
-          title: "Error",
-          description: `Failed to save invoice: ${errorData.error || response.statusText}`,
-          variant: "destructive",
-        })
-        return false
-      }
-    } catch (error) {
-      console.error("Error saving invoice:", error);
-      toast({
-        title: "Error",
-        description: "An error occurred while saving the invoice.",
-        variant: "destructive",
-      })
-      return false
+    // ✅ Better error handling for network errors
+    let errorMessage = "An error occurred while saving the invoice.";
+    
+    if (error.message) {
+      errorMessage = error.message;
     }
+    
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      errorMessage = "Network error: Cannot connect to server. Check if backend is running.";
+    }
+
+    toast({
+      title: "Error",
+      description: errorMessage,
+      variant: "destructive",
+    });
+    
+    return false;
   }
+};
+
 
   const handlePrintAndSave = async (invoiceToPrintAndSave: Invoice) => {
     const saved = await handleSaveInvoice(invoiceToPrintAndSave)

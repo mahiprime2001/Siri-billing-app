@@ -11,38 +11,63 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label"
 import { Eye, Search, Printer } from "lucide-react"
 import InvoicePreview from "./invoice-preview"
-import { apiClient } from "@/lib/api-client"; // Import apiClient
+import { apiClient } from "@/lib/api-client"
 
 interface Invoice {
-  id: string;
-  storeId: string;
-  storeName: string;
-  storeAddress: string;
-  customerName: string;
-  customerPhone: string;
-  customerEmail: string;
-  customerAddress: string;
-  customerId: string;
-  subtotal: number;
-  taxPercentage: number;
-  taxAmount: number;
-  discountPercentage: number;
-  discountAmount: number;
-  total: number;
-  paymentMethod: string;
-  timestamp: string;
-  notes: string;
-  gstin: string;
-  companyName: string;
-  companyAddress: string;
-  companyPhone: string;
-  companyEmail: string;
-  billFormat: string;
-  createdBy: string;
-  items: any[]; // You might want to define a proper type for items
+  id: string
+  storeid: string
+  customerid: string
+  userid: string
+  subtotal: number
+  taxpercentage: number
+  taxamount: number
+  discountpercentage: number
+  discountamount: number
+  total: number
+  paymentmethod: string
+  timestamp: string
+  status: string
+  createdby: string
+  created_at: string
+  updated_at: string
+  // Old format (for backward compatibility)
+  customerName?: string
+  customerPhone?: string
+  customerEmail?: string
+  customerAddress?: string
+  storeName?: string
+  storeAddress?: string
+  storePhone?: string
+  gstin?: string
+  companyName?: string
+  companyAddress?: string
+  companyPhone?: string
+  companyEmail?: string
+  // New format (normalized with JOINs)
+  customers?: {
+    name: string
+    phone: string
+    email: string
+    address: string
+  }
+  stores?: {
+    name: string
+    address: string
+    phone: string
+  }
+  items?: Array<{
+    name: string
+    quantity: number
+    price: number
+    total: number
+  }>
 }
 
-export default function BillingHistory() {
+interface BillingHistoryProps {
+  currentStore: { id: string; name: string } | null
+}
+
+export function BillingHistory({ currentStore }: BillingHistoryProps) {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [filteredInvoices, setFilteredInvoices] = useState<Invoice[]>([])
   const [searchTerm, setSearchTerm] = useState("")
@@ -50,65 +75,145 @@ export default function BillingHistory() {
   const [showPreview, setShowPreview] = useState(false)
   const [showPrintDialog, setShowPrintDialog] = useState(false)
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null)
-  const [printPaperSize, setPrintPaperSize] = useState("Thermal 80mm");
+  const [printPaperSize, setPrintPaperSize] = useState("Thermal 80mm")
+
+  // ✅ Helper function to get customer name (handles both old and new formats)
+  const getCustomerName = (invoice: Invoice): string => {
+    if (invoice.customerName) return invoice.customerName
+    if (invoice.customers?.name) return invoice.customers.name
+    return "Walk-in Customer"
+  }
+
+  // ✅ Helper function to get customer phone (handles both old and new formats)
+  const getCustomerPhone = (invoice: Invoice): string => {
+    if (invoice.customerPhone) return invoice.customerPhone
+    if (invoice.customers?.phone) return invoice.customers.phone
+    return ""
+  }
+
+  // ✅ Helper function to get customer email (handles both old and new formats)
+  const getCustomerEmail = (invoice: Invoice): string => {
+    if (invoice.customerEmail) return invoice.customerEmail
+    if (invoice.customers?.email) return invoice.customers.email
+    return ""
+  }
+
+  // ✅ Helper function to get customer address (handles both old and new formats)
+  const getCustomerAddress = (invoice: Invoice): string => {
+    if (invoice.customerAddress) return invoice.customerAddress
+    if (invoice.customers?.address) return invoice.customers.address
+    return ""
+  }
+
+  // ✅ Helper function to get store name (handles both old and new formats)
+  const getStoreName = (invoice: Invoice): string => {
+    if (invoice.storeName) return invoice.storeName
+    if (invoice.stores?.name) return invoice.stores.name
+    if (invoice.companyName) return invoice.companyName
+    return "Unknown Store"
+  }
+
+  // ✅ Helper function to get store address (handles both old and new formats)
+  const getStoreAddress = (invoice: Invoice): string => {
+    if (invoice.storeAddress) return invoice.storeAddress
+    if (invoice.stores?.address) return invoice.stores.address
+    if (invoice.companyAddress) return invoice.companyAddress
+    return "123 Jewelry Street"
+  }
+
+  // ✅ Helper function to get store phone (handles both old and new formats)
+  const getStorePhone = (invoice: Invoice): string => {
+    if (invoice.storePhone) return invoice.storePhone
+    if (invoice.stores?.phone) return invoice.stores.phone
+    if (invoice.companyPhone) return invoice.companyPhone
+    return "+91 98765 43210"
+  }
 
   const fetchBillingHistory = useCallback(async () => {
-    try {
-      console.log("Fetching billing history from Flask backend...");
-      // Use apiClient to ensure Authorization header is consistently added
-      const response = await apiClient("/api/bills");
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const bills = await response.json();
-      // Sort by timestamp (most recent first)
-      bills.sort((a: Invoice, b: Invoice) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      setInvoices(bills);
-      setFilteredInvoices(bills);
-      console.log(`Loaded ${bills.length} invoices from Flask backend.`);
-    } catch (error) {
-      console.error("Failed to fetch billing history from Flask backend:", error);
-      // Optionally, handle error by showing a toast or setting an offline state
+    if (!currentStore) {
+      console.log("No current store selected")
+      return
     }
-  }, []);
+
+    try {
+      console.log(`Fetching billing history for store: ${currentStore.id}`)
+      const token = localStorage.getItem("token")
+      const response = await apiClient(`/api/bills?store_id=${currentStore.id}&limit=100`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const bills = await response.json()
+      // Sort by timestamp (most recent first)
+      bills.sort((a: Invoice, b: Invoice) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      setInvoices(bills)
+      setFilteredInvoices(bills)
+      console.log(`✅ Loaded ${bills.length} invoices from backend`)
+    } catch (error) {
+      console.error("❌ Failed to fetch billing history:", error)
+    }
+  }, [currentStore])
 
   useEffect(() => {
-    fetchBillingHistory();
+    fetchBillingHistory()
 
-    // Set up an interval to refresh billing history from local storage every 30 seconds
-    // This ensures the UI reflects changes from background syncs
-    const refreshInterval = setInterval(fetchBillingHistory, 30 * 1000);
+    // Refresh every 30 seconds
+    const refreshInterval = setInterval(fetchBillingHistory, 30 * 1000)
+    return () => clearInterval(refreshInterval)
+  }, [fetchBillingHistory])
 
-    return () => clearInterval(refreshInterval);
-  }, [fetchBillingHistory]);
-
+  // ✅ Filter invoices with safe property access
   useEffect(() => {
-    const filtered = invoices.filter(
-      (invoice) =>
-        invoice.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        invoice.id.toLowerCase().includes(searchTerm.toLowerCase()),
-    )
+    if (!searchTerm.trim()) {
+      setFilteredInvoices(invoices)
+      return
+    }
+
+    const searchLower = searchTerm.toLowerCase()
+
+    const filtered = invoices.filter((invoice) => {
+      // Safely access invoice ID
+      const invoiceId = invoice.id?.toLowerCase() || ""
+
+      // Get customer name and phone (handles both old and new formats)
+      const customerName = getCustomerName(invoice)
+      const customerNameLower = customerName.toLowerCase()
+      const customerPhone = getCustomerPhone(invoice)
+      const customerPhoneLower = customerPhone.toLowerCase()
+
+      // Search in ID, customer name, and phone
+      return (
+        invoiceId.includes(searchLower) ||
+        customerNameLower.includes(searchLower) ||
+        customerPhoneLower.includes(searchLower)
+      )
+    })
+
     setFilteredInvoices(filtered)
   }, [searchTerm, invoices])
 
   const handleViewInvoice = (invoice: Invoice) => {
-    setSelectedInvoice(invoice);
-    setShowPreview(true);
-  };
+    setSelectedInvoice(invoice)
+    setShowPreview(true)
+  }
 
   const handlePrintInvoice = (invoice: Invoice) => {
-    setPrintInvoice(invoice);
-    setShowPrintDialog(true);
-  };
+    setPrintInvoice(invoice)
+    setShowPrintDialog(true)
+  }
 
   const handleConfirmPrint = () => {
     if (printInvoice) {
       setShowPrintDialog(false)
-      // Open invoice preview with print functionality
       setSelectedInvoice(printInvoice)
       setShowPreview(true)
 
-      // Trigger print after a short delay to allow preview to load
       setTimeout(() => {
         const printWindow = window.open("", "_blank")
         if (printWindow) {
@@ -126,65 +231,59 @@ export default function BillingHistory() {
   }
 
   const generatePrintContent = (invoice: Invoice, paperSize: string) => {
+    const customerName = getCustomerName(invoice)
+    const customerPhone = getCustomerPhone(invoice)
+    const storeName = getStoreName(invoice)
+    const storeAddress = getStoreAddress(invoice)
+    const storePhone = getStorePhone(invoice)
+    const storeEmail = invoice.companyEmail || "info@siriartjewellers.com"
+    const gstin = invoice.gstin || "27ABCDE1234F1Z5"
+
     const getPageStyles = () => {
       if (paperSize === "Thermal 58mm" || paperSize === "Thermal 80mm") {
         return `
           @page {
-            size: ${
-              paperSize === "Thermal 58mm" ? "58mm auto" : "80mm auto"
-            };
+            size: ${paperSize === "Thermal 58mm" ? "58mm auto" : "80mm auto"};
             margin: 2mm;
           }
-        `;
+        `
       } else if (paperSize === "A4") {
         return `
           @page {
             size: A4 portrait;
             margin: 15mm 10mm;
           }
-        `;
+        `
       } else if (paperSize === "Letter") {
         return `
           @page {
             size: Letter portrait;
             margin: 0.6in 0.4in;
           }
-        `;
+        `
       }
       return `
         @page {
           size: A4 portrait;
           margin: 15mm 10mm;
         }
-      `;
-    };
+      `
+    }
 
-    const isThermal = paperSize.includes("Thermal");
+    const isThermal = paperSize.includes("Thermal")
 
     const thermalContent = `
       <div style="width: ${
         paperSize === "Thermal 58mm" ? "58mm" : "80mm"
       }; font-family: Courier New, monospace; font-size: ${
       paperSize === "Thermal 58mm" ? "10px" : "11px"
-    }; line-height: ${
-      paperSize === "Thermal 58mm" ? "1.2" : "1.3"
-    }; color: #000;">
+    }; line-height: ${paperSize === "Thermal 58mm" ? "1.2" : "1.3"}; color: #000;">
         <div style="text-align: center; margin-bottom: 8px;">
-          <div style="font-size: 14px; font-weight: bold;">${(
-            invoice.companyName || "Siri Art Jewellers"
-          ).toUpperCase()}</div>
-          <div style="font-size: 12px;">${
-            invoice.companyAddress || "123 Jewelry Street"
-          }</div>
-          <div style="font-size: 12px;">Ph: ${
-            invoice.companyPhone || "+91 98765 43210"
-          }</div>
-          <div style="font-size: 12px;">${
-            invoice.companyEmail || "info@siriartjewellers.com"
-          }</div>
-          <div style="font-size: 12px;">GSTIN: ${
-            invoice.gstin || "27ABCDE1234F1Z5"
-          }</div>
+          <div style="font-size: 14px; font-weight: bold;">${storeName.toUpperCase()}</div>
+          <div style="font-size: 12px;">${storeAddress}</div>
+          <div style="font-size: 12px;">Ph: ${storePhone}</div>
+          <div style="font-size: 12px;">${storeEmail}</div>
+          <div style="font-size: 12px;">GSTIN: ${gstin}</div>
           <div style="border-top: 1px dashed #000; margin: 4px 0;"></div>
           <div style="font-size: 12px; font-weight: bold;">TAX INVOICE</div>
         </div>
@@ -195,21 +294,17 @@ export default function BillingHistory() {
             <span>${new Date(invoice.timestamp).toLocaleDateString()}</span>
           </div>
           <div style="display: flex; justify-content: space-between;">
-            <span>Payment: ${invoice.paymentMethod || "Cash"}</span>
+            <span>Payment: ${invoice.paymentmethod || "Cash"}</span>
           </div>
         </div>
 
         ${
-          invoice.customerName !== "Walk-in Customer" || invoice.customerPhone
+          customerName !== "Walk-in Customer" || customerPhone
             ? `
           <div style="font-size: 12px; margin-bottom: 8px;">
             <div style="border-top: 1px dashed #000; margin: 4px 0;"></div>
-            <div>Customer: ${invoice.customerName}</div>
-            ${
-              invoice.customerPhone
-                ? `<div>Phone: ${invoice.customerPhone}</div>`
-                : ""
-            }
+            <div>Customer: ${customerName}</div>
+            ${customerPhone ? `<div>Phone: ${customerPhone}</div>` : ""}
             <div style="border-top: 1px dashed #000; margin: 4px 0;"></div>
           </div>
         `
@@ -217,9 +312,10 @@ export default function BillingHistory() {
         }
 
         <div style="font-size: 12px; margin-bottom: 8px;">
-          ${invoice.items
-            .map(
-              (item: any, index: number) => `
+          ${
+            invoice.items
+              ?.map(
+                (item: any, index: number) => `
             <div style="margin-bottom: 4px;">
               <div style="display: flex; justify-content: space-between;">
                 <span style="flex: 1;">${item.name || "Unknown Item"}</span>
@@ -229,14 +325,15 @@ export default function BillingHistory() {
                 <span>₹${item.total.toLocaleString()}</span>
               </div>
               ${
-                index < invoice.items.length - 1
+                index < (invoice.items?.length || 0) - 1
                   ? '<div style="border-top: 1px dotted #000; margin: 2px 0;"></div>'
                   : ""
               }
             </div>
           `
-            )
-            .join("")}
+              )
+              .join("") || ""
+          }
         </div>
 
         <div style="font-size: 12px;">
@@ -246,20 +343,18 @@ export default function BillingHistory() {
             <span>₹${invoice.subtotal.toLocaleString()}</span>
           </div>
           ${
-            invoice.discountPercentage > 0
+            invoice.discountpercentage > 0
               ? `
             <div style="display: flex; justify-content: space-between;">
-              <span>Discount (${
-                invoice.discountPercentage
-              }%):</span>
-              <span>-₹${invoice.discountAmount.toLocaleString()}</span>
+              <span>Discount (${invoice.discountpercentage}%):</span>
+              <span>-₹${invoice.discountamount.toLocaleString()}</span>
             </div>
           `
               : ""
           }
           <div style="display: flex; justify-content: space-between;">
-            <span>Tax (${invoice.taxPercentage}%):</span>
-            <span>₹${invoice.taxAmount.toLocaleString()}</span>
+            <span>Tax (${invoice.taxpercentage}%):</span>
+            <span>₹${invoice.taxamount.toLocaleString()}</span>
           </div>
           <div style="border-top: 1px dashed #000; margin: 4px 0;"></div>
           <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 14px;">
@@ -274,49 +369,29 @@ export default function BillingHistory() {
           <div>This is a computer generated invoice</div>
         </div>
       </div>
-    `;
+    `
 
     const standardContent = `
       <div style="width: 100%; font-size: 11px; line-height: 1.3; color: #000;">
         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
           <div>
-            <h1 style="font-size: 24px; font-weight: bold; margin: 0 0 4px 0;">${
-              invoice.companyName || "Siri Art Jewellers"
-            }</h1>
-            <p style="margin: 2px 0;">${
-              invoice.companyAddress || "123 Jewelry Street"
-            }</p>
-            <p style="margin: 2px 0;">Phone: ${
-              invoice.companyPhone || "+91 98765 43210"
-            } | Email: ${
-      invoice.companyEmail || "info@siriartjewellers.com"
-    }</p>
-            <p style="margin: 2px 0;">GSTIN: ${
-              invoice.gstin || "27ABCDE1234F1Z5"
-            }</p>
+            <h1 style="font-size: 24px; font-weight: bold; margin: 0 0 4px 0;">${storeName}</h1>
+            <p style="margin: 2px 0;">${storeAddress}</p>
+            <p style="margin: 2px 0;">Phone: ${storePhone} | Email: ${storeEmail}</p>
+            <p style="margin: 2px 0;">GSTIN: ${gstin}</p>
           </div>
           <div style="text-align: right;">
             <h2 style="font-size: 20px; font-weight: bold; margin: 0 0 4px 0;">TAX INVOICE</h2>
             <p style="margin: 2px 0;">#${invoice.id}</p>
-            <p style="margin: 2px 0;">Date: ${new Date(
-              invoice.timestamp
-            ).toLocaleDateString()}</p>
-            <p style="margin: 2px 0;">Payment: ${
-              invoice.paymentMethod || "Cash"
-            }</p>
+            <p style="margin: 2px 0;">Date: ${new Date(invoice.timestamp).toLocaleDateString()}</p>
+            <p style="margin: 2px 0;">Payment: ${invoice.paymentmethod || "Cash"}</p>
           </div>
         </div>
 
         <div style="margin-bottom: 20px;">
           <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">Bill To:</h3>
-          <p style="font-weight: 500; margin: 2px 0;">${
-            invoice.customerName
-          }</p>
-          ${
-            invoice.customerPhone
-              ? `<p style="margin: 2px 0;">${invoice.customerPhone}</p>`
-              : ""
-          }
+          <p style="font-weight: 500; margin: 2px 0;">${customerName}</p>
+          ${customerPhone ? `<p style="margin: 2px 0;">${customerPhone}</p>` : ""}
         </div>
 
         <div style="margin-bottom: 20px;">
@@ -330,22 +405,20 @@ export default function BillingHistory() {
               </tr>
             </thead>
             <tbody>
-              ${invoice.items
-                .map(
-                  (item: any) => `
+              ${
+                invoice.items
+                  ?.map(
+                    (item: any) => `
                 <tr>
-                  <td style="border: 1px solid #000; padding: 8px;">${
-                    item.name || "Unknown Item"
-                  }</td>
+                  <td style="border: 1px solid #000; padding: 8px;">${item.name || "Unknown Item"}</td>
                   <td style="border: 1px solid #000; padding: 8px; text-align: right;">₹${item.price.toLocaleString()}</td>
-                  <td style="border: 1px solid #000; padding: 8px; text-align: right;">${
-                    item.quantity
-                  }</td>
+                  <td style="border: 1px solid #000; padding: 8px; text-align: right;">${item.quantity}</td>
                   <td style="border: 1px solid #000; padding: 8px; text-align: right;">₹${item.total.toLocaleString()}</td>
                 </tr>
               `
-                )
-                .join("")}
+                  )
+                  .join("") || ""
+              }
             </tbody>
           </table>
         </div>
@@ -357,20 +430,18 @@ export default function BillingHistory() {
               <span>₹${invoice.subtotal.toLocaleString()}</span>
             </div>
             ${
-              invoice.discountPercentage > 0
+              invoice.discountpercentage > 0
                 ? `
               <div style="display: flex; justify-content: space-between; padding: 8px 0;">
-                <span>Discount (${
-                  invoice.discountPercentage
-                }%):</span>
-                <span>-₹${invoice.discountAmount.toLocaleString()}</span>
+                <span>Discount (${invoice.discountpercentage}%):</span>
+                <span>-₹${invoice.discountamount.toLocaleString()}</span>
               </div>
             `
                 : ""
             }
             <div style="display: flex; justify-content: space-between; padding: 8px 0;">
-              <span>Tax (${invoice.taxPercentage}%):</span>
-              <span>₹${invoice.taxAmount.toLocaleString()}</span>
+              <span>Tax (${invoice.taxpercentage}%):</span>
+              <span>₹${invoice.taxamount.toLocaleString()}</span>
             </div>
             <div style="display: flex; justify-content: space-between; padding: 8px 0; border-top: 1px solid #000; font-weight: bold; font-size: 18px;">
               <span>Total Amount:</span>
@@ -382,12 +453,10 @@ export default function BillingHistory() {
         <div style="text-align: center; font-size: 14px; border-top: 1px solid #ccc; padding-top: 16px;">
           <p style="margin: 2px 0;">Thank you for your business!</p>
           <p style="margin: 2px 0;">This is a computer generated tax invoice</p>
-          <p style="margin: 2px 0;">For any queries, please contact us at ${
-            invoice.companyEmail || "info@siriartjewellers.com"
-          }</p>
+          <p style="margin: 2px 0;">For any queries, please contact us at ${storeEmail}</p>
         </div>
       </div>
-    `;
+    `
 
     return `
       <!DOCTYPE html>
@@ -421,15 +490,17 @@ export default function BillingHistory() {
           ${isThermal ? thermalContent : standardContent}
         </body>
       </html>
-    `;
-  };
+    `
+  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
+      case "completed":
       case "paid":
         return "bg-green-100 text-green-800"
       case "pending":
         return "bg-yellow-100 text-yellow-800"
+      case "cancelled":
       case "overdue":
         return "bg-red-100 text-red-800"
       default:
@@ -437,17 +508,29 @@ export default function BillingHistory() {
     }
   }
 
+  if (!currentStore) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <p className="text-center text-muted-foreground">
+            Please select a store to view billing history
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
     <>
       <Card>
         <CardHeader>
           <CardTitle>Billing History</CardTitle>
-          <CardDescription>View and manage all invoices</CardDescription>
+          <CardDescription>View and manage all invoices for {currentStore.name}</CardDescription>
           <div className="flex items-center space-x-2 mt-4">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
-                placeholder="Search invoices..."
+                placeholder="Search by invoice ID, customer name, or phone..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -457,53 +540,62 @@ export default function BillingHistory() {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Invoice ID</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredInvoices.map((invoice) => (
-                <TableRow key={invoice.id}>
-                  <TableCell className="font-medium">{invoice.id}</TableCell>
-                  <TableCell>{invoice.customerName}</TableCell>
-                  <TableCell>
-                    {new Date(invoice.timestamp).toLocaleString()}
-                  </TableCell>
-                  <TableCell>₹{invoice.total.toLocaleString()}</TableCell>
-                  <TableCell>
-                    <Badge className={getStatusColor("paid")}>Paid</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex space-x-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleViewInvoice(invoice)}
-                      >
-                        <Eye className="h-4 w-4 mr-1" />
-                        View
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handlePrintInvoice(invoice)}
-                      >
-                        <Printer className="h-4 w-4 mr-1" />
-                        Print
-                      </Button>
-                    </div>
-                  </TableCell>
+          {filteredInvoices.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">
+                {searchTerm ? "No invoices found matching your search" : "No invoices yet"}
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Invoice ID</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Total</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredInvoices.map((invoice) => (
+                  <TableRow key={invoice.id}>
+                    <TableCell className="font-medium">{invoice.id}</TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{getCustomerName(invoice)}</p>
+                        {getCustomerPhone(invoice) && (
+                          <p className="text-sm text-muted-foreground">
+                            {getCustomerPhone(invoice)}
+                          </p>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>{new Date(invoice.timestamp).toLocaleString()}</TableCell>
+                    <TableCell>₹{invoice.total.toLocaleString()}</TableCell>
+                    <TableCell>
+                      <Badge className={getStatusColor(invoice.status || "completed")}>
+                        {invoice.status || "Completed"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex space-x-2">
+                        <Button variant="outline" size="sm" onClick={() => handleViewInvoice(invoice)}>
+                          <Eye className="h-4 w-4 mr-1" />
+                          View
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => handlePrintInvoice(invoice)}>
+                          <Printer className="h-4 w-4 mr-1" />
+                          Print
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 

@@ -4,13 +4,11 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
-import { Package, User, Phone, Calendar, IndianRupee, CheckCircle, XCircle, Clock, FileText, RefreshCw } from "lucide-react"
+import { Package, User, Phone, Calendar, IndianRupee, CheckCircle, XCircle, Clock, RefreshCw, Plus, Info } from "lucide-react"
 import { apiClient } from "@/lib/api-client"
+import ReturnsDialog from "@/components/returns-dialog"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 interface ReturnItem {
   return_id: string
@@ -24,7 +22,6 @@ interface ReturnItem {
   item_index: number
   original_quantity: number
   return_quantity: number
-  unit_price: number
   return_amount: number
   status: 'pending' | 'approved' | 'denied'
   created_by: string
@@ -39,21 +36,19 @@ interface ReturnItem {
 
 interface ReturnsManagementProps {
   onCountChange?: () => void
+  user?: { name: string; id: string; email: string; role: string } | null
 }
 
-export default function ReturnsManagement({ onCountChange }: ReturnsManagementProps = {}) {
+export default function ReturnsManagement({ onCountChange, user }: ReturnsManagementProps = {}) {
   const [returns, setReturns] = useState<ReturnItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [selectedReturn, setSelectedReturn] = useState<ReturnItem | null>(null)
-  const [isDenyDialogOpen, setIsDenyDialogOpen] = useState(false)
-  const [denialReason, setDenialReason] = useState("")
-  const [isProcessing, setIsProcessing] = useState(false)
+  const [isReturnsDialogOpen, setIsReturnsDialogOpen] = useState(false)
   const { toast } = useToast()
 
   const fetchReturns = async () => {
     setIsLoading(true)
     try {
-      const response = await apiClient('/api/returns/list')
+      const response = await apiClient('/api/returns')
       if (!response.ok) {
         throw new Error('Failed to fetch returns')
       }
@@ -75,136 +70,78 @@ export default function ReturnsManagement({ onCountChange }: ReturnsManagementPr
     fetchReturns()
   }, [])
 
-  const handleApprove = async (returnItem: ReturnItem) => {
-    setIsProcessing(true)
-    try {
-      const response = await apiClient(`/api/returns/${returnItem.return_id}/approve`, {
-        method: 'POST',
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to approve return')
-      }
-
-      toast({
-        title: "Return Approved",
-        description: `Return request for ${returnItem.product_name} has been approved`,
-      })
-
-      // Refresh the list and notify parent
-      await fetchReturns()
-      if (onCountChange) onCountChange()
-    } catch (error) {
-      console.error("Error approving return:", error)
-      toast({
-        title: "Error",
-        description: "Failed to approve return request",
-        variant: "destructive",
-      })
-    } finally {
-      setIsProcessing(false)
-    }
-  }
-
-  const handleDenyClick = (returnItem: ReturnItem) => {
-    setSelectedReturn(returnItem)
-    setDenialReason("")
-    setIsDenyDialogOpen(true)
-  }
-
-  const handleDenyConfirm = async () => {
-    if (!selectedReturn) return
-
-    if (!denialReason.trim()) {
-      toast({
-        title: "Reason Required",
-        description: "Please provide a reason for denying this return",
-        variant: "destructive",
-      })
-      return
-    }
-
-    setIsProcessing(true)
-    try {
-      const response = await apiClient(`/api/returns/${selectedReturn.return_id}/deny`, {
-        method: 'POST',
-        body: JSON.stringify({ reason: denialReason }),
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to deny return')
-      }
-
-      toast({
-        title: "Return Denied",
-        description: `Return request for ${selectedReturn.product_name} has been denied`,
-      })
-
-      // Close dialog, refresh the list, and notify parent
-      setIsDenyDialogOpen(false)
-      setSelectedReturn(null)
-      setDenialReason("")
-      await fetchReturns()
-      if (onCountChange) onCountChange()
-    } catch (error) {
-      console.error("Error denying return:", error)
-      toast({
-        title: "Error",
-        description: "Failed to deny return request",
-        variant: "destructive",
-      })
-    } finally {
-      setIsProcessing(false)
-    }
-  }
-
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'pending':
-        return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-300"><Clock className="h-3 w-3 mr-1" />Pending</Badge>
+        return <Badge variant="outline" className="border-yellow-500 text-yellow-700"><Clock className="h-3 w-3 mr-1" /> Pending</Badge>
       case 'approved':
-        return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300"><CheckCircle className="h-3 w-3 mr-1" />Approved</Badge>
+        return <Badge variant="outline" className="border-green-500 text-green-700"><CheckCircle className="h-3 w-3 mr-1" /> Approved</Badge>
       case 'denied':
-        return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300"><XCircle className="h-3 w-3 mr-1" />Denied</Badge>
+        return <Badge variant="outline" className="border-red-500 text-red-700"><XCircle className="h-3 w-3 mr-1" /> Denied</Badge>
       default:
-        return <Badge variant="outline">{status}</Badge>
+        return <Badge>{status}</Badge>
     }
   }
 
+  const getUnitPrice = (returnItem: ReturnItem) => {
+    if (returnItem.return_quantity > 0) {
+      return returnItem.return_amount / returnItem.return_quantity
+    }
+    return 0
+  }
+
   const pendingReturns = returns.filter(r => r.status === 'pending')
-  const processedReturns = returns.filter(r => r.status !== 'pending')
+  const approvedReturns = returns.filter(r => r.status === 'approved')
+  const deniedReturns = returns.filter(r => r.status === 'denied')
+
+  const handleReturnDialogClose = () => {
+    setIsReturnsDialogOpen(false)
+    fetchReturns()
+    if (onCountChange) onCountChange()
+  }
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <RefreshCw className="h-6 w-6 animate-spin text-gray-400" />
-        <span className="ml-2 text-gray-600">Loading returns...</span>
+      <div className="flex items-center justify-center h-full">
+        <p className="text-muted-foreground">Loading returns...</p>
       </div>
     )
   }
 
   return (
     <div className="space-y-6">
-      {/* Header with Refresh */}
-      <div className="flex justify-between items-center">
+      {/* Header with Create Return Button */}
+      <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Return Requests</h2>
-          <p className="text-sm text-muted-foreground">Manage product return requests</p>
+          <p className="text-muted-foreground">View and create product return requests</p>
         </div>
-        <Button onClick={fetchReturns} variant="outline" size="sm">
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setIsReturnsDialogOpen(true)} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Create Return Request
+          </Button>
+          <Button onClick={fetchReturns} variant="outline" size="icon">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
+
+      {/* Info Alert */}
+      <Alert>
+        <Info className="h-4 w-4" />
+        <AlertTitle>Return Request Process</AlertTitle>
+        <AlertDescription>
+          Return requests created here will be reviewed and approved by the admin team. 
+          You'll receive a notification once your request is processed.
+        </AlertDescription>
+      </Alert>
 
       {/* Pending Returns Section */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="h-5 w-5 text-yellow-600" />
-            Pending Returns ({pendingReturns.length})
-          </CardTitle>
-          <CardDescription>Return requests awaiting approval or denial</CardDescription>
+          <CardTitle>Pending Returns ({pendingReturns.length})</CardTitle>
+          <CardDescription>Waiting for admin approval</CardDescription>
         </CardHeader>
         <CardContent>
           {pendingReturns.length === 0 ? (
@@ -212,75 +149,61 @@ export default function ReturnsManagement({ onCountChange }: ReturnsManagementPr
           ) : (
             <div className="space-y-4">
               {pendingReturns.map((returnItem) => (
-                <Card key={returnItem.return_id} className="border-2 border-yellow-200">
+                <Card key={returnItem.return_id} className="border-l-4 border-l-yellow-500">
                   <CardContent className="pt-6">
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Package className="h-5 w-5 text-gray-600" />
-                          <h3 className="text-lg font-semibold">{returnItem.product_name}</h3>
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="space-y-1 flex-1">
+                        <div className="flex items-center gap-2">
+                          <Package className="h-4 w-4 text-muted-foreground" />
+                          <h3 className="font-semibold">{returnItem.product_name}</h3>
                           {getStatusBadge(returnItem.status)}
                         </div>
-                        <div className="grid grid-cols-2 gap-3 text-sm text-muted-foreground mt-3">
-                          <div className="flex items-center gap-2">
-                            <User className="h-4 w-4" />
-                            <span>{returnItem.customer_name || 'N/A'}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Phone className="h-4 w-4" />
-                            <span>{returnItem.customer_phone_number || 'N/A'}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <FileText className="h-4 w-4" />
-                            <span>Invoice: {returnItem.bill_id}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Calendar className="h-4 w-4" />
-                            <span>{new Date(returnItem.created_at).toLocaleDateString()}</span>
-                          </div>
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <User className="h-3 w-3" />
+                            {returnItem.customer_name || 'N/A'}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Phone className="h-3 w-3" />
+                            {returnItem.customer_phone_number || 'N/A'}
+                          </span>
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          <span className="font-medium">Invoice:</span> {returnItem.bill_id}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          <span className="font-medium">Created by:</span> {returnItem.created_by}
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Calendar className="h-3 w-3" />
+                          {new Date(returnItem.created_at).toLocaleString()}
                         </div>
                       </div>
-                      <div className="text-right ml-4">
-                        <div className="text-2xl font-bold text-primary flex items-center justify-end">
-                          <IndianRupee className="h-5 w-5" />
+                      <div className="text-right">
+                        <div className="flex items-center gap-1 text-lg font-bold">
+                          <IndianRupee className="h-4 w-4" />
                           {returnItem.return_amount.toFixed(2)}
                         </div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          {returnItem.return_quantity} × ₹{returnItem.unit_price.toFixed(2)}
-                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Return: {returnItem.return_quantity} of {returnItem.original_quantity}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Unit: ₹{getUnitPrice(returnItem).toFixed(2)}
+                        </p>
                         <Badge variant="secondary" className="mt-2">
                           {returnItem.refund_method.toUpperCase()}
                         </Badge>
                       </div>
                     </div>
 
-                    <Separator className="my-3" />
-
-                    <div className="mb-4">
-                      <Label className="text-sm font-semibold">Return Reason:</Label>
-                      <p className="text-sm text-muted-foreground mt-1 bg-gray-50 p-3 rounded-md">
-                        {returnItem.message}
-                      </p>
+                    <div className="mt-3 p-3 bg-muted rounded-lg">
+                      <p className="text-sm font-medium mb-1">Return Reason:</p>
+                      <p className="text-sm text-muted-foreground">{returnItem.message}</p>
                     </div>
 
-                    <div className="flex gap-2 justify-end">
-                      <Button
-                        onClick={() => handleDenyClick(returnItem)}
-                        variant="outline"
-                        className="border-red-300 text-red-700 hover:bg-red-50"
-                        disabled={isProcessing}
-                      >
-                        <XCircle className="h-4 w-4 mr-2" />
-                        Deny
-                      </Button>
-                      <Button
-                        onClick={() => handleApprove(returnItem)}
-                        className="bg-green-600 hover:bg-green-700"
-                        disabled={isProcessing}
-                      >
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                        Approve
-                      </Button>
+                    <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                      <Clock className="h-3 w-3" />
+                      <span>Awaiting admin approval</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -290,50 +213,54 @@ export default function ReturnsManagement({ onCountChange }: ReturnsManagementPr
         </CardContent>
       </Card>
 
-      {/* Processed Returns Section */}
+      {/* Approved Returns Section */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-gray-600" />
-            Processed Returns ({processedReturns.length})
-          </CardTitle>
-          <CardDescription>Previously approved or denied return requests</CardDescription>
+          <CardTitle>Approved Returns ({approvedReturns.length})</CardTitle>
+          <CardDescription>Returns approved by admin</CardDescription>
         </CardHeader>
         <CardContent>
-          {processedReturns.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">No processed returns</p>
+          {approvedReturns.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">No approved returns</p>
           ) : (
-            <div className="space-y-3">
-              {processedReturns.map((returnItem) => (
-                <Card key={returnItem.return_id} className="border">
-                  <CardContent className="pt-4">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Package className="h-4 w-4 text-gray-600" />
-                          <h4 className="font-semibold">{returnItem.product_name}</h4>
+            <div className="space-y-4">
+              {approvedReturns.map((returnItem) => (
+                <Card key={returnItem.return_id} className="border-l-4 border-l-green-500">
+                  <CardContent className="pt-6">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1 flex-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold">{returnItem.product_name}</h3>
                           {getStatusBadge(returnItem.status)}
                         </div>
-                        <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
-                          <span>Customer: {returnItem.customer_name || 'N/A'}</span>
-                          <span>Invoice: {returnItem.bill_id}</span>
-                          <span>Date: {new Date(returnItem.created_at).toLocaleDateString()}</span>
+                        <p className="text-sm text-muted-foreground">
+                          Customer: {returnItem.customer_name || 'N/A'}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Invoice: {returnItem.bill_id}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Returned: {returnItem.return_quantity} of {returnItem.original_quantity} items
+                        </p>
+                        <div className="text-sm text-muted-foreground">
+                          <span className="font-medium">Submitted:</span> {new Date(returnItem.created_at).toLocaleDateString()}
                         </div>
-                        {returnItem.denial_reason && (
-                          <div className="mt-2 text-xs">
-                            <span className="font-semibold text-red-700">Denial Reason: </span>
-                            <span className="text-muted-foreground">{returnItem.denial_reason}</span>
+                        {returnItem.approved_at && (
+                          <div className="text-sm text-green-700 bg-green-50 p-2 rounded mt-2">
+                            <CheckCircle className="h-3 w-3 inline mr-1" />
+                            <span className="font-medium">Approved on:</span> {new Date(returnItem.approved_at).toLocaleString()}
                           </div>
                         )}
                       </div>
-                      <div className="text-right ml-4">
-                        <div className="font-bold text-primary flex items-center justify-end">
+                      <div className="text-right">
+                        <div className="flex items-center gap-1 font-bold text-green-700">
                           <IndianRupee className="h-4 w-4" />
                           {returnItem.return_amount.toFixed(2)}
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          Qty: {returnItem.return_quantity}
-                        </div>
+                        <p className="text-xs text-muted-foreground">Refund Amount</p>
+                        <Badge variant="secondary" className="mt-2">
+                          {returnItem.refund_method.toUpperCase()}
+                        </Badge>
                       </div>
                     </div>
                   </CardContent>
@@ -344,52 +271,75 @@ export default function ReturnsManagement({ onCountChange }: ReturnsManagementPr
         </CardContent>
       </Card>
 
-      {/* Deny Dialog */}
-      <Dialog open={isDenyDialogOpen} onOpenChange={setIsDenyDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Deny Return Request</DialogTitle>
-            <DialogDescription>
-              Please provide a reason for denying this return request.
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedReturn && (
+      {/* Denied Returns Section */}
+      {deniedReturns.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Denied Returns ({deniedReturns.length})</CardTitle>
+            <CardDescription>Returns rejected by admin</CardDescription>
+          </CardHeader>
+          <CardContent>
             <div className="space-y-4">
-              <div className="bg-gray-50 p-3 rounded-md">
-                <p className="text-sm font-semibold">{selectedReturn.product_name}</p>
-                <p className="text-xs text-muted-foreground">
-                  Customer: {selectedReturn.customer_name} | Amount: ₹{selectedReturn.return_amount.toFixed(2)}
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="denial-reason">Denial Reason *</Label>
-                <Textarea
-                  id="denial-reason"
-                  placeholder="Explain why this return is being denied..."
-                  value={denialReason}
-                  onChange={(e) => setDenialReason(e.target.value)}
-                  rows={4}
-                />
-              </div>
+              {deniedReturns.map((returnItem) => (
+                <Card key={returnItem.return_id} className="border-l-4 border-l-red-500">
+                  <CardContent className="pt-6">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1 flex-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold">{returnItem.product_name}</h3>
+                          {getStatusBadge(returnItem.status)}
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          Customer: {returnItem.customer_name || 'N/A'}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Invoice: {returnItem.bill_id}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Requested: {returnItem.return_quantity} of {returnItem.original_quantity} items
+                        </p>
+                        <div className="text-sm text-muted-foreground">
+                          <span className="font-medium">Submitted:</span> {new Date(returnItem.created_at).toLocaleDateString()}
+                        </div>
+                        {returnItem.denied_at && (
+                          <div className="text-sm text-muted-foreground">
+                            <span className="font-medium">Denied on:</span> {new Date(returnItem.denied_at).toLocaleString()}
+                          </div>
+                        )}
+                        {returnItem.denial_reason && (
+                          <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded">
+                            <p className="text-sm font-medium text-red-800 flex items-center gap-1">
+                              <XCircle className="h-3 w-3" />
+                              Denial Reason:
+                            </p>
+                            <p className="text-sm text-red-700 mt-1">{returnItem.denial_reason}</p>
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <div className="flex items-center gap-1 font-bold text-red-700">
+                          <IndianRupee className="h-4 w-4" />
+                          {returnItem.return_amount.toFixed(2)}
+                        </div>
+                        <p className="text-xs text-muted-foreground">Requested Amount</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-          )}
+          </CardContent>
+        </Card>
+      )}
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDenyDialogOpen(false)} disabled={isProcessing}>
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleDenyConfirm} 
-              className="bg-red-600 hover:bg-red-700"
-              disabled={isProcessing}
-            >
-              {isProcessing ? 'Processing...' : 'Confirm Denial'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Returns Dialog for Creating New Return Requests */}
+      {user && (
+        <ReturnsDialog
+          isOpen={isReturnsDialogOpen}
+          onClose={handleReturnDialogClose}
+          user={user}
+        />
+      )}
     </div>
   )
 }

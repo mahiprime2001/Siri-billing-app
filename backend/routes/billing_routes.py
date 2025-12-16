@@ -1,193 +1,366 @@
-import uuid
-from datetime import datetime
-from flask import Blueprint, jsonify, request, g, current_app as app
-
-from auth.auth import session_required # Changed from token_required
-from data_access.data_access import get_bills_data, save_bills_data, get_products_data, save_products_data, get_or_create_customer, update_product_stock_supabase, save_bill_item
-from data_access.supabase_data_access import (
-    sync_to_supabase_immediately, check_user_exists_supabase, check_customer_exists_supabase
-)
-from notifications.notifications import create_notification
+from flask import Blueprint, request, jsonify, current_app as app
+from flask_jwt_extended import get_jwt_identity
+from auth.auth import require_auth
 from utils.connection_pool import get_supabase_client
-from supabase import Client
+from datetime import datetime, timezone
+import uuid
 import traceback
 
-billing_bp = Blueprint('billing_bp', __name__)
-@billing_bp.route('/bills', methods=['POST'])
-@billing_bp.route('/billing/save', methods=['POST']) # Add this route to handle frontend requests
-@session_required
-def create_bill():
-    """Create a new bill"""
-    try:
-        data = request.json
-        
-        # Get or create customer
-        customer_id = get_or_create_customer(
-            customer_name=data.get('customerName', 'Walk-in Customer'),
-            customer_phone=data.get('customerPhone', ''),
-            customer_email=data.get('customerEmail', ''),
-            customer_address=data.get('customerAddress', '')
-        )
-        
-        if not customer_id:
-            return jsonify({"error": "Failed to create/get customer"}), 500
-        
-        # Continue with bill creation...
-        # Now you can store only customerId in the Bills table
-        
-        # ... rest of your bill creation logic
-        
-        raw_bill_data = request.json
-        if not raw_bill_data:
-            return jsonify({"error": "No bill data provided"}), 400
+# Import stock update function
+from data_access.data_access import update_both_inventory_and_product_stock
 
-        # Extract items for separate syncing
-        items = raw_bill_data.pop('items', [])
-        
-        # Initialize bill_data with expected fields from the Bills table schema
-        bill_id = raw_bill_data.get('id') or str(uuid.uuid4())
-        created_by = raw_bill_data.get('createdBy') or g.current_user['id']
+# ✅ Default Walk-in Customer ID
+DEFAULT_WALKIN_CUSTOMER_ID = "CUST-1754821420265"
 
-        if not check_user_exists_supabase(created_by):
-            return jsonify({"error": f"User {created_by} does not exist"}), 400
-        
-        bill_data = {
-            'id': bill_id,
-            'storeid': raw_bill_data.get('storeId'),
-            'storename': raw_bill_data.get('storeName'),
-            'storeaddress': raw_bill_data.get('storeAddress'),
-            'customername': raw_bill_data.get('customerName', 'Walk-in Customer'),
-            'customerphone': raw_bill_data.get('customerPhone', ''),
-            'customeremail': raw_bill_data.get('customerEmail', ''),
-            'customeraddress': raw_bill_data.get('customerAddress', ''),
-            'customerid': customer_id, # Set from get_or_create_customer
-            'subtotal': float(raw_bill_data.get('subtotal')) if raw_bill_data.get('subtotal') is not None else None,
-            'taxpercentage': float(raw_bill_data.get('taxPercentage')) if raw_bill_data.get('taxPercentage') is not None else None,
-            'taxamount': float(raw_bill_data.get('taxAmount')) if raw_bill_data.get('taxAmount') is not None else None,
-            'discountpercentage': float(raw_bill_data.get('discountPercentage')) if raw_bill_data.get('discountPercentage') is not None else None,
-            'discountamount': float(raw_bill_data.get('discountAmount')) if raw_bill_data.get('discountAmount') is not None else None,
-            'total': float(raw_bill_data.get('total')) if raw_bill_data.get('total') is not None else None,
-            'paymentmethod': raw_bill_data.get('paymentMethod'),
-            'timestamp': raw_bill_data.get('timestamp') or datetime.now().isoformat(),
-            'notes': raw_bill_data.get('notes'),
-            'gstin': raw_bill_data.get('gstin'),
-            'companyname': raw_bill_data.get('companyName'),
-            'companyaddress': raw_bill_data.get('companyAddress'),
-            'companyphone': raw_bill_data.get('companyPhone'),
-            'companyemail': raw_bill_data.get('companyEmail'),
-            'billformat': raw_bill_data.get('billFormat', '').lower(), # Ensure lowercase
-            'createdby': created_by,
-            # 'items' field is for local JSON storage only, not for Supabase 'bills' table
-        }
-        
-        # Remove any None values from bill_data to avoid Supabase errors on non-nullable columns
-        bill_data = {k: v for k, v in bill_data.items() if v is not None}
-
-        # CRITICAL: Update stock for each product BEFORE saving bill
-        stock_updates = []
-        for item in items:
-            product_id = item.get('productId')
-            quantity_sold = item.get('quantity', 0)
-            
-            if product_id and quantity_sold > 0:
-                supabase_updated = update_product_stock_supabase(product_id, quantity_sold)
-                local_updated = update_product_stock_local(product_id, quantity_sold)
-                
-                stock_updates.append({
-                    'productId': product_id,
-                    'quantity': quantity_sold,
-                    'supabase_updated': supabase_updated,
-                    'local_updated': local_updated
-                })
-                
-                if not supabase_updated:
-                    app.logger.error(f"Failed to update Supabase stock for product {product_id}")
-                if not local_updated:
-                    app.logger.error(f"Failed to update local stock for product {product_id}")
-
-        print(f"DEBUG: Final bill_data before sync_to_supabase_immediately: {bill_data}")
-        bill_sync_success = sync_to_supabase_immediately('bills', bill_data, 'INSERT')
-        
-        if not bill_sync_success:
-            app.logger.error(f"Failed to save bill {bill_id} to database.")
-            return jsonify({"error": "Failed to save bill to database"}), 500
-        
-        items_synced = 0
-        for idx, item in enumerate(items):
-            item_id = int(datetime.now().timestamp() * 1000000) + idx
-            
-            bill_item = {
-                'id': item_id,
-                'billid': bill_data['id'], # Ensure 'billid' matches the schema
-                'productid': item.get('productId'), # Ensure 'productid' matches the schema
-                'productname': item.get('productName'), # Ensure 'productname' matches the schema
-                'quantity': item.get('quantity'),
-                'price': float(item.get('price')) if item.get('price') is not None else None,
-                'total': float(item.get('total')) if item.get('total') is not None else None,
-                'tax': float(item.get('tax', 0.00)) if item.get('tax') is not None else 0.00,
-                'gstrate': float(item.get('gstRate', 0.00)) if item.get('gstRate') is not None else 0.00, # Ensure 'gstrate' matches the schema
-                'barcodes': item.get('barcodes', '')
-            }
-            # Remove any None values from bill_item to avoid Supabase errors on non-nullable columns
-            bill_item = {k: v for k, v in bill_item.items() if v is not None}
-
-            if save_bill_item(bill_item):
-                items_synced += 1
-            else:
-                app.logger.error(f"Failed to sync BillItem {item_id} for bill {bill_data['id']}")
-        
-        # Also save to local JSON as backup
-        bills = get_bills_data()
-        bill_data_for_json = bill_data.copy()
-        bill_data_for_json['items'] = items  # Re-add original items for JSON storage
-        bills.append(bill_data_for_json)
-        save_bills_data(bills)
-        
-        # Create notification (with error handling for Unicode and INT overflow)
-        try:
-            notification_msg = f"New bill created: {bill_data['id']} by {created_by}, Total: Rs.{bill_data.get('total', 0)}"
-            create_notification('bill_created', notification_msg, bill_data['id'])
-        except Exception as notif_error:
-            app.logger.error(f"Failed to create notification: {notif_error}")
-        
-        return jsonify({
-            "message": "Bill saved successfully",
-            "billId": bill_data['id'],
-            "supabase_synced": bill_sync_success,
-            "items_synced": items_synced,
-            "customer_created": True, # Customer is always created/updated by get_or_create_customer
-            "stock_updates": stock_updates
-        }), 200
-    
-    except Exception as e:
-        app.logger.error(f"Error saving bill: {e}")
-        return jsonify({"error": "Internal server error", "details": str(e)}), 500
+billing_bp = Blueprint('billing', __name__)
 
 
 @billing_bp.route('/bills', methods=['GET'])
-@session_required
+@require_auth
 def get_bills():
-    """Get all bills"""
+    """Get all bills with optional filtering"""
     try:
-        bills = get_bills_data()
+        current_user_id = get_jwt_identity()
+        app.logger.info(f"User {current_user_id} fetching bills")
+        
+        store_id = request.args.get('store_id')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        limit = request.args.get('limit', 100, type=int)
+        
+        supabase = get_supabase_client()
+        
+        # ✅ Include customer and store details via JOIN
+        query = supabase.table('bills').select(
+            '*, customers(name, phone, email, address), stores(name, address, phone)'
+        )
+        
+        if store_id:
+            query = query.eq('storeid', store_id)
+        if start_date:
+            query = query.gte('created_at', start_date)
+        if end_date:
+            query = query.lte('created_at', end_date)
+        
+        response = query.limit(limit).order('created_at', desc=True).execute()
+        bills = response.data if response.data else []
+        
+        app.logger.info(f"✅ Fetched {len(bills)} bills")
         return jsonify(bills), 200
+        
     except Exception as e:
-        app.logger.error(f"Error getting bills: {e}")
-        return jsonify({"error": "Internal server error", "details": str(e)}), 500
+        app.logger.error(f"❌ Error fetching bills: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"message": "An error occurred", "error": str(e)}), 500
 
 
 @billing_bp.route('/bills/<bill_id>', methods=['GET'])
-@session_required
-def get_bill_by_id(bill_id):
-    """Get a specific bill by ID"""
+@require_auth
+def get_bill(bill_id):
+    """Get a specific bill by ID with store and customer details"""
     try:
-        bills = get_bills_data()
-        bill = next((b for b in bills if b.get('id') == bill_id), None)
+        current_user_id = get_jwt_identity()
+        app.logger.info(f"User {current_user_id} fetching bill {bill_id}")
         
-        if bill:
-            return jsonify(bill), 200
-        else:
-            return jsonify({"error": "Bill not found"}), 404
+        supabase = get_supabase_client()
+        
+        # ✅ Use JOIN to get store and customer details
+        response = supabase.table('bills') \
+            .select('*, stores(name, address, phone), customers(name, phone, email, address)') \
+            .eq('id', bill_id) \
+            .execute()
+        
+        if not response.data or len(response.data) == 0:
+            return jsonify({"message": "Bill not found"}), 404
+        
+        bill = response.data[0]
+        app.logger.info(f"✅ Bill found: {bill_id}")
+        return jsonify(bill), 200
+        
     except Exception as e:
-        app.logger.error(f"Error getting bill: {e}")
-        return jsonify({"error": "Internal server error", "details": str(e)}), 500
+        app.logger.error(f"❌ Error fetching bill {bill_id}: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+
+
+@billing_bp.route('/bills', methods=['POST'])
+@require_auth
+def create_bill():
+    """Create a new bill and update inventory"""
+    try:
+        current_user_id = get_jwt_identity()
+        data = request.get_json()
+        
+        app.logger.info(f"💰 User {current_user_id} creating new bill")
+        app.logger.info(f"📥 Received data: {data}")
+        
+        # Validate required fields
+        required_fields = ['store_id', 'items', 'total_amount']
+        if not all(field in data for field in required_fields):
+            missing = [f for f in required_fields if f not in data]
+            return jsonify({"message": f"Missing: {missing}", "error": f"Missing required fields"}), 400
+        
+        store_id = data['store_id']
+        items = data['items']
+        
+        if not items or len(items) == 0:
+            return jsonify({"message": "No items", "error": "Items list is empty"}), 400
+        
+        # Generate bill ID
+        bill_id = f"BILL-{uuid.uuid4().hex[:12]}"
+        now = datetime.now(timezone.utc).isoformat()
+        
+        # ✅ Use default Walk-in Customer ID if no customer provided
+        customer_id = data.get('customer_id') or DEFAULT_WALKIN_CUSTOMER_ID
+        
+        # ✅ Simplified bill_data - ONLY IDs (no denormalized data)
+        bill_data = {
+            'id': bill_id,
+            'storeid': store_id,
+            'customerid': customer_id,  # ✅ Defaults to Walk-in Customer
+            'userid': current_user_id,
+            'subtotal': data.get('subtotal', data['total_amount']),
+            'taxpercentage': data.get('tax_percentage', 0),
+            'taxamount': data.get('tax_amount', 0),
+            'discountpercentage': data.get('discount_percentage', 0),
+            'discountamount': data.get('discount_amount', 0),
+            'total': data['total_amount'],
+            'paymentmethod': data.get('payment_method', 'cash'),
+            'timestamp': now,
+            'status': 'completed',
+            'createdby': current_user_id,
+            'created_at': now,
+            'updated_at': now
+        }
+        
+        app.logger.info(f"📤 Inserting bill: {bill_id} for customer: {customer_id}")
+        
+        supabase = get_supabase_client()
+        
+        # Create the bill record
+        response = supabase.table('bills').insert(bill_data).execute()
+        
+        if not response.data or len(response.data) == 0:
+            app.logger.error("❌ Bill insert failed - empty response")
+            return jsonify({"message": "Failed to create bill", "error": "Database insert failed"}), 500
+        
+        created_bill = response.data[0]
+        app.logger.info(f"✅ Bill created: {bill_id}")
+        
+        # Process each item and create bill items + update stock
+        bill_items_created = []
+        stock_update_errors = []
+        
+        for item in items:
+            product_id = item.get('product_id')
+            quantity = item.get('quantity', 1)
+            unit_price = item.get('unit_price', 0)
+            item_total = item.get('item_total', unit_price * quantity)
+            
+            if not product_id:
+                app.logger.warning("⚠️ Skipping item with no product_id")
+                continue
+            
+            # ✅ Clean billitems data - no tax/gst fields
+            bill_item_data = {
+                "billid": bill_id,
+                "productid": product_id,
+                "quantity": quantity,
+                "price": unit_price,
+                "total": item_total,
+                "created_at": now,
+                "updated_at": now
+            }
+            
+            try:
+                # Save bill item
+                item_response = supabase.table('billitems').insert(bill_item_data).execute()
+                
+                if item_response.data:
+                    bill_items_created.append(product_id)
+                    app.logger.info(f"✅ Bill item created for {product_id}")
+                else:
+                    app.logger.error(f"❌ Failed to create bill item for {product_id}")
+                    
+            except Exception as item_error:
+                app.logger.error(f"❌ Error creating bill item: {item_error}")
+                app.logger.error(traceback.format_exc())
+            
+            # ✅ UPDATE STOCK IN BOTH TABLES
+            try:
+                stock_updated = update_both_inventory_and_product_stock(
+                    store_id=store_id,
+                    product_id=product_id,
+                    quantity_sold=quantity
+                )
+                
+                if not stock_updated:
+                    stock_update_errors.append(product_id)
+                    app.logger.error(f"❌ Failed to update stock for {product_id}")
+                else:
+                    app.logger.info(f"✅ Stock updated for {product_id}")
+                    
+            except Exception as stock_error:
+                stock_update_errors.append(product_id)
+                app.logger.error(f"❌ Error updating stock: {stock_error}")
+                app.logger.error(traceback.format_exc())
+        
+        # Prepare response
+        response_data = {
+            "message": "Bill created successfully",
+            "bill_id": bill_id,
+            "bill": created_bill,
+            "items_created": len(bill_items_created),
+            "total_amount": data['total_amount']
+        }
+        
+        if stock_update_errors:
+            response_data["stock_update_errors"] = stock_update_errors
+            response_data["warning"] = f"Stock update failed for {len(stock_update_errors)} products"
+        
+        app.logger.info(f"✅ Bill {bill_id} completed with {len(bill_items_created)} items")
+        
+        return jsonify(response_data), 201
+        
+    except Exception as e:
+        app.logger.error(f"❌ Error creating bill: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+
+
+@billing_bp.route('/bills/<bill_id>', methods=['PUT'])
+@require_auth
+def update_bill(bill_id):
+    """Update a bill"""
+    try:
+        current_user_id = get_jwt_identity()
+        data = request.get_json()
+        
+        app.logger.info(f"User {current_user_id} updating bill {bill_id}")
+        
+        # Only allow updating certain fields
+        allowed_fields = ['status', 'paymentmethod']
+        update_data = {k: v for k, v in data.items() if k in allowed_fields}
+        
+        if not update_data:
+            return jsonify({"message": "No valid fields to update"}), 400
+        
+        update_data['updated_at'] = datetime.now(timezone.utc).isoformat()
+        
+        supabase = get_supabase_client()
+        response = supabase.table('bills').update(update_data).eq('id', bill_id).execute()
+        
+        if not response.data or len(response.data) == 0:
+            return jsonify({"message": "Bill not found"}), 404
+        
+        updated_bill = response.data[0]
+        app.logger.info(f"✅ Updated bill: {bill_id}")
+        
+        return jsonify(updated_bill), 200
+        
+    except Exception as e:
+        app.logger.error(f"❌ Error updating bill {bill_id}: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+
+
+@billing_bp.route('/bills/<bill_id>', methods=['DELETE'])
+@require_auth
+def delete_bill(bill_id):
+    """Delete a bill (soft delete by marking as cancelled)"""
+    try:
+        current_user_id = get_jwt_identity()
+        app.logger.info(f"User {current_user_id} deleting bill {bill_id}")
+        
+        supabase = get_supabase_client()
+        
+        # Soft delete - mark as cancelled
+        update_data = {
+            'status': 'cancelled',
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        response = supabase.table('bills').update(update_data).eq('id', bill_id).execute()
+        
+        if not response.data or len(response.data) == 0:
+            return jsonify({"message": "Bill not found"}), 404
+        
+        app.logger.info(f"✅ Bill cancelled: {bill_id}")
+        return jsonify({"message": "Bill cancelled successfully"}), 200
+        
+    except Exception as e:
+        app.logger.error(f"❌ Error deleting bill {bill_id}: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+
+
+@billing_bp.route('/bills/stats', methods=['GET'])
+@require_auth
+def get_billing_stats():
+    """Get billing statistics"""
+    try:
+        current_user_id = get_jwt_identity()
+        store_id = request.args.get('store_id')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        supabase = get_supabase_client()
+        query = supabase.table('bills').select('total, created_at, status')
+        
+        if store_id:
+            query = query.eq('storeid', store_id)
+        if start_date:
+            query = query.gte('created_at', start_date)
+        if end_date:
+            query = query.lte('created_at', end_date)
+        
+        # Only include completed bills in stats
+        query = query.eq('status', 'completed')
+        
+        response = query.execute()
+        bills = response.data if response.data else []
+        
+        total_sales = sum(bill['total'] for bill in bills)
+        total_bills = len(bills)
+        avg_bill_amount = total_sales / total_bills if total_bills > 0 else 0
+        
+        stats = {
+            'total_sales': total_sales,
+            'total_bills': total_bills,
+            'average_bill_amount': avg_bill_amount
+        }
+        
+        app.logger.info(f"User {current_user_id} fetched billing stats: {stats}")
+        return jsonify(stats), 200
+        
+    except Exception as e:
+        app.logger.error(f"❌ Error fetching billing stats: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+
+
+@billing_bp.route('/bills/<bill_id>/items', methods=['GET'])
+@require_auth
+def get_bill_items(bill_id):
+    """Get all items for a specific bill"""
+    try:
+        current_user_id = get_jwt_identity()
+        app.logger.info(f"User {current_user_id} fetching items for bill {bill_id}")
+        
+        supabase = get_supabase_client()
+        
+        # Get bill items with product details
+        response = supabase.table('billitems') \
+            .select('*, products(name, barcode, price)') \
+            .eq('billid', bill_id) \
+            .execute()
+        
+        items = response.data if response.data else []
+        
+        app.logger.info(f"✅ Fetched {len(items)} items for bill {bill_id}")
+        return jsonify(items), 200
+        
+    except Exception as e:
+        app.logger.error(f"❌ Error fetching bill items: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"message": "An error occurred", "error": str(e)}), 500

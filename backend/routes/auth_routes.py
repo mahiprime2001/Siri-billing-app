@@ -1,97 +1,175 @@
-import uuid
-from datetime import datetime, timezone # Added datetime and timezone
-from flask import Blueprint, request, jsonify, make_response, g, current_app as app, session
-from auth.auth import session_required  # Use session_required instead of token_required
-from data_access.data_access import get_users_data
-from session_logging.session_logging import log_session_event
+from flask import Blueprint, request, jsonify, current_app as app
+from flask_jwt_extended import (
+    create_access_token, 
+    jwt_required, 
+    get_jwt,
+    get_jwt_identity,
+    set_access_cookies,
+    unset_jwt_cookies
+)
+from datetime import datetime, timezone
+from utils.connection_pool import get_supabase_client
 
-auth_bp = Blueprint('auth_bp', __name__)
+auth_bp = Blueprint('auth', __name__)
 
-@auth_bp.route('/login', methods=['POST', 'OPTIONS'])
+@auth_bp.route('/login', methods=['POST'])
 def login():
-    """Login endpoint"""
-    if request.method == 'OPTIONS':
-        response = make_response()
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
-        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        return response, 200
-    
+    """User login with JWT token generation"""
     try:
-        data = request.json
-        if not data:
-            return jsonify({"message": "Request body is required"}), 400
+        data = request.get_json()
+        email = data.get('email', '').strip().lower()
+        password = data.get('password', '')
         
-        email = data.get('email')
-        password = data.get('password')
+        app.logger.info(f"🔐 [BACKEND-LOGIN] Login attempt for email: {email}")
+        app.logger.info(f"📍 [BACKEND-LOGIN] Request origin: {request.headers.get('Origin')}")
         
         if not email or not password:
-            return jsonify({"message": "Email and password are required"}), 400
+            app.logger.warning(f"⚠️ [BACKEND-LOGIN] Missing email or password")
+            return jsonify({"message": "Email and password required"}), 400
         
-        users = get_users_data()
-        user = next((u for u in users if u.get('email', '').lower() == email.lower()), None)
+        # Get Supabase client
+        supabase = get_supabase_client()
         
-        if user and user.get('password') == password:
-            user_info = {k: v for k, v in user.items() if k != 'password'}
-            
-            # Store user ID in Flask session (server-side)
-            session['user_id'] = user_info['id']
-            session.permanent = True  # Session is permanent, idle timeout handled by main.py
-            session['last_activity'] = datetime.now(timezone.utc).isoformat() # Set initial activity
-            
-            app.logger.info(f"User ID {user_info['id']} stored in session after login. Session set to permanent.")
-            
-            # Log login event
-            log_session_event('LOGIN', user_info.get('id'), 'User logged in to billing app')
-            
-            # Return user info WITHOUT token (session handles auth)
-            return jsonify({
-                "auth_ok": True,
-                "user_role": user_info.get('role'),
-                "user": user_info,
-                "message": "Login successful"
-            }), 200
+        # Query user from Supabase
+        response = supabase.table('users').select('*').eq('email', email).execute()
         
-        return jsonify({"message": "Invalid email or password"}), 401
-    
+        if not response.data or len(response.data) == 0:
+            app.logger.warning(f"⚠️ [BACKEND-LOGIN] User not found: {email}")
+            return jsonify({"message": "Invalid email or password"}), 401
+        
+        user = response.data[0]
+        user_id = user['id']
+        stored_password = user.get('password', '')  # Changed: using 'password' field
+        user_name = user.get('name', 'Unknown')
+        user_role = user.get('role', 'user')
+        
+        # Simple password comparison (no hashing)
+        if password != stored_password:
+            app.logger.warning(f"⚠️ [BACKEND-LOGIN] Invalid password for user: {email}")
+            return jsonify({"message": "Invalid email or password"}), 401
+        
+        app.logger.info(f"✅ [BACKEND-LOGIN] User authenticated: {user_id}")
+        app.logger.info(f"👤 [BACKEND-LOGIN] User name: {user_name}")
+        app.logger.info(f"🎭 [BACKEND-LOGIN] User role: {user_role}")
+        
+        # Create JWT token with additional claims
+        additional_claims = {
+            "email": email,
+            "name": user_name,
+            "role": user_role
+        }
+        access_token = create_access_token(
+            identity=user_id,
+            additional_claims=additional_claims
+        )
+        
+        app.logger.info(f"🎫 [BACKEND-LOGIN] JWT token created for user: {user_id}")
+        
+        # Create response
+        response = jsonify({
+            "auth_ok": True,
+            "message": "Login successful",
+            "user": {
+                "id": user_id,
+                "email": email,
+                "name": user_name
+            },
+            "user_role": user_role
+        })
+        
+        # Set JWT cookie
+        set_access_cookies(response, access_token)
+        
+        app.logger.info(f"📤 [BACKEND-LOGIN] Sending response with JWT cookie")
+        
+        return response, 200
+        
     except Exception as e:
-        app.logger.error(f"Login error: {e}")
-        return jsonify({"message": f"Server error: {str(e)}"}), 500
+        app.logger.error(f"❌ [BACKEND-LOGIN] Login error: {str(e)}")
+        import traceback
+        app.logger.error(f"📋 [BACKEND-LOGIN] Traceback: {traceback.format_exc()}")
+        return jsonify({"message": "An error occurred during login"}), 500
+
 
 @auth_bp.route('/logout', methods=['POST'])
-@session_required
+@jwt_required()
 def logout():
-    """Logout endpoint"""
+    """User logout - clears JWT cookie"""
     try:
-        user_id = session.pop('user_id', None)  # Remove user_id from session
+        user_id = get_jwt_identity()
+        app.logger.info(f"👋 [BACKEND-LOGOUT] User logging out: {user_id}")
         
-        if user_id:
-            log_session_event('LOGOUT', user_id, 'User logged out from billing app')
+        response = jsonify({"message": "Logout successful"})
+        unset_jwt_cookies(response)
         
-        # Clear entire session
-        session.clear()
+        app.logger.info(f"✅ [BACKEND-LOGOUT] JWT cookie cleared")
         
-        return jsonify({"message": "Logout successful"}), 200
-    
-    except Exception as e:
-        app.logger.error(f"Logout error: {e}")
-        return jsonify({"message": f"Server error: {str(e)}"}), 500
-
-@auth_bp.route('/me', methods=['GET', 'OPTIONS'])
-@session_required
-def get_current_user():
-    """Get current user info"""
-    if request.method == 'OPTIONS':
-        response = make_response()
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        response.headers.add("Access-Control-Allow-Methods", "GET, OPTIONS")
-        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
         return response, 200
-    
-    try:
-        user_info = {k: v for k, v in g.current_user.items() if k != 'password'}
-        return jsonify({"user": user_info}), 200
-    
+        
     except Exception as e:
-        app.logger.error(f"Error getting current user: {e}")
-        return jsonify({"message": f"Server error: {str(e)}"}), 500
+        app.logger.error(f"❌ [BACKEND-LOGOUT] Logout error: {str(e)}")
+        return jsonify({"message": "An error occurred during logout"}), 500
+
+
+@auth_bp.route('/me', methods=['GET'])
+@jwt_required()
+def get_current_user():
+    """Get current user info from JWT token"""
+    try:
+        # Get user_id from JWT
+        user_id = get_jwt_identity()
+        
+        # Get additional claims from JWT
+        jwt_data = get_jwt()
+        
+        app.logger.info(f"👤 [BACKEND-ME] Fetching current user info for: {user_id}")
+        app.logger.debug(f"🎫 [BACKEND-ME] JWT claims: {jwt_data}")
+        
+        # Get fresh user data from database
+        supabase = get_supabase_client()
+        response = supabase.table('users').select('*').eq('id', user_id).execute()
+        
+        if not response.data or len(response.data) == 0:
+            app.logger.warning(f"⚠️ [BACKEND-ME] User not found in database: {user_id}")
+            return jsonify({"message": "User not found"}), 404
+        
+        user = response.data[0]
+        
+        user_info = {
+            "id": user['id'],
+            "email": user['email'],
+            "name": user.get('name', 'Unknown'),
+            "role": user.get('role', 'user'),
+            "created_at": user.get('created_at'),
+            "updated_at": user.get('updated_at')
+        }
+        
+        app.logger.info(f"✅ [BACKEND-ME] Returning user: {user_info['name']} ({user_info['email']})")
+        
+        return jsonify(user_info), 200
+        
+    except Exception as e:
+        app.logger.error(f"❌ [BACKEND-ME] Error fetching current user: {str(e)}")
+        return jsonify({"message": "An error occurred"}), 500
+
+
+@auth_bp.route('/check', methods=['GET'])
+@jwt_required()
+def check_auth():
+    """Simple auth check endpoint"""
+    try:
+        user_id = get_jwt_identity()
+        jwt_data = get_jwt()
+        
+        app.logger.debug(f"🔍 [BACKEND-CHECK] Auth check for user: {user_id}")
+        
+        return jsonify({
+            "authenticated": True,
+            "user_id": user_id,
+            "email": jwt_data.get('email'),
+            "role": jwt_data.get('role')
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"❌ [BACKEND-CHECK] Auth check error: {str(e)}")
+        return jsonify({"authenticated": False}), 401
