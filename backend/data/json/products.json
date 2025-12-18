@@ -75,5 +75,16 @@
         "createdat": "2025-10-27T17:35:39",
         "updatedat": "2025-10-27T23:28:08",
         "barcode": null
+    },
+    {
+        "id": "12c7c519-b7de-46aa-9205-21584098ec44",
+        "name": "V.NECKLECE",
+        "price": 350.0,
+        "stock": 40,
+        "batchid": "abe662ea-3547-4237-b356-b001d923bc0d",
+        "selling_price": 900.0,
+        "createdat": "2025-12-16T18:02:14.422077",
+        "updatedat": "2025-12-16T18:03:29.664742",
+        "barcode": "1765888333610076"
     }
 ]
