@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { check, type Update } from '@tauri-apps/plugin-updater';
-import { ask, message } from '@tauri-apps/plugin-dialog';
+import { message } from '@tauri-apps/plugin-dialog';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { toast } from 'sonner';
 
@@ -17,47 +17,39 @@ interface UpdaterProps {
 
 export default function Updater({ currentVersion }: UpdaterProps) {
   const currentUpdate = useRef<Update | null>(null);
-  const [updateAvailable, setUpdateAvailable] = useState(false);
   const [downloadInProgress, setDownloadInProgress] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
-  const [updateInfo, setUpdateInfo] = useState<{
-    version: string;
-    notes: string;
-  } | null>(null);
-  const hasChecked = useRef(false);
+  const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const hasShownUpdateToast = useRef(false);
 
-  useEffect(() => {
-    // Check for updates on component mount (app load)
-    if (window.__TAURI__ && !hasChecked.current) {
-      hasChecked.current = true;
-      console.log('🔍 Checking for updates... Current version:', currentVersion);
-      checkForUpdates();
-    }
-  }, [currentVersion]);
+  // Check for updates function
+  const checkForUpdates = useCallback(async (silent = false) => {
+    // Don't check if download is in progress
+    if (downloadInProgress) return;
 
-  // Separate effect to handle update prompt when state updates
-  useEffect(() => {
-    if (updateAvailable && updateInfo && currentUpdate.current) {
-      handleUpdateAvailable();
-    }
-  }, [updateAvailable, updateInfo]);
-
-  async function checkForUpdates() {
     try {
-      console.log('🌐 Fetching update information...');
+      console.log('🔍 Checking for updates... Current version:', currentVersion);
       const update = await check();
       
       console.log('📦 Update check result:', update);
 
       if (!update) {
         console.log('❌ No update object returned');
-        toast.info('You are on the latest version');
+        if (!silent) {
+          toast.info('You are on the latest version', {
+            duration: 3000,
+          });
+        }
         return;
       }
 
       if (!update.available) {
         console.log('✅ No updates available. Current version is latest.');
-        toast.success('You are on the latest version');
+        if (!silent) {
+          toast.success('You are on the latest version', {
+            duration: 3000,
+          });
+        }
         return;
       }
 
@@ -68,57 +60,78 @@ export default function Updater({ currentVersion }: UpdaterProps) {
       });
 
       currentUpdate.current = update;
-      setUpdateInfo({
-        version: update.version,
-        notes: update.body || 'No release notes available.',
-      });
-      setUpdateAvailable(true);
-      
-      // Show toast notification
-      toast.info(`Update available: v${update.version}`, {
-        description: 'A new version is ready to install',
-        duration: 5000,
-      });
+
+      // Only show toast if we haven't shown it yet for this update
+      if (!hasShownUpdateToast.current) {
+        hasShownUpdateToast.current = true;
+        
+        // Show persistent toast with action buttons
+        toast.info(`Update available: v${update.version}`, {
+          description: update.body || 'A new version is ready to install',
+          duration: Infinity, // Keep toast visible until user acts
+          action: {
+            label: 'Install Now',
+            onClick: () => handleInstallUpdate(),
+          },
+          cancel: {
+            label: 'Later',
+            onClick: () => {
+              toast.dismiss();
+              hasShownUpdateToast.current = false; // Allow showing again later
+            },
+          },
+        });
+      }
     } catch (error) {
       console.error('❌ Failed to check for updates:', error);
-      toast.error('Failed to check for updates');
+      if (!silent) {
+        toast.error('Failed to check for updates', {
+          description: 'Please check your internet connection',
+          duration: 4000,
+        });
+      }
     }
-  }
+  }, [currentVersion, downloadInProgress]);
 
-  async function handleUpdateAvailable() {
-    if (!currentUpdate.current || !updateInfo) {
-      console.warn('⚠️ Update data not ready');
+  // Initial check on mount
+  useEffect(() => {
+    if (window.__TAURI__) {
+      console.log('🚀 Updater mounted, checking for updates...');
+      checkForUpdates(true); // Silent on first check
+
+      // Set up periodic checking every 30 minutes
+      checkIntervalRef.current = setInterval(() => {
+        console.log('⏰ Periodic update check triggered');
+        checkForUpdates(true); // Silent periodic checks
+      }, 30 * 60 * 1000); // 30 minutes
+
+      // Cleanup interval on unmount
+      return () => {
+        if (checkIntervalRef.current) {
+          clearInterval(checkIntervalRef.current);
+        }
+      };
+    }
+  }, [checkForUpdates]);
+
+  // Handle install update
+  const handleInstallUpdate = async () => {
+    if (!currentUpdate.current) {
+      toast.error('Update information not available');
       return;
     }
 
     try {
-      const shouldUpdate = await ask(
-        `A new version ${updateInfo.version} is available!\n\nRelease notes:\n${updateInfo.notes}\n\nWould you like to install it now? (App will restart after update)`,
-        {
-          title: 'Update Available!',
-          kind: 'info',
-          okLabel: 'Install Update',
-          cancelLabel: 'Later',
-        }
-      );
-
-      if (shouldUpdate && !downloadInProgress) {
-        await downloadAndInstallUpdate();
-      } else {
-        console.log('👤 User declined update');
-        setUpdateAvailable(false);
-      }
-    } catch (error) {
-      console.error('❌ Prompt failed:', error);
-    }
-  }
-
-  async function downloadAndInstallUpdate() {
-    if (!currentUpdate.current) return;
-
-    try {
       setDownloadInProgress(true);
       setDownloadProgress(0);
+
+      toast.dismiss(); // Dismiss the update notification toast
+
+      // Show download progress toast
+      const downloadToastId = toast.loading('Downloading update...', {
+        description: '0% complete',
+        duration: Infinity,
+      });
 
       console.log('⬇️ Starting download...');
 
@@ -137,14 +150,29 @@ export default function Updater({ currentVersion }: UpdaterProps) {
               );
               setDownloadProgress(percent);
               console.log(`📊 Download progress: ${percent}%`);
+              
+              // Update toast with progress
+              toast.loading('Downloading update...', {
+                id: downloadToastId,
+                description: `${percent}% complete`,
+                duration: Infinity,
+              });
             }
             break;
           case 'Finished':
             console.log('✅ Download finished, installing...');
             setDownloadProgress(100);
+            toast.loading('Installing update...', {
+              id: downloadToastId,
+              description: 'Please wait...',
+              duration: Infinity,
+            });
             break;
         }
       });
+
+      // Dismiss loading toast
+      toast.dismiss(downloadToastId);
 
       // Installation complete, show success message
       await message('Update installed successfully! The app will now restart.', {
@@ -158,14 +186,22 @@ export default function Updater({ currentVersion }: UpdaterProps) {
       await relaunch();
     } catch (error) {
       console.error('❌ Update installation failed:', error);
+      
+      toast.error('Update installation failed', {
+        description: 'Please try again later',
+        duration: 5000,
+      });
+
       await message('Update download failed. Please try again later.', {
         kind: 'error',
         title: 'Update Failed',
       });
+
       setDownloadInProgress(false);
       setDownloadProgress(0);
+      hasShownUpdateToast.current = false; // Allow showing toast again
     }
-  }
+  };
 
   // Render progress UI if download is in progress
   if (downloadInProgress) {
@@ -194,70 +230,6 @@ export default function Updater({ currentVersion }: UpdaterProps) {
     );
   }
 
-  // Render update notification banner
-  if (updateAvailable && updateInfo) {
-    return (
-      <div className="fixed bottom-4 right-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 rounded-lg shadow-2xl max-w-sm z-50 animate-slide-in">
-        <div className="flex flex-col gap-3">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-2">
-              <svg
-                className="w-6 h-6 text-yellow-300"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 10V3L4 14h7v7l9-11h-7z"
-                />
-              </svg>
-              <p className="font-semibold text-lg">Update Available!</p>
-            </div>
-            <button
-              onClick={() => setUpdateAvailable(false)}
-              className="text-white hover:text-gray-200 transition-colors"
-              aria-label="Close"
-            >
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path
-                  fillRule="evenodd"
-                  d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </button>
-          </div>
-          
-          <div>
-            <p className="text-sm font-medium">Version {updateInfo.version}</p>
-            <p className="text-xs text-blue-100 mt-1 line-clamp-2">
-              {updateInfo.notes}
-            </p>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={downloadAndInstallUpdate}
-              disabled={downloadInProgress}
-              className="bg-white text-blue-600 px-4 py-2 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex-1 font-medium transition-colors text-sm"
-            >
-              Install Now
-            </button>
-            <button
-              onClick={() => setUpdateAvailable(false)}
-              className="bg-transparent border border-white px-4 py-2 rounded-md hover:bg-blue-800 transition-colors text-sm font-medium"
-            >
-              Later
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // No update available, render nothing
+  // No visible UI when not downloading - toast handles notifications
   return null;
 }
