@@ -145,6 +145,44 @@ jobs:
 
           yarn tauri build
 
+      # 7.5️⃣ Verify signatures were generated
+      - name: 🔍 Verify signature files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          
+          Write-Host "🔍 Checking for signature files..."
+          
+          # Check MSI signatures
+          $msiDir = "src-tauri/target/release/bundle/msi"
+          if (Test-Path $msiDir) {
+            Write-Host "`n📁 MSI Directory contents:"
+            Get-ChildItem -Path $msiDir | ForEach-Object { Write-Host "  - $($_.Name)" }
+            
+            $msiSigs = Get-ChildItem -Path $msiDir -Filter *.sig -File
+            if ($msiSigs) {
+              Write-Host "✅ MSI signatures found: $($msiSigs.Count)"
+              $msiSigs | ForEach-Object { Write-Host "   📝 $($_.Name)" }
+            } else {
+              Write-Host "⚠️ No MSI signatures found"
+            }
+          }
+          
+          # Check NSIS signatures
+          $nsisDir = "src-tauri/target/release/bundle/nsis"
+          if (Test-Path $nsisDir) {
+            Write-Host "`n📁 NSIS Directory contents:"
+            Get-ChildItem -Path $nsisDir | ForEach-Object { Write-Host "  - $($_.Name)" }
+            
+            $nsisSigs = Get-ChildItem -Path $nsisDir -Filter *.sig -File
+            if ($nsisSigs) {
+              Write-Host "✅ NSIS signatures found: $($nsisSigs.Count)"
+              $nsisSigs | ForEach-Object { Write-Host "   📝 $($_.Name)" }
+            } else {
+              Write-Host "⚠️ No NSIS signatures found"
+            }
+          }
+
       # 8️⃣ Generate latest.json (use APP_VERSION; assets under RELEASE_TAG)
       - name: 🧾 Generate latest.json
         shell: pwsh
@@ -156,20 +194,47 @@ jobs:
           $pubDate = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
           $repo = $env:GITHUB_REPOSITORY
 
+          # ✅ Check for MSI installer first (preferred for updates)
+          $msiDir = "src-tauri/target/release/bundle/msi"
           $nsisDir = "src-tauri/target/release/bundle/nsis"
-          if (-not (Test-Path $nsisDir)) {
-            throw "NSIS bundle directory not found: $nsisDir"
+          
+          $installerUrl = ""
+          $signature = ""
+          
+          # Try MSI first (better for updates)
+          if (Test-Path $msiDir) {
+            $msiZip = Get-ChildItem -Path $msiDir -Filter *.msi.zip -File | Select-Object -First 1
+            $msiSig = Get-ChildItem -Path $msiDir -Filter *.msi.zip.sig -File | Select-Object -First 1
+            
+            if ($msiZip -and $msiSig) {
+              Write-Host "✅ Found MSI installer: $($msiZip.Name)"
+              Write-Host "✅ Found MSI signature: $($msiSig.Name)"
+              $assetNameEncoded = [System.Uri]::EscapeDataString($msiZip.Name)
+              $installerUrl = "https://github.com/$repo/releases/download/$tag/$assetNameEncoded"
+              $signature = Get-Content -Path $msiSig.FullName -Raw
+            }
+          }
+          
+          # Fallback to NSIS if MSI not found
+          if (-not $installerUrl -and (Test-Path $nsisDir)) {
+            $exe = Get-ChildItem -Path $nsisDir -Filter *.exe -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            $sig = Get-ChildItem -Path $nsisDir -Filter *.exe.sig -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            
+            if ($exe -and $sig) {
+              Write-Host "✅ Found NSIS installer: $($exe.Name)"
+              Write-Host "✅ Found NSIS signature: $($sig.Name)"
+              $assetNameEncoded = [System.Uri]::EscapeDataString($exe.Name)
+              $installerUrl = "https://github.com/$repo/releases/download/$tag/$assetNameEncoded"
+              $signature = Get-Content -Path $sig.FullName -Raw
+            }
+          }
+          
+          if (-not $installerUrl) {
+            throw "❌ No installer with signature found in MSI or NSIS directories"
           }
 
-          $exe = Get-ChildItem -Path $nsisDir -Filter *.exe -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $exe) { throw "No NSIS .exe found in $nsisDir" }
-
-          $sig = Get-ChildItem -Path $nsisDir -Filter *.sig -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $sig) { throw "No .sig found in $nsisDir" }
-          $sigContent = Get-Content -Path $sig.FullName -Raw
-
-          $assetNameEncoded = [System.Uri]::EscapeDataString($exe.Name)
-          $assetUrl = "https://github.com/$repo/releases/download/$tag/$assetNameEncoded"
+          Write-Host "`n📦 Using installer URL: $installerUrl"
+          Write-Host "🔐 Signature preview: $($signature.Substring(0, [Math]::Min(50, $signature.Length)))..."
 
           $latestJson = @{
             version   = $appVersion
@@ -177,13 +242,15 @@ jobs:
             pub_date  = $pubDate
             platforms = @{
               "windows-x86_64" = @{
-                url       = $assetUrl
-                signature = $sigContent
+                url       = $installerUrl
+                signature = $signature.Trim()
               }
             }
           } | ConvertTo-Json -Depth 6
 
           $latestJson | Out-File -FilePath latest.json -Encoding UTF8
+          Write-Host "`n✅ Generated latest.json:"
+          Get-Content latest.json | Write-Host
 
       # 9️⃣ Create release, mark as Latest, sync `latest` tag, upload assets
       - name: 📤 Create release and upload assets (mark as Latest + sync tag)
@@ -232,3 +299,5 @@ jobs:
           $sha = (git rev-list -n 1 $tag).Trim()
           git tag -f latest $sha
           git push origin -f latest
+          
+          Write-Host "✅ Release $tag created and marked as latest!"
