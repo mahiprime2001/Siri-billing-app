@@ -25,6 +25,7 @@ tauri = { version = "2.8.5", features = ["unstable"] }
 tauri-plugin-log = "2.7.0"
 tauri-plugin-shell = "2.3.1"
 tauri-plugin-process = "2"
+tauri-plugin-dialog = "2"
 tauri-plugin-updater = { version = "2.9.0", features = ["rustls-tls"] }
 anyhow = "1.0.100"
 urlencoding = "2.1.3"

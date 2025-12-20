@@ -4,13 +4,18 @@ import { useEffect, useRef, useState } from 'react';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { ask, message } from '@tauri-apps/plugin-dialog';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { toast } from 'sonner';
 
 interface DownloadProgress {
   chunkLength: number;
   contentLength: number | null;
 }
 
-export default function Updater() {
+interface UpdaterProps {
+  currentVersion: string;
+}
+
+export default function Updater({ currentVersion }: UpdaterProps) {
   const currentUpdate = useRef<Update | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [downloadInProgress, setDownloadInProgress] = useState(false);
@@ -19,43 +24,76 @@ export default function Updater() {
     version: string;
     notes: string;
   } | null>(null);
+  const hasChecked = useRef(false);
 
   useEffect(() => {
     // Check for updates on component mount (app load)
-    if (window.__TAURI__) { // Only check for updates if running in a Tauri environment
+    if (window.__TAURI__ && !hasChecked.current) {
+      hasChecked.current = true;
+      console.log('🔍 Checking for updates... Current version:', currentVersion);
       checkForUpdates();
     }
-  }, []);
+  }, [currentVersion]);
+
+  // Separate effect to handle update prompt when state updates
+  useEffect(() => {
+    if (updateAvailable && updateInfo && currentUpdate.current) {
+      handleUpdateAvailable();
+    }
+  }, [updateAvailable, updateInfo]);
 
   async function checkForUpdates() {
     try {
+      console.log('🌐 Fetching update information...');
       const update = await check();
       
-      if (!update || !update.available) {
-        console.log('No updates available.');
+      console.log('📦 Update check result:', update);
+
+      if (!update) {
+        console.log('❌ No update object returned');
+        toast.info('You are on the latest version');
         return;
       }
 
+      if (!update.available) {
+        console.log('✅ No updates available. Current version is latest.');
+        toast.success('You are on the latest version');
+        return;
+      }
+
+      console.log('🎉 Update available!', {
+        currentVersion,
+        newVersion: update.version,
+        body: update.body,
+      });
+
       currentUpdate.current = update;
-      setUpdateAvailable(true);
       setUpdateInfo({
         version: update.version,
         notes: update.body || 'No release notes available.',
       });
-
-      // Automatically prompt user about update
-      handleUpdateAvailable();
+      setUpdateAvailable(true);
+      
+      // Show toast notification
+      toast.info(`Update available: v${update.version}`, {
+        description: 'A new version is ready to install',
+        duration: 5000,
+      });
     } catch (error) {
-      console.error('Failed to check for updates:', error);
+      console.error('❌ Failed to check for updates:', error);
+      toast.error('Failed to check for updates');
     }
   }
 
   async function handleUpdateAvailable() {
-    if (!updateAvailable || !currentUpdate.current) return;
+    if (!currentUpdate.current || !updateInfo) {
+      console.warn('⚠️ Update data not ready');
+      return;
+    }
 
     try {
       const shouldUpdate = await ask(
-        `A new version ${updateInfo?.version} is available!\n\nRelease notes:\n${updateInfo?.notes}\n\nWould you like to install it now? (App will restart after update)`,
+        `A new version ${updateInfo.version} is available!\n\nRelease notes:\n${updateInfo.notes}\n\nWould you like to install it now? (App will restart after update)`,
         {
           title: 'Update Available!',
           kind: 'info',
@@ -67,11 +105,11 @@ export default function Updater() {
       if (shouldUpdate && !downloadInProgress) {
         await downloadAndInstallUpdate();
       } else {
-        // User declined, hide the update notification
+        console.log('👤 User declined update');
         setUpdateAvailable(false);
       }
     } catch (error) {
-      console.error('Prompt failed:', error);
+      console.error('❌ Prompt failed:', error);
     }
   }
 
@@ -82,11 +120,13 @@ export default function Updater() {
       setDownloadInProgress(true);
       setDownloadProgress(0);
 
+      console.log('⬇️ Starting download...');
+
       // Download and install with progress callback
       await currentUpdate.current.downloadAndInstall((event) => {
         switch (event.event) {
           case 'Started':
-            console.log('Download started');
+            console.log('📥 Download started');
             setDownloadProgress(0);
             break;
           case 'Progress':
@@ -96,11 +136,11 @@ export default function Updater() {
                 (progress.chunkLength / progress.contentLength) * 100
               );
               setDownloadProgress(percent);
-              console.log(`Download progress: ${percent}%`);
+              console.log(`📊 Download progress: ${percent}%`);
             }
             break;
           case 'Finished':
-            console.log('Download finished, installing...');
+            console.log('✅ Download finished, installing...');
             setDownloadProgress(100);
             break;
         }
@@ -113,10 +153,11 @@ export default function Updater() {
         okLabel: 'Restart Now',
       });
 
+      console.log('🔄 Restarting app...');
       // Restart the app
       await relaunch();
     } catch (error) {
-      console.error('Update installation failed:', error);
+      console.error('❌ Update installation failed:', error);
       await message('Update download failed. Please try again later.', {
         kind: 'error',
         title: 'Update Failed',
@@ -129,7 +170,7 @@ export default function Updater() {
   // Render progress UI if download is in progress
   if (downloadInProgress) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
           <div className="text-center">
             <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
@@ -139,7 +180,7 @@ export default function Updater() {
               <div
                 className="bg-blue-600 h-4 rounded-full transition-all duration-300"
                 style={{ width: `${downloadProgress}%` }}
-              ></div>
+              />
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-400">
               {downloadProgress}% complete

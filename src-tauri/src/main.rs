@@ -32,6 +32,7 @@ fn main() {
     let child_handle: Arc<Mutex<Option<CommandChild>>> = Arc::new(Mutex::new(None));
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())  // ✅ ADD THIS LINE
         .plugin(UpdaterBuilder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(
