@@ -23,7 +23,7 @@ jobs:
           fetch-depth: 0
 
       # --------------------------------------------------
-      # 2. Setup Node.js (frontend build)
+      # 2. Setup Node.js
       # --------------------------------------------------
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -37,10 +37,10 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       # --------------------------------------------------
-      # 4. Install Tauri CLI (⚠️ MATCH PROJECT: 2.8.5)
+      # 4. Install Tauri CLI (✅ FIXED)
       # --------------------------------------------------
       - name: Install Tauri CLI
-        run: cargo install tauri-cli --version 2.8.5 --locked
+        run: cargo install tauri-cli --version "^2.8" --locked
 
       # --------------------------------------------------
       # 5. Auto bump PATCH version
