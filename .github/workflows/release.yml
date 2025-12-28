@@ -23,7 +23,7 @@ jobs:
           fetch-depth: 0
 
       # --------------------------------------------------
-      # 2. Setup Node.js (frontend build still needs Node)
+      # 2. Setup Node.js (frontend build)
       # --------------------------------------------------
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -37,13 +37,13 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       # --------------------------------------------------
-      # 4. Install Tauri CLI via Cargo
+      # 4. Install Tauri CLI (MATCH JS API 2.9.x)
       # --------------------------------------------------
       - name: Install Tauri CLI
-        run: cargo install tauri-cli --locked
+        run: cargo install tauri-cli --version 2.9.1 --locked
 
       # --------------------------------------------------
-      # 5. Auto bump PATCH version
+      # 5. Auto bump PATCH version in tauri.conf.json
       # --------------------------------------------------
       - name: Auto bump version
         id: bump
@@ -81,7 +81,7 @@ jobs:
         run: npm install
 
       # --------------------------------------------------
-      # 8. Build frontend
+      # 8. Build frontend (Next.js / React / Vite)
       # --------------------------------------------------
       - name: Build frontend
         run: npm run build
@@ -96,7 +96,7 @@ jobs:
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       # --------------------------------------------------
-      # 10. Create GitHub Release
+      # 10. Create GitHub Release & upload updater assets
       # --------------------------------------------------
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -114,7 +114,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # --------------------------------------------------
-      # 11. Move `latest` tag safely
+      # 11. Move `latest` tag safely (GitHub API)
       # --------------------------------------------------
       - name: Update latest tag
         shell: bash
@@ -124,11 +124,13 @@ jobs:
 
           echo "Updating latest tag -> $SHA"
 
+          # Delete existing latest tag (ignore if missing)
           curl -s -X DELETE \
             -H "Authorization: token $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/$REPO/git/refs/tags/latest" || true
 
+          # Create latest tag pointing to this commit
           curl -s -X POST \
             -H "Authorization: token $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github+json" \
