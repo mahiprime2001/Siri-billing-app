@@ -1,6 +1,6 @@
 {
   "name": "siri-billing-app",
-  "version": "1.0.43",
+  "version": "1.0.45",
   "private": true,
   "type": "module",
   "scripts": {

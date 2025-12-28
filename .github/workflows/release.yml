@@ -183,8 +183,8 @@ jobs:
             }
           }
 
-      # 8️⃣ Generate latest.json (use APP_VERSION; assets under RELEASE_TAG)
-      - name: 🧾 Generate latest.json
+      # 8️⃣ Generate latest.json with BOTH MSI and NSIS
+      - name: 🧾 Generate latest.json (MSI + NSIS)
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -194,58 +194,94 @@ jobs:
           $pubDate = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
           $repo = $env:GITHUB_REPOSITORY
 
-          # ✅ Check for MSI installer first (preferred for updates)
           $msiDir = "src-tauri/target/release/bundle/msi"
           $nsisDir = "src-tauri/target/release/bundle/nsis"
           
-          $installerUrl = ""
-          $signature = ""
+          $platforms = @{}
           
-          # Try MSI first (better for updates)
+          # ✅ Check for MSI installer
           if (Test-Path $msiDir) {
-            $msiZip = Get-ChildItem -Path $msiDir -Filter *.msi.zip -File | Select-Object -First 1
-            $msiSig = Get-ChildItem -Path $msiDir -Filter *.msi.zip.sig -File | Select-Object -First 1
+            Write-Host "`n🔍 Checking MSI directory..."
             
-            if ($msiZip -and $msiSig) {
-              Write-Host "✅ Found MSI installer: $($msiZip.Name)"
-              Write-Host "✅ Found MSI signature: $($msiSig.Name)"
-              $assetNameEncoded = [System.Uri]::EscapeDataString($msiZip.Name)
-              $installerUrl = "https://github.com/$repo/releases/download/$tag/$assetNameEncoded"
-              $signature = Get-Content -Path $msiSig.FullName -Raw
+            # Look for .msi.zip first, then fall back to .msi
+            $msi = Get-ChildItem -Path $msiDir -Filter *.msi.zip -File | Select-Object -First 1
+            if (-not $msi) {
+              $msi = Get-ChildItem -Path $msiDir -Filter *.msi -File | Select-Object -First 1
+            }
+            
+            $msiSig = Get-ChildItem -Path $msiDir -Filter "*.sig" -File | Select-Object -First 1
+            
+            if ($msi -and $msiSig) {
+              Write-Host "  ✅ Found MSI installer: $($msi.Name)"
+              Write-Host "  ✅ Found MSI signature: $($msiSig.Name)"
+              
+              $msiUrlEncoded = [System.Uri]::EscapeDataString($msi.Name)
+              $msiUrl = "https://github.com/$repo/releases/download/$tag/$msiUrlEncoded"
+              $msiSignature = (Get-Content -Path $msiSig.FullName -Raw).Trim()
+              
+              $platforms["windows-x86_64"] = @{
+                url       = $msiUrl
+                signature = $msiSignature
+              }
+              
+              Write-Host "  📦 MSI URL: $msiUrl"
+            } else {
+              Write-Host "  ⚠️ MSI or signature not found"
             }
           }
           
-          # Fallback to NSIS if MSI not found
-          if (-not $installerUrl -and (Test-Path $nsisDir)) {
-            $exe = Get-ChildItem -Path $nsisDir -Filter *.exe -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            $sig = Get-ChildItem -Path $nsisDir -Filter *.exe.sig -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          # ✅ Check for NSIS installer
+          if (Test-Path $nsisDir) {
+            Write-Host "`n🔍 Checking NSIS directory..."
             
-            if ($exe -and $sig) {
-              Write-Host "✅ Found NSIS installer: $($exe.Name)"
-              Write-Host "✅ Found NSIS signature: $($sig.Name)"
-              $assetNameEncoded = [System.Uri]::EscapeDataString($exe.Name)
-              $installerUrl = "https://github.com/$repo/releases/download/$tag/$assetNameEncoded"
-              $signature = Get-Content -Path $sig.FullName -Raw
+            $exe = Get-ChildItem -Path $nsisDir -Filter *.exe -File | 
+                   Where-Object { $_.Name -notlike '*-setup.nsis*' } | 
+                   Sort-Object LastWriteTime -Descending | 
+                   Select-Object -First 1
+            
+            $exeSig = Get-ChildItem -Path $nsisDir -Filter "*.sig" -File | Select-Object -First 1
+            
+            if ($exe -and $exeSig) {
+              Write-Host "  ✅ Found NSIS installer: $($exe.Name)"
+              Write-Host "  ✅ Found NSIS signature: $($exeSig.Name)"
+              
+              $exeUrlEncoded = [System.Uri]::EscapeDataString($exe.Name)
+              $exeUrl = "https://github.com/$repo/releases/download/$tag/$exeUrlEncoded"
+              $exeSignature = (Get-Content -Path $exeSig.FullName -Raw).Trim()
+              
+              # Add NSIS as alternative platform
+              $platforms["windows-x86_64-nsis"] = @{
+                url       = $exeUrl
+                signature = $exeSignature
+              }
+              
+              Write-Host "  📦 NSIS URL: $exeUrl"
+            } else {
+              Write-Host "  ⚠️ NSIS or signature not found"
             }
           }
           
-          if (-not $installerUrl) {
-            throw "❌ No installer with signature found in MSI or NSIS directories"
+          # Verify at least one installer was found
+          if ($platforms.Count -eq 0) {
+            Write-Host "`n❌ ERROR: No installers with signatures found!"
+            throw "No installers found in MSI or NSIS directories"
           }
 
-          Write-Host "`n📦 Using installer URL: $installerUrl"
-          Write-Host "🔐 Signature preview: $($signature.Substring(0, [Math]::Min(50, $signature.Length)))..."
+          Write-Host "`n✅ Found $($platforms.Count) installer(s)"
+          
+          # If only NSIS was found, use standard key name
+          if ($platforms.Count -eq 1 -and $platforms.ContainsKey("windows-x86_64-nsis")) {
+            $nsisData = $platforms["windows-x86_64-nsis"]
+            $platforms.Remove("windows-x86_64-nsis")
+            $platforms["windows-x86_64"] = $nsisData
+            Write-Host "  ℹ️ Using NSIS as primary installer"
+          }
 
           $latestJson = @{
             version   = $appVersion
             notes     = "Windows release $tag"
             pub_date  = $pubDate
-            platforms = @{
-              "windows-x86_64" = @{
-                url       = $installerUrl
-                signature = $signature.Trim()
-              }
-            }
+            platforms = $platforms
           } | ConvertTo-Json -Depth 6
 
           $latestJson | Out-File -FilePath latest.json -Encoding UTF8
