@@ -1,12 +1,13 @@
 from flask import Blueprint, request, jsonify, current_app as app
 from flask_jwt_extended import (
-    create_access_token, 
-    jwt_required, 
+    create_access_token,
+    jwt_required,
     get_jwt,
     get_jwt_identity,
     set_access_cookies,
     unset_jwt_cookies
 )
+
 from datetime import datetime, timezone
 from utils.connection_pool import get_supabase_client
 
@@ -39,7 +40,7 @@ def login():
         
         user = response.data[0]
         user_id = user['id']
-        stored_password = user.get('password', '')  # Changed: using 'password' field
+        stored_password = user.get('password', '')
         user_name = user.get('name', 'Unknown')
         user_role = user.get('role', 'user')
         
@@ -58,6 +59,7 @@ def login():
             "name": user_name,
             "role": user_role
         }
+        
         access_token = create_access_token(
             identity=user_id,
             additional_claims=additional_claims
@@ -65,10 +67,11 @@ def login():
         
         app.logger.info(f"🎫 [BACKEND-LOGIN] JWT token created for user: {user_id}")
         
-        # Create response
+        # ✅ UPDATED: Return token in response body for localStorage
         response = jsonify({
             "auth_ok": True,
             "message": "Login successful",
+            "access_token": access_token,  # ✅ Added for localStorage
             "user": {
                 "id": user_id,
                 "email": email,
@@ -77,11 +80,10 @@ def login():
             "user_role": user_role
         })
         
-        # Set JWT cookie
+        # ✅ Still set JWT cookie for backward compatibility
         set_access_cookies(response, access_token)
         
-        app.logger.info(f"📤 [BACKEND-LOGIN] Sending response with JWT cookie")
-        
+        app.logger.info(f"📤 [BACKEND-LOGIN] Sending response with JWT token in body and cookie")
         return response, 200
         
     except Exception as e:
@@ -101,9 +103,7 @@ def logout():
         
         response = jsonify({"message": "Logout successful"})
         unset_jwt_cookies(response)
-        
         app.logger.info(f"✅ [BACKEND-LOGOUT] JWT cookie cleared")
-        
         return response, 200
         
     except Exception as e:
@@ -134,7 +134,6 @@ def get_current_user():
             return jsonify({"message": "User not found"}), 404
         
         user = response.data[0]
-        
         user_info = {
             "id": user['id'],
             "email": user['email'],
@@ -145,7 +144,6 @@ def get_current_user():
         }
         
         app.logger.info(f"✅ [BACKEND-ME] Returning user: {user_info['name']} ({user_info['email']})")
-        
         return jsonify(user_info), 200
         
     except Exception as e:

@@ -85,34 +85,7 @@ interface Settings {
   companyEmail: string;
 }
 
-interface Invoice {
-  id: string;
-  storeId: string;
-  storeName: string;
-  storeAddress: string;
-  customerName: string;
-  customerPhone: string;
-  customerEmail: string;
-  customerAddress: string;
-  customerId: string;
-  subtotal: number;
-  taxPercentage: number;
-  taxAmount: number;
-  discountPercentage: number;
-  discountAmount: number;
-  total: number;
-  paymentMethod: string;
-  timestamp: string;
-  notes: string;
-  gstin: string;
-  companyName: string;
-  companyAddress: string;
-  companyPhone: string;
-  companyEmail: string;
-  billFormat: string;
-  createdBy: string;
-  items: any[]; // You might want to define a proper type for items
-}
+// Uses global `Invoice` declared in app/globals.d.ts
 
 interface BillingInstance {
   id: string
@@ -637,6 +610,11 @@ export default function BillingAndCart() {
       customerPhone: activeBillingInstance.customerPhone || "",
       customerAddress: "",
       customerId: "",
+      // Required system fields to satisfy global Invoice type
+      userId: currentUser?.id || "",
+      status: "pending",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       subtotal: calculateSubtotal(),
       taxPercentage: settings?.taxPercentage || 0,
       taxAmount: calculateTaxAmount(),

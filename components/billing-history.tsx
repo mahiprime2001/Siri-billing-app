@@ -13,54 +13,9 @@ import { Eye, Search, Printer } from "lucide-react"
 import InvoicePreview from "./invoice-preview"
 import { apiClient } from "@/lib/api-client"
 
-interface Invoice {
-  id: string
-  storeid: string
-  customerid: string
-  userid: string
-  subtotal: number
-  taxpercentage: number
-  taxamount: number
-  discountpercentage: number
-  discountamount: number
-  total: number
-  paymentmethod: string
-  timestamp: string
-  status: string
-  createdby: string
-  created_at: string
-  updated_at: string
-  // Old format (for backward compatibility)
-  customerName?: string
-  customerPhone?: string
-  customerEmail?: string
-  customerAddress?: string
-  storeName?: string
-  storeAddress?: string
-  storePhone?: string
-  gstin?: string
-  companyName?: string
-  companyAddress?: string
-  companyPhone?: string
-  companyEmail?: string
-  // New format (normalized with JOINs)
-  customers?: {
-    name: string
-    phone: string
-    email: string
-    address: string
-  }
-  stores?: {
-    name: string
-    address: string
-    phone: string
-  }
-  items?: Array<{
-    name: string
-    quantity: number
-    price: number
-    total: number
-  }>
+// Raw invoice shape returned by backend (snake_case).
+interface RawInvoice {
+  [key: string]: any
 }
 
 interface BillingHistoryProps {
@@ -149,12 +104,49 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 
-      const bills = await response.json()
+      const bills: RawInvoice[] = await response.json()
+
+      // Normalize backend snake_case fields into the frontend camelCase `Invoice` shape
+      const normalized = bills.map((b) => ({
+        id: b.id,
+        storeId: b.storeid || b.store_id || b.storeId || "",
+        storeName: b.storeName || b.stores?.name || b.companyName || "",
+        storeAddress: b.storeAddress || b.stores?.address || b.companyAddress || "",
+        storePhone: b.storePhone || b.stores?.phone || b.companyPhone || "",
+        customerId: b.customerid || b.customer_id || b.customerId || "",
+        customerName: b.customerName || b.customers?.name || "",
+        customerPhone: b.customerPhone || b.customers?.phone || "",
+        customerEmail: b.customerEmail || b.customers?.email || "",
+        customerAddress: b.customerAddress || b.customers?.address || "",
+        userId: b.userid || b.user_id || b.userId || "",
+        subtotal: b.subtotal ?? 0,
+        taxPercentage: b.taxpercentage ?? b.tax_percentage ?? 0,
+        taxAmount: b.taxamount ?? b.tax_amount ?? 0,
+        discountPercentage: b.discountpercentage ?? b.discount_percentage ?? 0,
+        discountAmount: b.discountamount ?? b.discount_amount ?? 0,
+        total: b.total ?? 0,
+        paymentMethod: b.paymentmethod || b.payment_method || b.paymentMethod || "Cash",
+        timestamp: b.timestamp || b.created_at || new Date().toISOString(),
+        status: b.status || "completed",
+        createdBy: b.createdby || b.created_by || b.createdBy || "",
+        createdAt: b.created_at || b.createdAt || new Date().toISOString(),
+        updatedAt: b.updated_at || b.updatedAt || new Date().toISOString(),
+        notes: b.notes || "",
+        gstin: b.gstin || "",
+        companyName: b.companyName || "",
+        companyAddress: b.companyAddress || "",
+        companyPhone: b.companyPhone || "",
+        companyEmail: b.companyEmail || "",
+        billFormat: b.billFormat || b.bill_format || "Thermal 80mm",
+        items: b.items || [],
+      }))
+
       // Sort by timestamp (most recent first)
-      bills.sort((a: Invoice, b: Invoice) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      setInvoices(bills)
-      setFilteredInvoices(bills)
-      console.log(`✅ Loaded ${bills.length} invoices from backend`)
+      normalized.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+
+      setInvoices(normalized)
+      setFilteredInvoices(normalized)
+      console.log(`✅ Loaded ${normalized.length} invoices from backend`)
     } catch (error) {
       console.error("❌ Failed to fetch billing history:", error)
     }
@@ -290,12 +282,12 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
         
         <div style="font-size: 12px; margin-bottom: 8px;">
           <div style="display: flex; justify-content: space-between;">
-            <span>Invoice: ${invoice.id}</span>
-            <span>${new Date(invoice.timestamp).toLocaleDateString()}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between;">
-            <span>Payment: ${invoice.paymentmethod || "Cash"}</span>
-          </div>
+              <span>Invoice: ${invoice.id}</span>
+              <span>${new Date(invoice.timestamp).toLocaleDateString()}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span>Payment: ${invoice.paymentMethod || "Cash"}</span>
+            </div>
         </div>
 
         ${
@@ -336,25 +328,25 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
           }
         </div>
 
-        <div style="font-size: 12px;">
+          <div style="font-size: 12px;">
           <div style="border-top: 1px dashed #000; margin: 4px 0;"></div>
           <div style="display: flex; justify-content: space-between;">
             <span>Subtotal:</span>
             <span>₹${invoice.subtotal.toLocaleString()}</span>
           </div>
           ${
-            invoice.discountpercentage > 0
+            invoice.discountPercentage > 0
               ? `
             <div style="display: flex; justify-content: space-between;">
-              <span>Discount (${invoice.discountpercentage}%):</span>
-              <span>-₹${invoice.discountamount.toLocaleString()}</span>
+              <span>Discount (${invoice.discountPercentage}%):</span>
+              <span>-₹${invoice.discountAmount.toLocaleString()}</span>
             </div>
           `
               : ""
           }
           <div style="display: flex; justify-content: space-between;">
-            <span>Tax (${invoice.taxpercentage}%):</span>
-            <span>₹${invoice.taxamount.toLocaleString()}</span>
+            <span>Tax (${invoice.taxPercentage}%):</span>
+            <span>₹${invoice.taxAmount.toLocaleString()}</span>
           </div>
           <div style="border-top: 1px dashed #000; margin: 4px 0;"></div>
           <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 14px;">
@@ -384,7 +376,7 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
             <h2 style="font-size: 20px; font-weight: bold; margin: 0 0 4px 0;">TAX INVOICE</h2>
             <p style="margin: 2px 0;">#${invoice.id}</p>
             <p style="margin: 2px 0;">Date: ${new Date(invoice.timestamp).toLocaleDateString()}</p>
-            <p style="margin: 2px 0;">Payment: ${invoice.paymentmethod || "Cash"}</p>
+            <p style="margin: 2px 0;">Payment: ${invoice.paymentMethod || "Cash"}</p>
           </div>
         </div>
 
@@ -430,18 +422,18 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
               <span>₹${invoice.subtotal.toLocaleString()}</span>
             </div>
             ${
-              invoice.discountpercentage > 0
+              invoice.discountPercentage > 0
                 ? `
               <div style="display: flex; justify-content: space-between; padding: 8px 0;">
-                <span>Discount (${invoice.discountpercentage}%):</span>
-                <span>-₹${invoice.discountamount.toLocaleString()}</span>
+                <span>Discount (${invoice.discountPercentage}%):</span>
+                <span>-₹${invoice.discountAmount.toLocaleString()}</span>
               </div>
             `
                 : ""
             }
             <div style="display: flex; justify-content: space-between; padding: 8px 0;">
-              <span>Tax (${invoice.taxpercentage}%):</span>
-              <span>₹${invoice.taxamount.toLocaleString()}</span>
+              <span>Tax (${invoice.taxPercentage}%):</span>
+              <span>₹${invoice.taxAmount.toLocaleString()}</span>
             </div>
             <div style="display: flex; justify-content: space-between; padding: 8px 0; border-top: 1px solid #000; font-weight: bold; font-size: 18px;">
               <span>Total Amount:</span>
@@ -650,7 +642,7 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
           invoice={selectedInvoice}
           isOpen={showPreview}
           onClose={() => setShowPreview(false)}
-          paperSize={printPaperSize}
+          initialPaperSize={printPaperSize}
         />
       )}
     </>

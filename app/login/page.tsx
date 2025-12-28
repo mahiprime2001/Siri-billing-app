@@ -12,8 +12,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Eye, EyeOff, Mail, ArrowLeft, CheckCircle, AlertTriangle } from "lucide-react"
 import Image from "next/image"
 import { toast } from "sonner"
+import { authManager } from "@/lib/auth"  // ✅ Added
 import { apiClient } from "@/lib/api-client"
-import { Store } from 'lucide-react' 
+import { Store } from 'lucide-react'
 
 interface ForgotPasswordState {
   email: string
@@ -39,6 +40,7 @@ export default function LoginPage() {
   })
   const router = useRouter()
 
+  // ✅ UPDATED: Handle login with localStorage
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -57,14 +59,21 @@ export default function LoginPage() {
       const data = await response.json()
 
       if (response.ok && data.auth_ok) {
-        toast("Login Successful", {
+        // ✅ Store token and user using auth manager
+        authManager.setAuth(data.access_token, data.user)
+        
+        console.log('✅ [LOGIN] Token stored in localStorage')
+        console.log('✅ [LOGIN] User:', data.user)
+        console.log('✅ [LOGIN] Idle timeout: 2 hours')
+        
+        toast.success("Login Successful", {
           description: "Welcome back!",
           duration: 2000,
         })
 
-        // ✅ Use window.location for hard navigation (ensures cookies are set properly)
-        // This avoids Next.js HMR issues in development
-        window.location.href = '/billing'
+        // Give the toast a short moment to render before navigating
+        await new Promise((resolve) => setTimeout(resolve, 250))
+        router.push('/billing')
       } else {
         setError(data.message || 'Login failed')
         toast("Login Failed", {
@@ -73,7 +82,7 @@ export default function LoginPage() {
         })
       }
     } catch (error) {
-      console.error('Login error:', error)
+      console.error('❌ [LOGIN] Login error:', error)
       setError('An error occurred during login')
       toast("Error", {
         description: "Something went wrong. Please try again.",
@@ -91,7 +100,7 @@ export default function LoginPage() {
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault()
-
+    
     if (!forgotPassword.email) {
       setForgotPassword(prev => ({
         ...prev,
@@ -179,6 +188,7 @@ export default function LoginPage() {
       }, 200)
     }
   }
+
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">

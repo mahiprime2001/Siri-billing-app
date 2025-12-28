@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Siri Billing App",
   "version": "1.0.43",
-  "identifier": "com.SiriBillingApp.dev",
+  "identifier": "com.SiriBillingApp",
   "build": {
     "frontendDist": "../out",
     "devUrl": "http://localhost:3000",
@@ -20,7 +20,8 @@
         "fullscreen": false,
         "maximized": true,
         "center": true,
-        "additionalBrowserArgs": "--disable-popup-blocking --allow-running-insecure-content --disable-web-security"
+        "additionalBrowserArgs": "--disable-popup-blocking --allow-running-insecure-content --disable-web-security",
+        "devtools": true
       }
     ],
     "security": {
@@ -64,7 +65,10 @@
       "endpoints": [
         "https://github.com/mahiprime2001/Siri-billing-app/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMxMUE0NzI2MEIxOUMzN0IKUldSN3d4a0xKa2NhTVp5SGppUkNMN2J5cXRGY3hCWCtyOVlocnFnWkszazRYV0ZWTlVZdlc5ZmwK"
+      "windows": {
+        "installMode": "passive"
+      },
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE0NjJDMTY1OTVBODM5N0UKUldSK09haVZaY0ZpcEk4SXZhcWhrNVJHSHhkMWxsNnc2YWExK1VpaEVQaTQ3VnhCRXVHNFRSa2IK"
     }
   }
 }

@@ -12,6 +12,7 @@ import Updater from '@/components/Updater'
 import packageJson from '../package.json'
 import { apiClient } from '@/lib/api-client'
 import VersionDisplay from '@/components/VersionDisplay'
+import { UpdaterDebug } from '@/components/UpdaterDebug'
 
 declare global {
   interface Window {
@@ -30,6 +31,7 @@ export default function RootLayout({
   const pathname = usePathname()
   const [authChecked, setAuthChecked] = useState(false)
   const isCheckingAuth = useRef(false)
+  const [showUpdaterDebug, setShowUpdaterDebug] = useState(false)
 
   // Online status handler
   useEffect(() => {
@@ -42,13 +44,15 @@ export default function RootLayout({
 
     if (typeof window !== 'undefined') {
       window.isLoggingOut = false
+      if ((window as any).__TAURI__) {
+        setShowUpdaterDebug(true)
+      }
     }
   }, [online])
 
   // 🔥 INTERCEPT router.push to prevent unwanted redirects
   useEffect(() => {
     const originalPush = router.push
-    
     router.push = function(href: string, options?: any) {
       console.log('🔀 [ROUTER] Attempting navigation to:', href)
       
@@ -57,7 +61,7 @@ export default function RootLayout({
         console.warn('🛑 [BLOCKED] Prevented redirect to /login - user is authenticated!')
         return Promise.resolve(true)
       }
-      
+
       return originalPush.call(this, href, options)
     }
 
@@ -91,18 +95,15 @@ export default function RootLayout({
         const response = await apiClient("/api/auth/me")
 
         if (response.status === 401) {
-          // Unauthorized - redirect to login
           console.log('❌ [AUTH] User not authenticated, redirecting to login')
           if (pathname !== '/login') {
             router.push("/login")
           }
         } else if (response.ok) {
-          // Success - user is authenticated
           const data = await response.json()
           console.log('✅ [AUTH] User authenticated:', data.email || data.user?.email)
           setAuthChecked(true)
         } else {
-          // Other errors - redirect to login
           console.log('⚠️ [AUTH] Auth check failed with status:', response.status)
           if (pathname !== '/login') {
             router.push("/login")
@@ -111,11 +112,9 @@ export default function RootLayout({
       } catch (error) {
         console.error('💥 [AUTH] Auth check error:', error)
         
-        // On error, only redirect if not on billing page (to prevent loops)
         if (pathname !== "/billing" && pathname !== '/login') {
           router.push("/login")
         } else if (pathname === "/billing") {
-          // Allow billing page to load even if auth check fails
           console.log('⚠️ [AUTH] Auth check failed on /billing, allowing page load')
           setAuthChecked(true)
         }
@@ -124,9 +123,7 @@ export default function RootLayout({
       }
     }
 
-    // Small delay to ensure cookies are set after login
     const timer = setTimeout(checkAuth, 200)
-
     return () => {
       clearTimeout(timer)
     }
@@ -137,10 +134,10 @@ export default function RootLayout({
     return (
       <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
         <body>
-          <div className="flex items-center justify-center h-screen bg-gray-50">
+          <div className="flex items-center justify-center min-h-screen">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-              <p className="text-sm text-gray-600">Checking authentication...</p>
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
+              <p className="text-gray-600">Checking authentication...</p>
             </div>
           </div>
         </body>
@@ -148,13 +145,25 @@ export default function RootLayout({
     )
   }
 
+  // ✅ MAIN RETURN - THIS WAS MISSING!
   return (
     <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body>
-        <Updater currentVersion={packageJson.version} />
         {children}
-        <Toaster richColors position="top-right" />
-        <VersionDisplay />
+        <Toaster />
+        
+        {/* ✅ UPDATER COMPONENT - THIS IS CRITICAL! */}
+        <Updater/>
+        
+        {/* Optional: Version display */}
+        {typeof VersionDisplay !== 'undefined' && (
+          <VersionDisplay version={packageJson.version} />
+        )}
+        
+        {/* Optional: Updater debug panel (visible in installed Tauri app) */}
+        {showUpdaterDebug && typeof UpdaterDebug !== 'undefined' && (
+          <UpdaterDebug />
+        )}
       </body>
     </html>
   )

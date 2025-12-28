@@ -1,4 +1,5 @@
 {
+  "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-capability",
   "description": "Main capability for Siri Billing App",
   "windows": ["main"],
@@ -12,6 +13,7 @@
     "shell:allow-execute",
     "shell:allow-spawn",
     "shell:allow-kill",
+    "shell:allow-open",
     "log:default",
     "log:allow-log",
     "updater:default",
@@ -33,7 +35,6 @@
           "sidecar": true
         }
       ]
-    },
-    "allow-open-print-window"
+    }
   ]
 }
