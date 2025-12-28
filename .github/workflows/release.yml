@@ -1,339 +1,113 @@
-name: "🚀 Tauri Windows Auto Release (Tauri Version + Synced latest)"
+name: Tauri Release
 
 on:
   push:
-    branches:
-      - main
-    paths-ignore:
-      - 'src-tauri/tauri.conf.json'
-  workflow_dispatch:
+    tags:
+      - "v*.*.*"
 
 permissions:
-  contents: write
-  actions: read
+  contents: write   # required for releases + tags
 
 jobs:
-  build-and-release-windows:
+  release:
+    name: Build & Release Tauri App
     runs-on: windows-latest
 
     steps:
-      # 1️⃣ Checkout repository (full history + tags for tagging/release)
-      - name: 🛒 Checkout code
+      # --------------------------------------------------
+      # 1. Checkout
+      # --------------------------------------------------
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-          fetch-tags: true
+          fetch-depth: 0   # IMPORTANT for tags
 
-      # 🔢 Auto-increment version in tauri.conf.json and package.json
-      - name: 🔢 Auto-increment version
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $configPath = "src-tauri/tauri.conf.json"
-          $packagePath = "package.json"
-          
-          # Read and increment Tauri version
-          $cfg = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
-          $currentVer = $cfg['version']
-          if (-not $currentVer) { throw "No version found in $configPath" }
-          $verParts = $currentVer -split '\.'
-          if ($verParts.Length -ne 3) { throw "Invalid version format: $currentVer" }
-          $buildNum = [int]$verParts[2] + 1
-          $newVer = "$($verParts[0]).$($verParts[1]).$buildNum"
-          
-          # Update Tauri config
-          $cfg['version'] = $newVer
-          $cfg | ConvertTo-Json -Depth 20 | Out-File $configPath -Encoding UTF8
-          
-          # Update package.json with same version
-          $pkg = Get-Content $packagePath -Raw | ConvertFrom-Json -AsHashtable
-          $pkg['version'] = $newVer
-          $pkg | ConvertTo-Json -Depth 20 | Out-File $packagePath -Encoding UTF8
-          
-          echo "Bumped version from $currentVer to $newVer"
-          echo "Updated both tauri.conf.json and package.json to $newVer"
-          echo "APP_VERSION=$newVer" >> $env:GITHUB_ENV
-          echo "RELEASE_TAG=v$newVer" >> $env:GITHUB_ENV
-          
-          # Commit and push both files to persist the bump (ignored by workflow trigger)
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add $configPath $packagePath
-          git commit -m "ci: bump version to $newVer [skip ci]" || echo "No changes to commit"
-          git push origin HEAD:main
-
-      # 2️⃣ Setup Node.js & Rust
-      - name: ⚙️ Setup Node.js
+      # --------------------------------------------------
+      # 2. Setup Node
+      # --------------------------------------------------
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: "npm"
 
-      - name: 🦀 Setup Rust
+      # --------------------------------------------------
+      # 3. Install dependencies
+      # --------------------------------------------------
+      - name: Install dependencies
+        run: npm ci
+
+      # --------------------------------------------------
+      # 4. Setup Rust
+      # --------------------------------------------------
+      - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # 3️⃣ Install project dependencies
-      - name: 📦 Install dependencies
-        run: yarn install --frozen-lockfile
+      # --------------------------------------------------
+      # 5. Cache Cargo
+      # --------------------------------------------------
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
 
-      # 4️⃣ Write raw private key as PEM
-      - name: 🗝️ Write private key to PEM file
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $Key = "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" -replace '\\n', "`n"
-          $KeyPath = "src-tauri/signing_private.pem"
-          Set-Content -Path $KeyPath -Value $Key -Encoding UTF8
-          echo "TAURI_SIGNING_PRIVATE_KEY=$(Get-Content $KeyPath -Raw)" >> $env:GITHUB_ENV
+      # --------------------------------------------------
+      # 6. Build Tauri (CI mode)
+      # --------------------------------------------------
+      - name: Build Tauri app
+        run: npm run tauri build -- --ci
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ""
 
-      # 5️⃣ Read version from tauri.conf.json and validate MSI limits (255.255.65535)
-      - name: 📄 Read and validate version
-        id: tauri_version
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $configPath = "src-tauri/tauri.conf.json"
-          if (-not (Test-Path $configPath)) { throw "Missing $configPath" }
-          $cfg = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
-          $appVersion = $cfg['version']
-          if (-not $appVersion) { throw "Missing 'version' in tauri.conf.json" }
-
-          try {
-            $ver = [version]($appVersion -replace '^v','')
-          } catch {
-            throw "Version must be parseable as <major>.<minor>.<build>; got '$appVersion'"
-          }
-          if ($ver.Major -gt 255 -or $ver.Minor -gt 255 -or ($ver.Build -ge 0 -and $ver.Build -gt 65535)) {
-            throw "MSI ProductVersion out of range (limits 255.255.65535). Update src-tauri/tauri.conf.json 'version' (current: $appVersion)."
-          }
-
-          echo "APP_VERSION=$appVersion" >> $env:GITHUB_ENV
-          echo "RELEASE_TAG=v$appVersion" >> $env:GITHUB_ENV
-          Write-Host "APP_VERSION=$appVersion; RELEASE_TAG=v$appVersion"
-
-      # 6️⃣ Ensure tag v{APP_VERSION} exists (no deletion/force moves)
-      - name: 🏷️ Ensure tag for version
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $tag = "${{ env.RELEASE_TAG }}"
-          if (git rev-parse -q --verify "refs/tags/$tag" *> $null) {
-            Write-Host "Tag $tag exists."
-          } else {
-            git config user.name "github-actions"
-            git config user.email "github-actions@github.com"
-            git tag $tag
-            git push origin $tag
-          }
-
-      # 7️⃣ Build Tauri App (Windows MSVC backend)
-      - name: 🚀 Build Windows release with Tauri
-        shell: pwsh
+      # --------------------------------------------------
+      # 7. Create / Update GitHub Release
+      # --------------------------------------------------
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/msi/*.sig
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/nsis/*.sig
+            src-tauri/target/release/bundle/**/latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ env.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          TAURI_ENV_TARGET_TRIPLE: x86_64-pc-windows-msvc
+
+      # --------------------------------------------------
+      # 8. Move the `latest` tag (SAFE WAY)
+      # --------------------------------------------------
+      - name: Update latest tag
+        shell: bash
         run: |
-          $ErrorActionPreference = "Stop"
+          set -e
 
-          # Optional: ensure externalBin path if needed
-          $configPath = "src-tauri/tauri.conf.json"
-          $cfg = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
-          if (-not $cfg.ContainsKey('bundle')) { $cfg['bundle'] = @{} }
-          $cfg['bundle']['externalBin'] = @("binaries/Siribilling-backend")
-          $cfg | ConvertTo-Json -Depth 20 | Out-File $configPath -Encoding UTF8
+          TAG_NAME="latest"
+          TARGET_SHA="${GITHUB_SHA}"
+          REPO="${GITHUB_REPOSITORY}"
 
-          yarn tauri build
+          echo "Updating 'latest' tag to $TARGET_SHA"
 
-      # 7.5️⃣ Verify signatures were generated
-      - name: 🔍 Verify signature files
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          
-          Write-Host "🔍 Checking for signature files..."
-          
-          # Check MSI signatures
-          $msiDir = "src-tauri/target/release/bundle/msi"
-          if (Test-Path $msiDir) {
-            Write-Host "`n📁 MSI Directory contents:"
-            Get-ChildItem -Path $msiDir | ForEach-Object { Write-Host "  - $($_.Name)" }
-            
-            $msiSigs = Get-ChildItem -Path $msiDir -Filter *.sig -File
-            if ($msiSigs) {
-              Write-Host "✅ MSI signatures found: $($msiSigs.Count)"
-              $msiSigs | ForEach-Object { Write-Host "   📝 $($_.Name)" }
-            } else {
-              Write-Host "⚠️ No MSI signatures found"
-            }
-          }
-          
-          # Check NSIS signatures
-          $nsisDir = "src-tauri/target/release/bundle/nsis"
-          if (Test-Path $nsisDir) {
-            Write-Host "`n📁 NSIS Directory contents:"
-            Get-ChildItem -Path $nsisDir | ForEach-Object { Write-Host "  - $($_.Name)" }
-            
-            $nsisSigs = Get-ChildItem -Path $nsisDir -Filter *.sig -File
-            if ($nsisSigs) {
-              Write-Host "✅ NSIS signatures found: $($nsisSigs.Count)"
-              $nsisSigs | ForEach-Object { Write-Host "   📝 $($_.Name)" }
-            } else {
-              Write-Host "⚠️ No NSIS signatures found"
-            }
-          }
+          # Delete tag if it exists
+          curl -s -X DELETE \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/git/refs/tags/$TAG_NAME" || true
 
-      # 8️⃣ Generate latest.json with BOTH MSI and NSIS
-      - name: 🧾 Generate latest.json (MSI + NSIS)
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-
-          $appVersion = "${{ env.APP_VERSION }}"
-          $tag = "${{ env.RELEASE_TAG }}"
-          $pubDate = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
-          $repo = $env:GITHUB_REPOSITORY
-
-          $msiDir = "src-tauri/target/release/bundle/msi"
-          $nsisDir = "src-tauri/target/release/bundle/nsis"
-          
-          $platforms = @{}
-          
-          # ✅ Check for MSI installer
-          if (Test-Path $msiDir) {
-            Write-Host "`n🔍 Checking MSI directory..."
-            
-            # Look for .msi.zip first, then fall back to .msi
-            $msi = Get-ChildItem -Path $msiDir -Filter *.msi.zip -File | Select-Object -First 1
-            if (-not $msi) {
-              $msi = Get-ChildItem -Path $msiDir -Filter *.msi -File | Select-Object -First 1
-            }
-            
-            $msiSig = Get-ChildItem -Path $msiDir -Filter "*.sig" -File | Select-Object -First 1
-            
-            if ($msi -and $msiSig) {
-              Write-Host "  ✅ Found MSI installer: $($msi.Name)"
-              Write-Host "  ✅ Found MSI signature: $($msiSig.Name)"
-              
-              $msiUrlEncoded = [System.Uri]::EscapeDataString($msi.Name)
-              $msiUrl = "https://github.com/$repo/releases/download/$tag/$msiUrlEncoded"
-              $msiSignature = (Get-Content -Path $msiSig.FullName -Raw).Trim()
-              
-              $platforms["windows-x86_64"] = @{
-                url       = $msiUrl
-                signature = $msiSignature
-              }
-              
-              Write-Host "  📦 MSI URL: $msiUrl"
-            } else {
-              Write-Host "  ⚠️ MSI or signature not found"
-            }
-          }
-          
-          # ✅ Check for NSIS installer
-          if (Test-Path $nsisDir) {
-            Write-Host "`n🔍 Checking NSIS directory..."
-            
-            $exe = Get-ChildItem -Path $nsisDir -Filter *.exe -File | 
-                   Where-Object { $_.Name -notlike '*-setup.nsis*' } | 
-                   Sort-Object LastWriteTime -Descending | 
-                   Select-Object -First 1
-            
-            $exeSig = Get-ChildItem -Path $nsisDir -Filter "*.sig" -File | Select-Object -First 1
-            
-            if ($exe -and $exeSig) {
-              Write-Host "  ✅ Found NSIS installer: $($exe.Name)"
-              Write-Host "  ✅ Found NSIS signature: $($exeSig.Name)"
-              
-              $exeUrlEncoded = [System.Uri]::EscapeDataString($exe.Name)
-              $exeUrl = "https://github.com/$repo/releases/download/$tag/$exeUrlEncoded"
-              $exeSignature = (Get-Content -Path $exeSig.FullName -Raw).Trim()
-              
-              # Add NSIS as alternative platform
-              $platforms["windows-x86_64-nsis"] = @{
-                url       = $exeUrl
-                signature = $exeSignature
-              }
-              
-              Write-Host "  📦 NSIS URL: $exeUrl"
-            } else {
-              Write-Host "  ⚠️ NSIS or signature not found"
-            }
-          }
-          
-          # Verify at least one installer was found
-          if ($platforms.Count -eq 0) {
-            Write-Host "`n❌ ERROR: No installers with signatures found!"
-            throw "No installers found in MSI or NSIS directories"
-          }
-
-          Write-Host "`n✅ Found $($platforms.Count) installer(s)"
-          
-          # If only NSIS was found, use standard key name
-          if ($platforms.Count -eq 1 -and $platforms.ContainsKey("windows-x86_64-nsis")) {
-            $nsisData = $platforms["windows-x86_64-nsis"]
-            $platforms.Remove("windows-x86_64-nsis")
-            $platforms["windows-x86_64"] = $nsisData
-            Write-Host "  ℹ️ Using NSIS as primary installer"
-          }
-
-          $latestJson = @{
-            version   = $appVersion
-            notes     = "Windows release $tag"
-            pub_date  = $pubDate
-            platforms = $platforms
-          } | ConvertTo-Json -Depth 6
-
-          $latestJson | Out-File -FilePath latest.json -Encoding UTF8
-          Write-Host "`n✅ Generated latest.json:"
-          Get-Content latest.json | Write-Host
-
-      # 9️⃣ Create release, mark as Latest, sync `latest` tag, upload assets
-      - name: 📤 Create release and upload assets (mark as Latest + sync tag)
-        shell: pwsh
+          # Create tag pointing to current release commit
+          curl -s -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/$REPO/git/refs \
+            -d "{
+              \"ref\": \"refs/tags/$TAG_NAME\",
+              \"sha\": \"$TARGET_SHA\"
+            }"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $ErrorActionPreference = "Stop"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          gh auth status
-          if ($LASTEXITCODE -ne 0) { throw "GitHub CLI auth failed" }
-
-          $tag = "${{ env.RELEASE_TAG }}"
-
-          # Create or reuse the versioned release
-          gh release view $tag -R $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --title "Windows Release $tag" --notes "Automated release" --verify-tag -R $env:GITHUB_REPOSITORY
-            if ($LASTEXITCODE -ne 0) { throw "Failed to create release $tag" }
-          }
-
-          # Upload artifacts
-          $folders = @(
-            "src-tauri/target/release/bundle/msi",
-            "src-tauri/target/release/bundle/nsis"
-          )
-          foreach ($folder in $folders) {
-            if (Test-Path $folder) {
-              Get-ChildItem -Path $folder -File | ForEach-Object {
-                Write-Host "Uploading $($_.FullName)..."
-                gh release upload $tag $_.FullName --clobber -R $env:GITHUB_REPOSITORY
-                if ($LASTEXITCODE -ne 0) { throw "Failed to upload $($_.Name) to $tag" }
-              }
-            }
-          }
-
-          # Upload latest.json to the versioned release
-          gh release upload $tag latest.json --clobber -R $env:GITHUB_REPOSITORY
-          if ($LASTEXITCODE -ne 0) { throw "Failed to upload latest.json to $tag" }
-
-          # Mark the versioned release as the "Latest release" (green badge)
-          gh release edit $tag --latest -R $env:GITHUB_REPOSITORY
-          if ($LASTEXITCODE -ne 0) { throw "Failed to mark $tag as Latest" }
-
-          # Force-move the `latest` tag to the same commit as the version tag
-          $sha = (git rev-list -n 1 $tag).Trim()
-          git tag -f latest $sha
-          git push origin -f latest
-          
-          Write-Host "✅ Release $tag created and marked as latest!"
