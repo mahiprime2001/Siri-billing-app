@@ -1,4 +1,4 @@
-name: Tauri CI & Auto Release
+name: Tauri CI & Auto Release (Cargo)
 
 on:
   push:
@@ -23,7 +23,7 @@ jobs:
           fetch-depth: 0
 
       # --------------------------------------------------
-      # 2. Setup Node.js
+      # 2. Setup Node.js (frontend build still needs Node)
       # --------------------------------------------------
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -37,7 +37,13 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       # --------------------------------------------------
-      # 4. Auto bump PATCH version
+      # 4. Install Tauri CLI via Cargo
+      # --------------------------------------------------
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --locked
+
+      # --------------------------------------------------
+      # 5. Auto bump PATCH version
       # --------------------------------------------------
       - name: Auto bump version
         id: bump
@@ -56,7 +62,7 @@ jobs:
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
       # --------------------------------------------------
-      # 5. Commit version bump
+      # 6. Commit version bump
       # --------------------------------------------------
       - name: Commit version bump
         shell: bash
@@ -69,23 +75,28 @@ jobs:
           git push
 
       # --------------------------------------------------
-      # 6. Install Node dependencies
+      # 7. Install frontend dependencies
       # --------------------------------------------------
-      - name: Install dependencies
+      - name: Install frontend dependencies
         run: npm install
 
       # --------------------------------------------------
-      # 7. Build Tauri (CI updater mode)
+      # 8. Build frontend
+      # --------------------------------------------------
+      - name: Build frontend
+        run: npm run build
+
+      # --------------------------------------------------
+      # 9. Build Tauri app (CI updater mode)
       # --------------------------------------------------
       - name: Build Tauri app
-        run: npm run tauri build -- --ci
+        run: cargo tauri build --ci
         env:
-          # 🔥 FIXED SECRET NAMES (MATCH YOUR SCREENSHOT)
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       # --------------------------------------------------
-      # 8. Create GitHub Release
+      # 10. Create GitHub Release
       # --------------------------------------------------
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -103,7 +114,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # --------------------------------------------------
-      # 9. Move `latest` tag safely
+      # 11. Move `latest` tag safely
       # --------------------------------------------------
       - name: Update latest tag
         shell: bash
