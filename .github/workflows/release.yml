@@ -1,4 +1,4 @@
-name: Tauri CI & Auto Release (pnpm + Cargo)
+name: Tauri CI & Auto Release (pnpm + Cargo, Signed)
 
 on:
   push:
@@ -17,14 +17,16 @@ jobs:
       # --------------------------------------------------
       # 1. Checkout
       # --------------------------------------------------
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       # --------------------------------------------------
       # 2. Setup Node.js
       # --------------------------------------------------
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 20
 
@@ -39,10 +41,11 @@ jobs:
       # --------------------------------------------------
       # 4. Setup Rust
       # --------------------------------------------------
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
 
       # --------------------------------------------------
-      # 5. Install Tauri CLI (2.8 line)
+      # 5. Install Tauri CLI (2.8.x line)
       # --------------------------------------------------
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2.8" --locked
@@ -56,18 +59,23 @@ jobs:
         run: |
           FILE="src-tauri/tauri.conf.json"
           CURRENT=$(jq -r '.version' "$FILE")
-          IFS='.' read -r M m p <<< "$CURRENT"
-          NEW="$M.$m.$((p+1))"
-          jq ".version=\"$NEW\"" "$FILE" > tmp && mv tmp "$FILE"
-          echo "version=$NEW" >> $GITHUB_OUTPUT
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+
+          echo "Bumping version: $CURRENT -> $NEW_VERSION"
+
+          jq ".version = \"$NEW_VERSION\"" "$FILE" > tmp.json && mv tmp.json "$FILE"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
       # --------------------------------------------------
       # 7. Commit version bump
       # --------------------------------------------------
       - name: Commit version bump
+        shell: bash
         run: |
-          git config user.name github-actions
-          git config user.email github-actions@github.com
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
           git add src-tauri/tauri.conf.json
           git commit -m "chore: release v${{ steps.bump.outputs.version }}"
           git push
@@ -79,7 +87,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # --------------------------------------------------
-      # 9. Verify Tauri JS version (safety check)
+      # 9. Verify Tauri JS version (MUST be 2.8.x)
       # --------------------------------------------------
       - name: Verify Tauri JS version
         run: pnpm list @tauri-apps/api
@@ -91,18 +99,34 @@ jobs:
         run: pnpm build
 
       # --------------------------------------------------
-      # 11. Build Tauri app (CI updater mode)
+      # 11. Verify signing key is present (SAFE CHECK)
+      # --------------------------------------------------
+      - name: Verify signing key presence
+        shell: bash
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "❌ TAURI_SIGNING_PRIVATE_KEY is EMPTY"
+            exit 1
+          else
+            echo "✅ TAURI_SIGNING_PRIVATE_KEY is PRESENT"
+          fi
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+
+      # --------------------------------------------------
+      # 12. Build Tauri app (SIGNED, CI updater mode)
       # --------------------------------------------------
       - name: Build Tauri app
         run: cargo tauri build --ci
         env:
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       # --------------------------------------------------
-      # 12. Create GitHub Release
+      # 13. Create GitHub Release
       # --------------------------------------------------
-      - uses: softprops/action-gh-release@v2
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.bump.outputs.version }}
           name: v${{ steps.bump.outputs.version }}
