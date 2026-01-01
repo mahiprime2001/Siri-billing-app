@@ -1,4 +1,4 @@
-name: Tauri CI & Release (Cached, Manual latest.json)
+name: Tauri CI & Release (Manual latest.json with EXE + MSI)
 
 on:
   push:
@@ -39,45 +39,19 @@ jobs:
           version: 9
 
       # --------------------------------------------------
-      # 4. Cache pnpm store
-      # --------------------------------------------------
-      - name: Cache pnpm store
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.pnpm-store
-          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-${{ runner.os }}-
-
-      # --------------------------------------------------
-      # 5. Setup Rust
+      # 4. Setup Rust
       # --------------------------------------------------
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       # --------------------------------------------------
-      # 6. Cache Cargo (registry + git + target)
-      # --------------------------------------------------
-      - name: Cache Cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: cargo-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: |
-            cargo-${{ runner.os }}-
-
-      # --------------------------------------------------
-      # 7. Install Tauri CLI
+      # 5. Install Tauri CLI
       # --------------------------------------------------
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2.8" --locked
 
       # --------------------------------------------------
-      # 8. Auto bump PATCH version
+      # 6. Auto bump PATCH version
       # --------------------------------------------------
       - name: Auto bump version
         id: bump
@@ -91,35 +65,34 @@ jobs:
           jq ".version = \"$NEW_VERSION\"" "$FILE" > tmp.json && mv tmp.json "$FILE"
 
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "Bumped $CURRENT → $NEW_VERSION"
+          echo "Version bumped: $CURRENT → $NEW_VERSION"
 
       # --------------------------------------------------
-      # 9. Commit version bump
+      # 7. Commit version bump
       # --------------------------------------------------
       - name: Commit version bump
         shell: bash
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-
           git add src-tauri/tauri.conf.json
           git commit -m "chore: release v${{ steps.bump.outputs.version }}"
           git push
 
       # --------------------------------------------------
-      # 10. Install dependencies
+      # 8. Install dependencies
       # --------------------------------------------------
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       # --------------------------------------------------
-      # 11. Build frontend
+      # 9. Build frontend
       # --------------------------------------------------
       - name: Build frontend
         run: pnpm build
 
       # --------------------------------------------------
-      # 12. Build Tauri (signed)
+      # 10. Build Tauri (signed)
       # --------------------------------------------------
       - name: Build Tauri app
         run: cargo tauri build --ci
@@ -128,20 +101,30 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       # --------------------------------------------------
-      # 13. Create latest.json manually
+      # 11. Create latest.json (EXE + MSI metadata)
       # --------------------------------------------------
       - name: Create latest.json manually
         shell: bash
         run: |
+          set -e
+
           VERSION="${{ steps.bump.outputs.version }}"
           TAG="v$VERSION"
 
+          # ---------- EXE ----------
           EXE_PATH=$(ls src-tauri/target/release/bundle/nsis/*setup.exe | head -n 1)
           EXE_FILE=$(basename "$EXE_PATH")
-          SIG=$(cat "$EXE_PATH.sig" | tr -d '\n')
+          EXE_SIG=$(cat "$EXE_PATH.sig" | tr -d '\n')
 
-          ENCODED_NAME=$(printf '%s\n' "$EXE_FILE" | sed 's/ /%20/g')
-          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/$TAG/$ENCODED_NAME"
+          # ---------- MSI ----------
+          MSI_PATH=$(ls src-tauri/target/release/bundle/msi/*.msi | head -n 1)
+          MSI_FILE=$(basename "$MSI_PATH")
+          MSI_SIG=$(cat "$MSI_PATH.sig" | tr -d '\n')
+
+          encode() { echo "$1" | sed 's/ /%20/g'; }
+
+          EXE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG/$(encode "$EXE_FILE")"
+          MSI_URL="https://github.com/${{ github.repository }}/releases/download/$TAG/$(encode "$MSI_FILE")"
 
           mkdir -p updater
           cat > updater/latest.json <<EOF
@@ -151,15 +134,24 @@ jobs:
             "pub_date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
             "platforms": {
               "windows-x86_64": {
-                "url": "$DOWNLOAD_URL",
-                "signature": "$SIG"
+                "url": "$EXE_URL",
+                "signature": "$EXE_SIG",
+                "extras": {
+                  "msi": {
+                    "url": "$MSI_URL",
+                    "signature": "$MSI_SIG"
+                  }
+                }
               }
             }
           }
           EOF
 
+          echo "latest.json created:"
+          cat updater/latest.json
+
       # --------------------------------------------------
-      # 14. Create NEW GitHub Release (EXE + MSI + SIG + latest.json)
+      # 12. Create NEW GitHub Release
       # --------------------------------------------------
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
