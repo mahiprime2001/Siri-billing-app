@@ -1,4 +1,4 @@
-name: Tauri CI & Release (Manual latest.json with EXE + MSI)
+name: Tauri CI & Auto Release (pnpm + Cargo)
 
 on:
   push:
@@ -17,16 +17,14 @@ jobs:
       # --------------------------------------------------
       # 1. Checkout
       # --------------------------------------------------
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       # --------------------------------------------------
       # 2. Setup Node.js
       # --------------------------------------------------
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
 
@@ -41,11 +39,10 @@ jobs:
       # --------------------------------------------------
       # 4. Setup Rust
       # --------------------------------------------------
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
 
       # --------------------------------------------------
-      # 5. Install Tauri CLI
+      # 5. Install Tauri CLI (2.8 line)
       # --------------------------------------------------
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2.8" --locked
@@ -59,116 +56,81 @@ jobs:
         run: |
           FILE="src-tauri/tauri.conf.json"
           CURRENT=$(jq -r '.version' "$FILE")
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
-          NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
-
-          jq ".version = \"$NEW_VERSION\"" "$FILE" > tmp.json && mv tmp.json "$FILE"
-
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "Version bumped: $CURRENT → $NEW_VERSION"
+          IFS='.' read -r M m p <<< "$CURRENT"
+          NEW="$M.$m.$((p+1))"
+          jq ".version=\"$NEW\"" "$FILE" > tmp && mv tmp "$FILE"
+          echo "version=$NEW" >> $GITHUB_OUTPUT
 
       # --------------------------------------------------
       # 7. Commit version bump
       # --------------------------------------------------
       - name: Commit version bump
-        shell: bash
         run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
+          git config user.name github-actions
+          git config user.email github-actions@github.com
           git add src-tauri/tauri.conf.json
           git commit -m "chore: release v${{ steps.bump.outputs.version }}"
           git push
 
       # --------------------------------------------------
-      # 8. Install dependencies
+      # 8. Install dependencies (pnpm)
       # --------------------------------------------------
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       # --------------------------------------------------
-      # 9. Build frontend
+      # 9. Verify Tauri JS version (safety check)
+      # --------------------------------------------------
+      - name: Verify Tauri JS version
+        run: pnpm list @tauri-apps/api
+
+      # --------------------------------------------------
+      # 10. Build frontend
       # --------------------------------------------------
       - name: Build frontend
         run: pnpm build
 
       # --------------------------------------------------
-      # 10. Build Tauri (signed)
+      # 11. Build Tauri app (CI updater mode)
       # --------------------------------------------------
       - name: Build Tauri app
         run: cargo tauri build --ci
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       # --------------------------------------------------
-      # 11. Create latest.json (EXE + MSI metadata)
+      # 12. Fix latest.json URLs to match actual filenames
       # --------------------------------------------------
-      - name: Create latest.json manually
+      - name: Fix latest.json URLs
         shell: bash
         run: |
-          set -e
-
-          VERSION="${{ steps.bump.outputs.version }}"
-          TAG="v$VERSION"
-
-          # ---------- EXE ----------
-          EXE_PATH=$(ls src-tauri/target/release/bundle/nsis/*setup.exe | head -n 1)
-          EXE_FILE=$(basename "$EXE_PATH")
-          EXE_SIG=$(cat "$EXE_PATH.sig" | tr -d '\n')
-
-          # ---------- MSI ----------
-          MSI_PATH=$(ls src-tauri/target/release/bundle/msi/*.msi | head -n 1)
-          MSI_FILE=$(basename "$MSI_PATH")
-          MSI_SIG=$(cat "$MSI_PATH.sig" | tr -d '\n')
-
-          encode() { echo "$1" | sed 's/ /%20/g'; }
-
-          EXE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG/$(encode "$EXE_FILE")"
-          MSI_URL="https://github.com/${{ github.repository }}/releases/download/$TAG/$(encode "$MSI_FILE")"
-
-          mkdir -p updater
-          cat > updater/latest.json <<EOF
-          {
-            "version": "$VERSION",
-            "notes": "Bug fixes and improvements",
-            "pub_date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-            "platforms": {
-              "windows-x86_64": {
-                "url": "$EXE_URL",
-                "signature": "$EXE_SIG",
-                "extras": {
-                  "msi": {
-                    "url": "$MSI_URL",
-                    "signature": "$MSI_SIG"
-                  }
-                }
-              }
-            }
-          }
-          EOF
-
-          echo "latest.json created:"
-          cat updater/latest.json
+          LATEST_JSON="src-tauri/target/release/bundle/nsis/latest.json"
+          
+          if [ -f "$LATEST_JSON" ]; then
+            echo "Fixing URLs in latest.json to match actual filenames..."
+            
+            # Replace "Siri Billing App" with "Siri.Billing.App" in URLs
+            sed -i 's/Siri%20Billing%20App/Siri.Billing.App/g' "$LATEST_JSON"
+            
+            echo "✅ Fixed latest.json"
+            cat "$LATEST_JSON"
+          else
+            echo "⚠️ latest.json not found at $LATEST_JSON"
+          fi
 
       # --------------------------------------------------
-      # 12. Create NEW GitHub Release
+      # 13. Create GitHub Release
       # --------------------------------------------------
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.bump.outputs.version }}
           name: v${{ steps.bump.outputs.version }}
           generate_release_notes: true
           files: |
-            # NSIS
-            src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/bundle/nsis/*.exe.sig
-
-            # MSI
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/msi/*.msi.sig
-
-            # Updater metadata
-            updater/latest.json
+            src-tauri/target/release/bundle/**/*.msi
+            src-tauri/target/release/bundle/**/*.exe
+            src-tauri/target/release/bundle/**/*.sig
+            src-tauri/target/release/bundle/**/latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
