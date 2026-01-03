@@ -85,12 +85,6 @@ jobs:
         run: pnpm list @tauri-apps/api
 
       # --------------------------------------------------
-      # 10. Build frontend
-      # --------------------------------------------------
-      - name: Build frontend
-        run: pnpm build
-
-      # --------------------------------------------------
       # 11. Build Tauri app (CI updater mode)
       # --------------------------------------------------
       - name: Build Tauri app
