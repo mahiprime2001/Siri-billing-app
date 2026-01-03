@@ -79,42 +79,39 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # --------------------------------------------------
-      # 9. Verify Tauri JS version (safety check)
+      # 9. Verify Tauri JS version
       # --------------------------------------------------
       - name: Verify Tauri JS version
         run: pnpm list @tauri-apps/api
 
       # --------------------------------------------------
-      # 11. Build Tauri app (CI updater mode)
+      # 10. Build Tauri app (CI updater mode)
       # --------------------------------------------------
       - name: Build Tauri app
         run: cargo tauri build --ci
         env:
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       # --------------------------------------------------
-      # 12. Fix latest.json URLs to match actual filenames
+      # 11. Fix latest.json URLs
       # --------------------------------------------------
       - name: Fix latest.json URLs
         shell: bash
         run: |
           LATEST_JSON="src-tauri/target/release/bundle/nsis/latest.json"
-          
+
           if [ -f "$LATEST_JSON" ]; then
-            echo "Fixing URLs in latest.json to match actual filenames..."
-            
-            # Replace "Siri Billing App" with "Siri.Billing.App" in URLs
+            echo "Fixing URLs in latest.json..."
             sed -i 's/Siri%20Billing%20App/Siri.Billing.App/g' "$LATEST_JSON"
-            
-            echo "✅ Fixed latest.json"
+            echo "✅ latest.json fixed"
             cat "$LATEST_JSON"
           else
-            echo "⚠️ latest.json not found at $LATEST_JSON"
+            echo "⚠️ latest.json not found"
           fi
 
       # --------------------------------------------------
-      # 13. Create GitHub Release
+      # 12. Create GitHub Release
       # --------------------------------------------------
       - uses: softprops/action-gh-release@v2
         with:
