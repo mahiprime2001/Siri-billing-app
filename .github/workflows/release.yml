@@ -88,7 +88,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       # --------------------------------------------------
-      # 10. Create latest.json with correct filenames
+      # 10. Create latest.json (simple version)
       # --------------------------------------------------
       - name: Create latest.json
         shell: bash
@@ -99,40 +99,27 @@ jobs:
           REPO="${{ github.repository }}"
           TAG="v$VERSION"
 
-          # Find EXE and its signature
+          # Find files
           EXE_FILE=$(ls "$BUNDLE_DIR"/*.exe 2>/dev/null | head -n 1)
-          EXE_SIG_FILE="$EXE_FILE.sig"
-          EXE_FILE_NAME=$(basename "$EXE_FILE")
-
-          # Find MSI and its signature
           MSI_FILE=$(ls "$MSI_DIR"/*.msi 2>/dev/null | head -n 1)
-          MSI_SIG_FILE="$MSI_FILE.sig"
-          MSI_FILE_NAME=$(basename "$MSI_FILE")
+          
+          EXE_NAME=$(basename "$EXE_FILE")
+          MSI_NAME=$(basename "$MSI_FILE")
+          
+          # Debug output
+          echo "📦 Built files:"
+          echo "   EXE: $EXE_NAME"
+          echo "   MSI: $MSI_NAME"
 
-          # Debug: Show actual filenames
-          echo "📦 EXE File: $EXE_FILE_NAME"
-          echo "📦 MSI File: $MSI_FILE_NAME"
-
-          # Verify files exist
-          if [ ! -f "$EXE_FILE" ] || [ ! -f "$EXE_SIG_FILE" ]; then
-            echo "❌ EXE or EXE SIG file not found"
-            exit 1
-          fi
-
-          if [ ! -f "$MSI_FILE" ] || [ ! -f "$MSI_SIG_FILE" ]; then
-            echo "❌ MSI or MSI SIG file not found"
-            exit 1
-          fi
+          # URL encode spaces for GitHub URLs
+          EXE_URL=$(echo "$EXE_NAME" | sed 's/ /%20/g')
+          MSI_URL=$(echo "$MSI_NAME" | sed 's/ /%20/g')
 
           # Read signatures
-          EXE_SIGNATURE=$(cat "$EXE_SIG_FILE")
-          MSI_SIGNATURE=$(cat "$MSI_SIG_FILE")
+          EXE_SIG=$(cat "$EXE_FILE.sig")
+          MSI_SIG=$(cat "$MSI_FILE.sig")
 
-          # URL encode the filenames properly
-          EXE_URL_NAME=$(echo "$EXE_FILE_NAME" | sed 's/ /%20/g')
-          MSI_URL_NAME=$(echo "$MSI_FILE_NAME" | sed 's/ /%20/g')
-
-          # Create latest.json with proper URL encoding
+          # Create latest.json
           cat > "$BUNDLE_DIR/latest.json" <<EOF
           {
             "version": "$VERSION",
@@ -140,12 +127,12 @@ jobs:
             "pub_date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
             "platforms": {
               "windows-x86_64": {
-                "signature": "$EXE_SIGNATURE",
-                "url": "https://github.com/$REPO/releases/download/$TAG/$EXE_URL_NAME",
+                "signature": "$EXE_SIG",
+                "url": "https://github.com/$REPO/releases/download/$TAG/$EXE_URL",
                 "extras": {
                   "msi": {
-                    "signature": "$MSI_SIGNATURE",
-                    "url": "https://github.com/$REPO/releases/download/$TAG/$MSI_URL_NAME"
+                    "signature": "$MSI_SIG",
+                    "url": "https://github.com/$REPO/releases/download/$TAG/$MSI_URL"
                   }
                 }
               }
@@ -154,7 +141,6 @@ jobs:
           EOF
 
           echo "✅ latest.json created"
-          echo "📄 Contents:"
           cat "$BUNDLE_DIR/latest.json"
 
       # --------------------------------------------------
