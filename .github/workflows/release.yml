@@ -87,8 +87,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-         # --------------------------------------------------
-      # 10. Create latest.json MANUALLY (with MSI support)
+      # --------------------------------------------------
+      # 10. Create latest.json with correct filenames
       # --------------------------------------------------
       - name: Create latest.json
         shell: bash
@@ -109,6 +109,10 @@ jobs:
           MSI_SIG_FILE="$MSI_FILE.sig"
           MSI_FILE_NAME=$(basename "$MSI_FILE")
 
+          # Debug: Show actual filenames
+          echo "📦 EXE File: $EXE_FILE_NAME"
+          echo "📦 MSI File: $MSI_FILE_NAME"
+
           # Verify files exist
           if [ ! -f "$EXE_FILE" ] || [ ! -f "$EXE_SIG_FILE" ]; then
             echo "❌ EXE or EXE SIG file not found"
@@ -124,7 +128,11 @@ jobs:
           EXE_SIGNATURE=$(cat "$EXE_SIG_FILE")
           MSI_SIGNATURE=$(cat "$MSI_SIG_FILE")
 
-          # Create latest.json with both EXE and MSI
+          # URL encode the filenames properly
+          EXE_URL_NAME=$(echo "$EXE_FILE_NAME" | sed 's/ /%20/g')
+          MSI_URL_NAME=$(echo "$MSI_FILE_NAME" | sed 's/ /%20/g')
+
+          # Create latest.json with proper URL encoding
           cat > "$BUNDLE_DIR/latest.json" <<EOF
           {
             "version": "$VERSION",
@@ -133,11 +141,11 @@ jobs:
             "platforms": {
               "windows-x86_64": {
                 "signature": "$EXE_SIGNATURE",
-                "url": "https://github.com/$REPO/releases/download/$TAG/$EXE_FILE_NAME",
+                "url": "https://github.com/$REPO/releases/download/$TAG/$EXE_URL_NAME",
                 "extras": {
                   "msi": {
                     "signature": "$MSI_SIGNATURE",
-                    "url": "https://github.com/$REPO/releases/download/$TAG/$MSI_FILE_NAME"
+                    "url": "https://github.com/$REPO/releases/download/$TAG/$MSI_URL_NAME"
                   }
                 }
               }
@@ -145,7 +153,8 @@ jobs:
           }
           EOF
 
-          echo "✅ latest.json created with both EXE and MSI"
+          echo "✅ latest.json created"
+          echo "📄 Contents:"
           cat "$BUNDLE_DIR/latest.json"
 
       # --------------------------------------------------
