@@ -42,7 +42,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       # --------------------------------------------------
-      # 5. Install Tauri CLI (2.8 line)
+      # 5. Install Tauri CLI
       # --------------------------------------------------
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2.8" --locked
@@ -73,19 +73,13 @@ jobs:
           git push
 
       # --------------------------------------------------
-      # 8. Install dependencies (pnpm)
+      # 8. Install dependencies
       # --------------------------------------------------
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       # --------------------------------------------------
-      # 9. Verify Tauri JS version
-      # --------------------------------------------------
-      - name: Verify Tauri JS version
-        run: pnpm list @tauri-apps/api
-
-      # --------------------------------------------------
-      # 10. Build Tauri app (CI updater mode)
+      # 9. Build Tauri app
       # --------------------------------------------------
       - name: Build Tauri app
         run: cargo tauri build --ci
@@ -94,24 +88,43 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       # --------------------------------------------------
-      # 11. Fix latest.json URLs
+      # 10. Create latest.json MANUALLY
       # --------------------------------------------------
-      - name: Fix latest.json URLs
+      - name: Create latest.json
         shell: bash
         run: |
-          LATEST_JSON="src-tauri/target/release/bundle/nsis/latest.json"
+          BUNDLE_DIR="src-tauri/target/release/bundle/nsis"
+          VERSION="${{ steps.bump.outputs.version }}"
+          REPO="${{ github.repository }}"
+          TAG="v$VERSION"
 
-          if [ -f "$LATEST_JSON" ]; then
-            echo "Fixing URLs in latest.json..."
-            sed -i 's/Siri%20Billing%20App/Siri.Billing.App/g' "$LATEST_JSON"
-            echo "✅ latest.json fixed"
-            cat "$LATEST_JSON"
-          else
-            echo "⚠️ latest.json not found"
+          EXE_FILE=$(ls "$BUNDLE_DIR"/*.exe | head -n 1)
+          SIG_FILE="$EXE_FILE.sig"
+          FILE_NAME=$(basename "$EXE_FILE")
+
+          if [ ! -f "$EXE_FILE" ] || [ ! -f "$SIG_FILE" ]; then
+            echo "❌ EXE or SIG file not found"
+            exit 1
           fi
 
+          cat > "$BUNDLE_DIR/latest.json" <<EOF
+          {
+            "version": "$VERSION",
+            "notes": "Auto release v$VERSION",
+            "platforms": {
+              "windows-x86_64": {
+                "signature": "$(cat "$SIG_FILE")",
+                "url": "https://github.com/$REPO/releases/download/$TAG/$FILE_NAME"
+              }
+            }
+          }
+          EOF
+
+          echo "✅ latest.json created"
+          cat "$BUNDLE_DIR/latest.json"
+
       # --------------------------------------------------
-      # 12. Create GitHub Release
+      # 11. Create GitHub Release
       # --------------------------------------------------
       - uses: softprops/action-gh-release@v2
         with:
@@ -119,7 +132,6 @@ jobs:
           name: v${{ steps.bump.outputs.version }}
           generate_release_notes: true
           files: |
-            src-tauri/target/release/bundle/**/*.msi
             src-tauri/target/release/bundle/**/*.exe
             src-tauri/target/release/bundle/**/*.sig
             src-tauri/target/release/bundle/**/latest.json
