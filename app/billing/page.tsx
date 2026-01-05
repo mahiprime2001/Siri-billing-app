@@ -21,9 +21,9 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import Image from 'next/image'
 import { authManager } from '@/lib/auth'  // ✅ Added
 import { apiClient } from '@/lib/api-client'
-import { check } from '@tauri-apps/plugin-updater'
-import { ask, message } from '@tauri-apps/plugin-dialog'
-import { relaunch } from '@tauri-apps/plugin-process'
+import { check } from '@tauri-apps/plugin-updater';
+import { ask, message } from '@tauri-apps/plugin-dialog';
+import { relaunch } from '@tauri-apps/plugin-process';
 import {
   Popover,
   PopoverContent,

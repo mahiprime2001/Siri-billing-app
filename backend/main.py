@@ -142,7 +142,7 @@ def is_local_origin(origin):
         if parsed.scheme == 'file':
             return True
         
-        if hostname in ['localhost', '127.0.0.1', '0.0.0.0', '[::1]']:
+        if hostname in ['localhost', '127.0.0.1', '0.0.0.0', '[::1]', 'tauri.localhost']:
             return True
         
         if hostname and (

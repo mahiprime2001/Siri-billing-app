@@ -1,0 +1,189 @@
+[2026-01-02][14:45:35][app][INFO] =================================================
+[2026-01-02][14:45:35][app][INFO] 🚀 Siri Billing App Starting
+[2026-01-02][14:45:35][app][INFO] =================================================
+[2026-01-02][14:45:35][app][INFO] 📦 App version: 1.0.50
+[2026-01-02][14:45:35][app][INFO] 🔧 Bundle identifier: com.SiriBillingApp.app
+[2026-01-02][14:45:35][app][INFO] 📂 App data directory: "C:\\Users\\Dell\\AppData\\Roaming\\com.SiriBillingApp.app"
+[2026-01-02][14:45:35][app][INFO] 📝 Logs directory: "C:\\Users\\Dell\\AppData\\Roaming\\com.SiriBillingApp.app\\logs"
+[2026-01-02][14:45:35][app][INFO] =================================================
+[2026-01-02][14:45:35][app][INFO] 🔄 Updater Configuration
+[2026-01-02][14:45:35][app][INFO] =================================================
+[2026-01-02][14:45:35][app][INFO] ✅ Updater plugin initialized successfully
+[2026-01-02][14:45:35][app][INFO] 📡 Updater is ready to check for updates
+[2026-01-02][14:45:35][app][INFO] =================================================
+[2026-01-02][14:45:35][app][INFO] 🔌 Starting Backend Sidecar
+[2026-01-02][14:45:35][app][INFO] =================================================
+[2026-01-02][14:45:35][tauri_plugin_shell::process][DEBUG] Creating sidecar \\?\D:\Siri-apps\Siri-billing-app\src-tauri\target\debug\Siribilling-backend.exe
+[2026-01-02][14:45:35][app][INFO] ✅ Backend spawned successfully
+[2026-01-02][14:45:35][app][INFO] 🆔 Process ID: 21084
+[2026-01-02][14:45:35][app][INFO] =================================================
+[2026-01-02][14:45:35][app][INFO] ✅ Tauri Setup Complete
+[2026-01-02][14:45:35][app][INFO] =================================================
+[2026-01-02][14:45:35][app][DEBUG] 🔍 Window focused
+[2026-01-02][14:45:43][app][INFO] 🔵 [Backend] Loaded .env from: D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\.env
+[2026-01-02][14:45:43][app][INFO] 🔵 [Backend] ✅ No old logs to clean (retention: 30 days)
+[2026-01-02][14:45:43][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,950] INFO in logger: ================================================================================
+[2026-01-02][14:45:43][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,950] INFO in logger: ✅ Logging configured for Windows
+[2026-01-02][14:45:43][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,950] INFO in logger: 📁 Log file: D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\logs\billing_app-2026-01-02.log
+[2026-01-02][14:45:43][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,950] INFO in logger: 🗓️ Retention: 30 days
+[2026-01-02][14:45:43][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,950] INFO in logger: 🔄 Rotation: Manual (Windows mode - prevents file locking)
+[2026-01-02][14:45:43][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,950] INFO in logger: ================================================================================
+[2026-01-02][14:45:43][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,968] INFO in main:  Billing Flask server starting up...
+[2026-01-02][14:45:43][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,968] INFO in main: JWT Configuration:
+[2026-01-02][14:45:43][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,968] INFO in main: JWT_TOKEN_LOCATION: ['headers', 'cookies']
+[2026-01-02][14:45:43][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,968] INFO in main: JWT_COOKIE_NAME: access_token_cookie
+[2026-01-02][14:45:43][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,968] INFO in main: JWT_COOKIE_SECURE: False
+[2026-01-02][14:45:43][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,968] INFO in main: JWT_COOKIE_SAMESITE: Lax
+[2026-01-02][14:45:43][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,968] INFO in main: JWT_ACCESS_TOKEN_EXPIRES: 2:00:00
+[2026-01-02][14:45:43][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,968] INFO in main: JWT_ACCESS_COOKIE_PATH: /
+[2026-01-02][14:45:43][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,968] INFO in main: JWT_COOKIE_DOMAIN: None
+[2026-01-02][14:45:43][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,996] INFO in main: Billing Flask server starting...
+[2026-01-02][14:45:43][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,996] INFO in main: Billing app will run on localhost:8080
+[2026-01-02][14:45:44][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,996] INFO in main: CORS: Accepting all requests from local machine
+[2026-01-02][14:45:44][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,998] INFO in background_tasks: Starting initial full sync for missing JSON files.
+[2026-01-02][14:45:44][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,998] INFO in background_tasks: Background pull sync scheduler (Supabase -> JSON) started.
+[2026-01-02][14:45:44][app][INFO] 🔵 [Backend] [2026-01-02 20:15:43,998] INFO in background_tasks: JSON file for Products not found at D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\products.json. Performing full pull.
+[2026-01-02][14:45:44][app][INFO] 🔵 [Backend] [2026-01-02 20:15:44,000] INFO in background_tasks: Starting background JSON to Supabase push sync scheduler.
+[2026-01-02][14:45:44][app][INFO] 🔵 [Backend] [2026-01-02 20:15:44,000] INFO in background_tasks: Background JSON to Supabase push sync starting. Next push in 5 minutes.
+[2026-01-02][14:45:44][app][INFO] 🔵 [Backend] [2026-01-02 20:15:44,000] INFO in background_tasks: Background JSON to Supabase push sync scheduler (JSON -> Supabase) started.
+[2026-01-02][14:45:44][app][INFO] 🔵 [Backend] [2026-01-02 20:15:44,008] INFO in background_tasks: No data found in JSON files to push to Supabase.
+[2026-01-02][14:45:44][app][INFO] 🔵 [Backend] * Serving Flask app 'main'
+[2026-01-02][14:45:44][app][INFO] 🔵 [Backend] * Debug mode: on
+[2026-01-02][14:45:44][app][ERROR] 🔴 [Backend] WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+[2026-01-02][14:45:44][app][ERROR] 🔴 [Backend] * Running on http://localhost:8080
+[2026-01-02][14:45:44][app][ERROR] 🔴 [Backend] Press CTRL+C to quit
+[2026-01-02][14:45:44][app][ERROR] 🔴 [Backend] * Restarting with stat
+[2026-01-02][14:45:45][app][INFO] 🔵 [Backend] [2026-01-02 20:15:45,853] INFO in background_tasks: Successfully performed full pull and created D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\products.json for Products.
+[2026-01-02][14:45:45][app][INFO] 🔵 [Backend] [2026-01-02 20:15:45,853] INFO in background_tasks: JSON file for Customers not found at D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\customers.json. Performing full pull.
+[2026-01-02][14:45:46][app][INFO] 🔵 [Backend] [2026-01-02 20:15:46,125] INFO in background_tasks: Successfully performed full pull and created D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\customers.json for Customers.
+[2026-01-02][14:45:46][app][INFO] 🔵 [Backend] [2026-01-02 20:15:46,125] INFO in background_tasks: JSON file for Users not found at D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\users.json. Performing full pull.
+[2026-01-02][14:45:46][app][INFO] 🔵 [Backend] [2026-01-02 20:15:46,380] INFO in background_tasks: Filtered out admin/super_admin users. 2 users remaining.
+[2026-01-02][14:45:46][app][INFO] 🔵 [Backend] [2026-01-02 20:15:46,380] INFO in background_tasks: Successfully performed full pull and created D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\users.json for Users.
+[2026-01-02][14:45:46][app][INFO] 🔵 [Backend] [2026-01-02 20:15:46,380] INFO in background_tasks: JSON file for Stores not found at D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\stores.json. Performing full pull.
+[2026-01-02][14:45:46][app][INFO] 🔵 [Backend] [2026-01-02 20:15:46,633] INFO in background_tasks: Successfully performed full pull and created D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\stores.json for Stores.
+[2026-01-02][14:45:46][app][INFO] 🔵 [Backend] [2026-01-02 20:15:46,633] INFO in background_tasks: JSON file for SystemSettings not found at D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\system_settings.json. Performing full pull.
+[2026-01-02][14:45:46][app][INFO] 🔵 [Backend] [2026-01-02 20:15:46,881] INFO in background_tasks: Successfully performed full pull and created D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\system_settings.json for SystemSettings.
+[2026-01-02][14:45:46][app][INFO] 🔵 [Backend] [2026-01-02 20:15:46,881] INFO in background_tasks: JSON file for Returns not found at D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\returns.json. Performing full pull.
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,131] INFO in background_tasks: Successfully performed full pull and created D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\returns.json for Returns.
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,131] INFO in background_tasks: JSON file for Bills not found at D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\bills.json. Performing full pull.
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,387] INFO in background_tasks: Successfully performed full pull and created D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\bills.json for Bills.
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,387] INFO in background_tasks: JSON file for BillFormats not found at D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\bill_formats.json. Performing full pull.
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] Loaded .env from: D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\.env
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] ✅ No old logs to clean (retention: 30 days)
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,409] INFO in logger: ================================================================================
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,409] INFO in logger: ✅ Logging configured for Windows
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,409] INFO in logger: 📁 Log file: D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\logs\billing_app-2026-01-02.log
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,409] INFO in logger: 🗓️ Retention: 30 days
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,409] INFO in logger: 🔄 Rotation: Manual (Windows mode - prevents file locking)
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,409] INFO in logger: ================================================================================
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,411] INFO in main:  Billing Flask server starting up...
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,411] INFO in main: JWT Configuration:
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,411] INFO in main: JWT_TOKEN_LOCATION: ['headers', 'cookies']
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,411] INFO in main: JWT_COOKIE_NAME: access_token_cookie
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,413] INFO in main: JWT_COOKIE_SECURE: False
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,413] INFO in main: JWT_COOKIE_SAMESITE: Lax
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,413] INFO in main: JWT_ACCESS_TOKEN_EXPIRES: 2:00:00
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,413] INFO in main: JWT_ACCESS_COOKIE_PATH: /
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,413] INFO in main: JWT_COOKIE_DOMAIN: None
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,433] INFO in main: Billing Flask server starting...
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,433] INFO in main: Billing app will run on localhost:8080
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,433] INFO in main: CORS: Accepting all requests from local machine
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,433] INFO in background_tasks: Starting initial full sync for missing JSON files.
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,433] INFO in background_tasks: Background pull sync scheduler (Supabase -> JSON) started.
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,433] INFO in background_tasks: JSON file for Products already exists at D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\products.json. Skipping initial full pull.
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,443] INFO in background_tasks: JSON file for Customers already exists at D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\customers.json. Skipping initial full pull.
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,443] INFO in background_tasks: Starting background JSON to Supabase push sync scheduler.
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,443] INFO in background_tasks: Background JSON to Supabase push sync scheduler (JSON -> Supabase) started.
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,443] INFO in background_tasks: JSON file for Users already exists at D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\users.json. Skipping initial full pull.
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,443] INFO in background_tasks: Background JSON to Supabase push sync starting. Next push in 5 minutes.
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,443] INFO in background_tasks: JSON file for Stores already exists at D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\stores.json. Skipping initial full pull.
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,445] INFO in background_tasks: JSON file for SystemSettings already exists at D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\system_settings.json. Skipping initial full pull.
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,450] INFO in background_tasks: JSON file for Returns already exists at D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\returns.json. Skipping initial full pull.
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,450] INFO in background_tasks: JSON file for Bills already exists at D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\bills.json. Skipping initial full pull.
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,450] INFO in background_tasks: JSON file for BillFormats not found at D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\bill_formats.json. Performing full pull.
+[2026-01-02][14:45:47][app][ERROR] 🔴 [Backend] * Debugger is active!
+[2026-01-02][14:45:47][app][ERROR] 🔴 [Backend] * Debugger PIN: 127-729-064
+[2026-01-02][14:45:47][app][ERROR] 🔴 [Backend] 127.0.0.1 - - [02/Jan/2026 20:15:47] "GET /api/auth/me HTTP/1.1" 401 -
+[2026-01-02][14:45:47][app][ERROR] 🔴 [Backend] 127.0.0.1 - - [02/Jan/2026 20:15:47] "GET /api/auth/me HTTP/1.1" 401 -
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,632] INFO in background_tasks: Successfully performed full pull and created D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\bill_formats.json for BillFormats.
+[2026-01-02][14:45:47][app][INFO] 🔵 [Backend] [2026-01-02 20:15:47,632] INFO in background_tasks: JSON file for UserStores not found at D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\userstores.json. Performing full pull.
+[2026-01-02][14:45:48][app][ERROR] 🔴 [Backend] 127.0.0.1 - - [02/Jan/2026 20:15:48] "GET /api/auth/me HTTP/1.1" 401 -
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,139] INFO in background_tasks: Successfully performed full pull and created D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\bill_formats.json for BillFormats.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,139] INFO in background_tasks: JSON file for UserStores not found at D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\userstores.json. Performing full pull.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,205] INFO in background_tasks: Successfully performed full pull and created D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\userstores.json for UserStores.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,205] INFO in background_tasks: Initial full sync completed.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,205] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,317] INFO in background_tasks: Successfully performed full pull and created D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\userstores.json for UserStores.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,317] INFO in background_tasks: Initial full sync completed.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,317] INFO in background_tasks: Background pull sync starting. Next sync in 5 minutes.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,453] INFO in background_tasks: Delta pull sync for Products completed successfully.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,453] INFO in background_tasks: Found 8 new/updated records for Products.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,455] INFO in background_tasks: Merged and updated D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\products.json for Products.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,495] INFO in background_tasks: Delta pull sync for Products completed successfully.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,496] INFO in background_tasks: Found 8 new/updated records for Products.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,497] INFO in background_tasks: Merged and updated D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\products.json for Products.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,690] INFO in background_tasks: Delta pull sync for Customers completed successfully.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,690] INFO in background_tasks: Found 1 new/updated records for Customers.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,691] INFO in background_tasks: Merged and updated D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\customers.json for Customers.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,735] INFO in background_tasks: Delta pull sync for Customers completed successfully.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,735] INFO in background_tasks: Found 1 new/updated records for Customers.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,737] INFO in background_tasks: Merged and updated D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\customers.json for Customers.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,890] INFO in background_tasks: Delta pull sync for Users completed successfully.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,890] INFO in background_tasks: Found 3 new/updated records for Users.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,890] INFO in background_tasks: Filtered out admin/super_admin users. 2 users remaining.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,890] INFO in background_tasks: Merged and updated D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\users.json for Users.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,966] INFO in background_tasks: Delta pull sync for Users completed successfully.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,966] INFO in background_tasks: Found 3 new/updated records for Users.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,968] INFO in background_tasks: Filtered out admin/super_admin users. 2 users remaining.
+[2026-01-02][14:45:48][app][INFO] 🔵 [Backend] [2026-01-02 20:15:48,969] INFO in background_tasks: Merged and updated D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\users.json for Users.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,060] INFO in background_tasks: Delta pull sync for Stores completed successfully.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,060] INFO in background_tasks: Found 8 new/updated records for Stores.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,063] INFO in background_tasks: Merged and updated D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\stores.json for Stores.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,200] INFO in background_tasks: Delta pull sync for Stores completed successfully.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,200] INFO in background_tasks: Found 8 new/updated records for Stores.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,204] INFO in background_tasks: Merged and updated D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\stores.json for Stores.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,235] INFO in background_tasks: Delta pull sync for SystemSettings completed successfully.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,235] INFO in background_tasks: Found 1 new/updated records for SystemSettings.
+[2026-01-02][14:45:49][app][ERROR] 🔴 [Backend] Supabase API error during push sync for Returns: {'message': 'column "id" does not exist', 'code': '42703', 'hint': None, 'details': None}
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,236] INFO in background_tasks: Merged and updated D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\system_settings.json for SystemSettings.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,434] ERROR in background_tasks: Background JSON to Supabase push sync failed with errors: ['Returns: Supabase API Error - {\'message\': \'column "id" does not exist\', \'code\': \'42703\', \'hint\': None, \'details\': None}']
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,447] INFO in background_tasks: Delta pull sync for SystemSettings completed successfully.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,447] INFO in background_tasks: Found 1 new/updated records for SystemSettings.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,448] INFO in background_tasks: Merged and updated D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\system_settings.json for SystemSettings.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,470] INFO in background_tasks: Delta pull sync for Returns completed successfully.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,470] INFO in background_tasks: Found 2 new/updated records for Returns.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,470] INFO in background_tasks: Merged and updated D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\returns.json for Returns.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,659] INFO in background_tasks: Delta pull sync for Bills completed successfully.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,659] INFO in background_tasks: Found 6 new/updated records for Bills.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,661] INFO in background_tasks: Merged and updated D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\bills.json for Bills.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,694] INFO in background_tasks: Delta pull sync for Returns completed successfully.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,695] INFO in background_tasks: Found 2 new/updated records for Returns.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,695] INFO in background_tasks: Merged and updated D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\returns.json for Returns.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,834] INFO in background_tasks: Delta pull sync for BillFormats completed successfully.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,834] INFO in background_tasks: Found 5 new/updated records for BillFormats.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,834] INFO in background_tasks: Merged and updated D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\bill_formats.json for BillFormats.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,940] INFO in background_tasks: Delta pull sync for Bills completed successfully.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,941] INFO in background_tasks: Found 6 new/updated records for Bills.
+[2026-01-02][14:45:49][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,944] INFO in background_tasks: Merged and updated D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\bills.json for Bills.
+[2026-01-02][14:45:50][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,997] INFO in background_tasks: Delta pull sync for UserStores completed successfully.
+[2026-01-02][14:45:50][app][INFO] 🔵 [Backend] [2026-01-02 20:15:49,997] INFO in background_tasks: Found 1 new/updated records for UserStores.
+[2026-01-02][14:45:50][app][INFO] 🔵 [Backend] [2026-01-02 20:15:50,014] INFO in background_tasks: Merged and updated D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\userstores.json for UserStores.
+[2026-01-02][14:45:50][app][INFO] 🔵 [Backend] [2026-01-02 20:15:50,180] INFO in background_tasks: Delta pull sync for BillFormats completed successfully.
+[2026-01-02][14:45:50][app][INFO] 🔵 [Backend] [2026-01-02 20:15:50,180] INFO in background_tasks: Found 5 new/updated records for BillFormats.
+[2026-01-02][14:45:50][app][INFO] 🔵 [Backend] [2026-01-02 20:15:50,182] INFO in background_tasks: Merged and updated D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\bill_formats.json for BillFormats.
+[2026-01-02][14:45:50][app][INFO] 🔵 [Backend] [2026-01-02 20:15:50,408] INFO in background_tasks: Delta pull sync for UserStores completed successfully.
+[2026-01-02][14:45:50][app][INFO] 🔵 [Backend] [2026-01-02 20:15:50,408] INFO in background_tasks: Found 1 new/updated records for UserStores.
+[2026-01-02][14:45:50][app][INFO] 🔵 [Backend] [2026-01-02 20:15:50,408] INFO in background_tasks: Merged and updated D:\Siri-apps\Siri-billing-app\src-tauri\_MEI210842\data\json\userstores.json for UserStores.
+[2026-01-02][14:46:08][app][DEBUG] 🔍 Window unfocused
+[2026-01-02][14:48:59][app][INFO] =================================================
+[2026-01-02][14:48:59][app][INFO] 🚪 Window Close Requested
+[2026-01-02][14:48:59][app][INFO] =================================================
+[2026-01-02][14:48:59][app][INFO] 🔄 Terminating backend process (PID: 21084)
+[2026-01-02][14:48:59][app][WARN] ⚠️ [Backend] Terminated with code: Some(1)
+[2026-01-02][14:48:59][app][INFO] ✅ Backend terminated successfully
+[2026-01-02][14:48:59][app][WARN] 🛑 Backend sidecar process ended
+[2026-01-02][14:48:59][app][INFO] 🚪 Exit requested
+[2026-01-02][14:48:59][app][INFO] =================================================
+[2026-01-02][14:48:59][app][INFO] 🚪 App Exit Event
+[2026-01-02][14:48:59][app][INFO] =================================================
+[2026-01-02][14:48:59][app][INFO] =================================================

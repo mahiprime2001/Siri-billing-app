@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Siri Billing App",
   "version": "1.0.50",
-  "identifier": "com.SiriBillingApp.dev",
+  "identifier": "com.SiriBillingApp.app",
   "build": {
     "frontendDist": "../out",
     "devUrl": "http://localhost:3000",
@@ -10,7 +10,7 @@
     "beforeBuildCommand": "npm run build"
   },
   "app": {
-    "windows": [
+      "windows": [
       {
         "label": "main",
         "title": "Siri Billing App",
@@ -20,21 +20,25 @@
         "fullscreen": false,
         "maximized": true,
         "center": true,
-        "additionalBrowserArgs": "--disable-popup-blocking --allow-running-insecure-content --disable-web-security",
+        "decorations": true,
         "devtools": true
       }
     ],
     "security": {
       "csp": null,
       "capabilities": [
-        "main-capability"
+        "main-capability",
+        "default-capabilities"
       ]
-    }
+    },
+    "withGlobalTauri": true
   },
   "bundle": {
     "createUpdaterArtifacts": true,
     "active": true,
-    "targets": "all",
+    "targets": [
+      "msi"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/64x64.png",
@@ -56,7 +60,20 @@
     ],
     "externalBin": [
       "binaries/Siribilling-backend"
-    ]
+    ],
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "",
+      "wix": {
+        "language": "en-US"
+      },
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "installMode": "perMachine",
+        "displayLanguageSelector": false
+      }
+    }
   },
   "plugins": {
     "updater": {

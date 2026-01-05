@@ -12,7 +12,6 @@ import Updater from '@/components/Updater'
 import packageJson from '../package.json'
 import { apiClient } from '@/lib/api-client'
 import VersionDisplay from '@/components/VersionDisplay'
-import { UpdaterDebug } from '@/components/UpdaterDebug'
 
 declare global {
   interface Window {
@@ -160,10 +159,6 @@ export default function RootLayout({
           <VersionDisplay version={packageJson.version} />
         )}
         
-        {/* Optional: Updater debug panel (visible in installed Tauri app) */}
-        {showUpdaterDebug && typeof UpdaterDebug !== 'undefined' && (
-          <UpdaterDebug />
-        )}
       </body>
     </html>
   )

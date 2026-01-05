@@ -1,11 +1,34 @@
 {
-  "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "default",
-  "description": "enables the default permissions",
-  "windows": [
-    "main"
-  ],
+  "identifier": "default-capabilities",
+  "description": "Default capabilities including shell spawn and webview print permissions",
+  "windows": ["main"],
   "permissions": [
-    "core:default"
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        { "name": "binaries/Siriadmin-backend", "sidecar": true }
+      ]
+    },
+    {
+      "identifier": "core:webview:allow-print"
+    },
+    {
+      "identifier": "core:webview:allow-create-webview"
+    },
+    {
+      "identifier": "core:webview:allow-webview-show"
+    },
+    {
+      "identifier": "core:webview:allow-webview-hide"
+    },
+    {
+      "identifier": "core:webview:allow-webview-close"
+    },
+    {
+      "identifier": "core:window:allow-close"
+    },
+    {
+      "identifier": "core:window:allow-create"
+    }
   ]
 }

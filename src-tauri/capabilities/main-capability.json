@@ -1,37 +1,25 @@
 {
-  "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-capability",
-  "description": "Main capability for Siri Billing App",
+  "description": "Main capability for Siri Admin App",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "core:path:default",
     "core:window:default",
     "core:webview:default",
-    "core:webview:allow-create-webview-window",
     "shell:default",
     "shell:allow-execute",
-    "shell:allow-spawn",
+    "shell:allow-spawn", 
     "shell:allow-kill",
-    "shell:allow-open",
     "log:default",
     "log:allow-log",
-    "updater:default",
-    "updater:allow-check",
-    "updater:allow-download",
-    "updater:allow-install",
-    "updater:allow-download-and-install",
     "dialog:default",
-    "dialog:allow-ask",
-    "dialog:allow-message",
-    "dialog:allow-confirm",
-    "process:default",
-    "process:allow-restart",
+    "updater:default",
     {
       "identifier": "shell:allow-spawn",
       "allow": [
         {
-          "name": "Siribilling-backend",
+          "name": "Siriadmin-backend",
           "sidecar": true
         }
       ]

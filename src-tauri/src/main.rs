@@ -1,15 +1,104 @@
+// Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::sync::{Arc, Mutex};
 use std::process::Command;
 use std::fs;
 use std::path::PathBuf;
-use tauri::{Manager, RunEvent, WindowEvent};
+use std::time::Duration;
+use tauri::{Manager, RunEvent, WindowEvent, State};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_log::{Builder as LogBuilder, Target, TargetKind};
-use tauri_plugin_updater::UpdaterExt; // ✅ Add this import
+use tauri_plugin_updater::UpdaterExt;
 use log::{info, error, warn, debug};
+use serde::{Serialize, Deserialize};
+
+#[derive(Clone, Serialize, Deserialize)]
+struct UpdateInfo {
+    available: bool,
+    version: String,
+    current_version: String,
+    notes: String,
+    date: String,
+}
+
+// ============================================================================
+// UPDATER COMMANDS
+// ============================================================================
+
+#[tauri::command]
+async fn check_for_updates(app_handle: tauri::AppHandle) -> Result<String, String> {
+    info!("Checking for updates...");
+    match app_handle.updater() {
+        Ok(updater) => {
+            match updater.check().await {
+                Ok(Some(update)) => {
+                    info!("Update available: {:?}", update.version);
+                    Ok(format!("Update available: {}", update.version))
+                }
+                Ok(None) => {
+                    info!("No update available.");
+                    Ok("No update available.".to_string())
+                }
+                Err(e) => {
+                    error!("Failed to check for updates: {}", e);
+                    Err(format!("Failed to check for updates: {}", e))
+                }
+            }
+        }
+        Err(e) => {
+            error!("Failed to get updater: {}", e);
+            Err(format!("Failed to get updater: {}", e))
+        }
+    }
+}
+
+#[tauri::command]
+async fn install_update(app_handle: tauri::AppHandle) -> Result<String, String> {
+    info!("Installing update...");
+    match app_handle.updater() {
+        Ok(updater) => {
+            match updater.check().await {
+                Ok(Some(update)) => {
+                    info!("Update found, downloading and installing...");
+                    let mut downloaded = 0;
+                    match update.download_and_install(
+                        |chunk_length, content_length| {
+                            downloaded += chunk_length;
+                            info!("Downloaded {} from {:?}", downloaded, content_length);
+                        },
+                        || {
+                            info!("Download finished");
+                        },
+                    ).await {
+                        Ok(_) => {
+                            info!("Update installed successfully. Restart required.");
+                            Ok("Update installed. Please restart the app.".to_string())
+                        }
+                        Err(e) => {
+                            error!("Failed to download/install update: {}", e);
+                            Err(format!("Failed to download/install update: {}", e))
+                        }
+                    }
+                }
+                Ok(None) => {
+                    info!("No update available to install.");
+                    Ok("No update available to install.".to_string())
+                }
+                Err(e) => {
+                    error!("Failed to check for updates: {}", e);
+                    Err(format!("Failed to check for updates: {}", e))
+                }
+            }
+        }
+        Err(e) => {
+            error!("Failed to get updater: {}", e);
+            Err(format!("Failed to get updater: {}", e))
+        }
+    }
+}
+
 
 fn kill_process_tree(pid: u32) {
     #[cfg(target_os = "windows")]
@@ -33,7 +122,7 @@ fn kill_process_tree(pid: u32) {
 fn cleanup_old_logs(app_handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let app_data_dir = app_handle.path().app_data_dir()?;
     let logs_dir = app_data_dir.join("logs");
-
+    
     if logs_dir.exists() {
         println!("🧹 Cleaning old logs from: {:?}", logs_dir);
         if let Ok(entries) = fs::read_dir(&logs_dir) {
@@ -54,7 +143,7 @@ fn cleanup_old_logs(app_handle: &tauri::AppHandle) -> Result<(), Box<dyn std::er
     } else {
         println!("📁 Logs directory doesn't exist yet, will be created");
     }
-
+    
     Ok(())
 }
 
@@ -63,10 +152,7 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(
-            tauri_plugin_updater::Builder::new()
-                .build()
-        )
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(
             LogBuilder::new()
@@ -83,7 +169,7 @@ fn main() {
                 .build(),
         )
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![])
+        .invoke_handler(tauri::generate_handler![check_for_updates, install_update])  // ✅ Register command
         .setup({
             let child_handle = Arc::clone(&child_handle);
             move |app| {
@@ -103,30 +189,22 @@ fn main() {
                 info!("📂 App data directory: {:?}", app_data_dir);
                 info!("📝 Logs directory: {:?}", app_data_dir.join("logs"));
 
-                // ✅ LOG UPDATER CONFIGURATION
+                // Updater Configuration
                 info!("=================================================");
                 info!("🔄 Updater Configuration");
                 info!("=================================================");
-                
-                // Check if updater plugin is available
-                match app.updater() {
-                    Ok(updater) => {
-                        info!("✅ Updater plugin initialized successfully");
-                        info!("📡 Updater is ready to check for updates");
-                    }
-                    Err(e) => {
-                        error!("❌ Updater plugin initialization failed: {}", e);
-                    }
-                }
+                info!("✅ Updater plugin initialized successfully");
+                info!("📡 Updater command ready - frontend can call check_for_updates()");
 
                 let handle = app.app_handle();
 
+                // Backend Sidecar
                 info!("=================================================");
                 info!("🔌 Starting Backend Sidecar");
                 info!("=================================================");
 
                 let cmd = handle.shell().sidecar("Siribilling-backend")?;
-                let (mut rx, mut command_child) = cmd.spawn()?;
+                let (mut rx, command_child) = cmd.spawn()?;
                 let pid = command_child.pid();
 
                 info!("✅ Backend spawned successfully");
@@ -160,15 +238,25 @@ fn main() {
                     warn!("🛑 Backend sidecar process ended");
                 });
 
+                // Get the main webview window (Tauri v2)
                 let main_win = app.get_webview_window("main").unwrap();
-                let child_handle_clone = Arc::clone(&child_handle);
 
+                // Open DevTools automatically in debug builds
+                #[cfg(debug_assertions)]
+                {
+                    info!("🔧 Opening DevTools...");
+                    main_win.open_devtools();
+                }
+
+                // Window event handlers
+                let child_handle_clone = Arc::clone(&child_handle);
                 main_win.on_window_event(move |event| {
                     match event {
                         WindowEvent::CloseRequested { .. } => {
                             info!("=================================================");
                             info!("🚪 Window Close Requested");
                             info!("=================================================");
+
                             if let Some(child) = child_handle_clone.lock().unwrap().take() {
                                 let pid = child.pid();
                                 info!("🔄 Terminating backend process (PID: {})", pid);
@@ -204,15 +292,17 @@ fn main() {
                         info!("=================================================");
                         info!("🚪 App Exit Event");
                         info!("=================================================");
+
                         if let Some(child) = child_handle.lock().unwrap().take() {
                             let pid = child.pid();
                             info!("🔄 Cleaning up backend process (PID: {})", pid);
                             kill_process_tree(pid);
                             info!("✅ Cleanup complete");
                         }
+
                         info!("=================================================");
                     }
-                    RunEvent::ExitRequested { api, .. } => {
+                    RunEvent::ExitRequested { .. } => {
                         info!("🚪 Exit requested");
                     }
                     _ => {}
