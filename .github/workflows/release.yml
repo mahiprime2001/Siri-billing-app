@@ -1,4 +1,4 @@
-name: Tauri CI & Auto Release (pnpm + Cargo)
+name: Tauri CI & Auto Release (MSI only)
 
 on:
   push:
@@ -14,42 +14,28 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # --------------------------------------------------
       # 1. Checkout
-      # --------------------------------------------------
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # --------------------------------------------------
-      # 2. Setup Node.js
-      # --------------------------------------------------
+      # 2. Node
       - uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # --------------------------------------------------
-      # 3. Setup pnpm
-      # --------------------------------------------------
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
+      # 3. pnpm
+      - uses: pnpm/action-setup@v3
         with:
           version: 9
 
-      # --------------------------------------------------
-      # 4. Setup Rust
-      # --------------------------------------------------
+      # 4. Rust
       - uses: dtolnay/rust-toolchain@stable
 
-      # --------------------------------------------------
-      # 5. Install Tauri CLI
-      # --------------------------------------------------
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2.8" --locked
+      # 5. Tauri CLI
+      - run: cargo install tauri-cli --version "^2.8" --locked
 
-      # --------------------------------------------------
       # 6. Auto bump PATCH version
-      # --------------------------------------------------
       - name: Auto bump version
         id: bump
         shell: bash
@@ -61,100 +47,61 @@ jobs:
           jq ".version=\"$NEW\"" "$FILE" > tmp && mv tmp "$FILE"
           echo "version=$NEW" >> $GITHUB_OUTPUT
 
-      # --------------------------------------------------
       # 7. Commit version bump
-      # --------------------------------------------------
-      - name: Commit version bump
-        run: |
+      - run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add src-tauri/tauri.conf.json
           git commit -m "chore: release v${{ steps.bump.outputs.version }}"
           git push
 
-      # --------------------------------------------------
-      # 8. Install dependencies
-      # --------------------------------------------------
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      # 8. Install deps
+      - run: pnpm install --frozen-lockfile
 
-      # --------------------------------------------------
-      # 9. Build Tauri app
-      # --------------------------------------------------
-      - name: Build Tauri app
-        run: cargo tauri build --ci
+      # 9. Build (MSI only)
+      - name: Build Tauri (MSI)
+        run: cargo tauri build --ci --bundles msi
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      # --------------------------------------------------
-      # 10. Create latest.json (simple version)
-      # --------------------------------------------------
+      # 10. Create latest.json (MSI only)
       - name: Create latest.json
         shell: bash
         run: |
-          BUNDLE_DIR="src-tauri/target/release/bundle/nsis"
           MSI_DIR="src-tauri/target/release/bundle/msi"
           VERSION="${{ steps.bump.outputs.version }}"
           REPO="${{ github.repository }}"
           TAG="v$VERSION"
 
-          # Find files
-          EXE_FILE=$(ls "$BUNDLE_DIR"/*.exe 2>/dev/null | head -n 1)
-          MSI_FILE=$(ls "$MSI_DIR"/*.msi 2>/dev/null | head -n 1)
-          
-          EXE_NAME=$(basename "$EXE_FILE")
+          MSI_FILE=$(ls "$MSI_DIR"/*.msi | head -n 1)
           MSI_NAME=$(basename "$MSI_FILE")
-          
-          # Debug output
-          echo "📦 Built files:"
-          echo "   EXE: $EXE_NAME"
-          echo "   MSI: $MSI_NAME"
-
-          # URL encode spaces for GitHub URLs
-          EXE_URL=$(echo "$EXE_NAME" | sed 's/ /%20/g')
           MSI_URL=$(echo "$MSI_NAME" | sed 's/ /%20/g')
-
-          # Read signatures
-          EXE_SIG=$(cat "$EXE_FILE.sig")
           MSI_SIG=$(cat "$MSI_FILE.sig")
 
-          # Create latest.json
-          cat > "$BUNDLE_DIR/latest.json" <<EOF
+          cat > "$MSI_DIR/latest.json" <<EOF
           {
             "version": "$VERSION",
             "notes": "Auto release v$VERSION",
             "pub_date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
             "platforms": {
               "windows-x86_64": {
-                "signature": "$EXE_SIG",
-                "url": "https://github.com/$REPO/releases/download/$TAG/$EXE_URL",
-                "extras": {
-                  "msi": {
-                    "signature": "$MSI_SIG",
-                    "url": "https://github.com/$REPO/releases/download/$TAG/$MSI_URL"
-                  }
-                }
+                "url": "https://github.com/$REPO/releases/download/$TAG/$MSI_URL",
+                "signature": "$MSI_SIG"
               }
             }
           }
           EOF
 
-          echo "✅ latest.json created"
-          cat "$BUNDLE_DIR/latest.json"
-
-      # --------------------------------------------------
-      # 11. Create GitHub Release
-      # --------------------------------------------------
+      # 11. GitHub Release
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.bump.outputs.version }}
           name: v${{ steps.bump.outputs.version }}
           generate_release_notes: true
           files: |
-            src-tauri/target/release/bundle/**/*.exe
-            src-tauri/target/release/bundle/**/*.sig
-            src-tauri/target/release/bundle/**/*.msi
-            src-tauri/target/release/bundle/**/latest.json
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/msi/*.sig
+            src-tauri/target/release/bundle/msi/latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
