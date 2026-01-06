@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Siri-Billing-App",
-  "version": "1.0.50",
+  "version": "1.0.51",
   "identifier": "com.SiriBillingApp.app",
   "build": {
     "frontendDist": "../out",
@@ -10,7 +10,7 @@
     "beforeBuildCommand": "npm run build"
   },
   "app": {
-      "windows": [
+    "windows": [
       {
         "label": "main",
         "title": "Siri Billing App",
