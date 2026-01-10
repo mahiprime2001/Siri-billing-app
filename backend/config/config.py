@@ -1,19 +1,42 @@
 import os
+import sys
 from datetime import datetime
 
-# Define the base data directory path
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(BASE_DIR, 'data')
+# =========================================================
+# 🔒 SAFE BASE DIRECTORY (PyInstaller + Dev Compatible)
+# =========================================================
 
-# ✅ NEW: Subdirectories for organized storage
+def get_app_root():
+    """
+    Returns a writable application root directory.
+    - When frozen (PyInstaller): folder containing the EXE
+    - When running normally: project root
+    """
+    if getattr(sys, 'frozen', False):
+        # PyInstaller EXE directory
+        return os.path.dirname(sys.executable)
+    else:
+        # Normal Python execution
+        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+APP_ROOT = get_app_root()
+
+# =========================================================
+# 📁 DATA DIRECTORIES
+# =========================================================
+
+DATA_DIR = os.path.join(APP_ROOT, 'data')
 JSON_DIR = os.path.join(DATA_DIR, 'json')
 LOGS_DIR = os.path.join(DATA_DIR, 'logs')
 
-# ✅ Create directory structure
+# Create required directories
 os.makedirs(JSON_DIR, exist_ok=True)
 os.makedirs(LOGS_DIR, exist_ok=True)
 
-# ✅ UPDATED: JSON files now in data/json/
+# =========================================================
+# 📄 JSON FILE PATHS
+# =========================================================
+
 USERS_FILE = os.path.join(JSON_DIR, "users.json")
 PRODUCTS_FILE = os.path.join(JSON_DIR, "products.json")
 BILLS_FILE = os.path.join(JSON_DIR, "bills.json")
@@ -24,7 +47,10 @@ RETURNS_FILE = os.path.join(JSON_DIR, "returns.json")
 BILL_FORMATS_FILE = os.path.join(JSON_DIR, "bill_formats.json")
 USER_STORES_FILE = os.path.join(JSON_DIR, "userstores.json")
 
-# ✅ UPDATED: Log file now in data/logs/ with date suffix
+# =========================================================
+# 📝 LOGGING
+# =========================================================
+
 def get_log_file_path():
     """Generate log file path with current date"""
     today = datetime.now().strftime("%Y-%m-%d")
@@ -32,5 +58,8 @@ def get_log_file_path():
 
 LOG_FILE = get_log_file_path()
 
-# ✅ NEW: Log retention settings
+# =========================================================
+# 🧹 LOG RETENTION
+# =========================================================
+
 LOG_RETENTION_DAYS = 30  # Delete logs older than 30 days

@@ -6,6 +6,8 @@ use std::process::Command;
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
+use std::thread;
+
 use tauri::{Manager, RunEvent, WindowEvent, State};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
@@ -13,6 +15,7 @@ use tauri_plugin_log::{Builder as LogBuilder, Target, TargetKind};
 use tauri_plugin_updater::UpdaterExt;
 use log::{info, error, warn, debug};
 use serde::{Serialize, Deserialize};
+use reqwest::blocking::Client;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct UpdateInfo {
@@ -99,54 +102,6 @@ async fn install_update(app_handle: tauri::AppHandle) -> Result<String, String> 
     }
 }
 
-
-fn kill_process_tree(pid: u32) {
-    #[cfg(target_os = "windows")]
-    {
-        let _ = Command::new("taskkill")
-            .args(&["/PID", &pid.to_string(), "/T", "/F"])
-            .status()
-            .map_err(|e| error!("Failed to taskkill {}: {}", pid, e));
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = Command::new("kill")
-            .args(&["-TERM", &format!("-{}", pid)])
-            .status()
-            .map_err(|e| error!("Failed to kill -TERM {}: {}", pid, e));
-    }
-}
-
-/// Clean old log files on startup
-fn cleanup_old_logs(app_handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    let app_data_dir = app_handle.path().app_data_dir()?;
-    let logs_dir = app_data_dir.join("logs");
-    
-    if logs_dir.exists() {
-        println!("🧹 Cleaning old logs from: {:?}", logs_dir);
-        if let Ok(entries) = fs::read_dir(&logs_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_file() {
-                    if let Some(extension) = path.extension() {
-                        if extension == "log" {
-                            match fs::remove_file(&path) {
-                                Ok(_) => println!("✅ Deleted old log: {:?}", path.file_name()),
-                                Err(e) => eprintln!("❌ Failed to delete {:?}: {}", path, e),
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    } else {
-        println!("📁 Logs directory doesn't exist yet, will be created");
-    }
-    
-    Ok(())
-}
-
 fn main() {
     let child_handle: Arc<Mutex<Option<CommandChild>>> = Arc::new(Mutex::new(None));
 
@@ -169,7 +124,7 @@ fn main() {
                 .build(),
         )
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![check_for_updates, install_update])  // ✅ Register command
+        .invoke_handler(tauri::generate_handler![check_for_updates, install_update])
         .setup({
             let child_handle = Arc::clone(&child_handle);
             move |app| {
@@ -248,20 +203,64 @@ fn main() {
                     main_win.open_devtools();
                 }
 
-                // Window event handlers
+                // Window event handlers - 🆕 GRACEFUL SHUTDOWN
                 let child_handle_clone = Arc::clone(&child_handle);
                 main_win.on_window_event(move |event| {
                     match event {
                         WindowEvent::CloseRequested { .. } => {
                             info!("=================================================");
-                            info!("🚪 Window Close Requested");
+                            info!("🚪 Window Close Requested - Initiating Graceful Shutdown");
                             info!("=================================================");
 
+                            // 🆕 STEP 1: Send HTTP shutdown signal to Flask
+                            if let Some(child) = child_handle_clone.lock().unwrap().as_ref() {
+                                let pid = child.pid();
+                                info!("📡 Sending graceful shutdown request to backend PID: {}", pid);
+                                
+                                let client = Client::builder()
+                                    .timeout(Duration::from_secs(5))
+                                    .build()
+                                    .unwrap_or_else(|_| {
+                                        info!("⚠️ Failed to create reqwest client, skipping HTTP shutdown");
+                                        Client::new()
+                                    });
+                                    
+                                match client.post("http://localhost:8080/api/shutdown")
+                                    .body("shutdown from tauri")
+                                    .send() {
+                                        Ok(response) => {
+                                            info!("✅ Backend shutdown signal sent successfully: HTTP {}", response.status());
+                                        }
+                                        Err(e) => {
+                                            warn!("⚠️ Failed to send shutdown signal: {}. Will force kill.", e);
+                                        }
+                                }
+                            }
+
+                            // 🆕 STEP 2: Wait for graceful shutdown (5 seconds max)
+                            info!("⏳ Waiting 5 seconds for backend graceful shutdown...");
+                            thread::sleep(Duration::from_secs(5));
+
+                            // 🆕 STEP 3: Force kill if still running
                             if let Some(child) = child_handle_clone.lock().unwrap().take() {
                                 let pid = child.pid();
-                                info!("🔄 Terminating backend process (PID: {})", pid);
-                                kill_process_tree(pid);
-                                info!("✅ Backend terminated successfully");
+                                info!("🔄 Force terminating backend process (PID: {})", pid);
+                                
+                                #[cfg(target_os = "windows")]
+                                {
+                                    let _ = Command::new("taskkill")
+                                        .args(&["/PID", &pid.to_string(), "/T", "/F"])
+                                        .status();
+                                }
+                                
+                                #[cfg(not(target_os = "windows"))]
+                                {
+                                    let _ = Command::new("kill")
+                                        .args(&["-9", &pid.to_string()])
+                                        .status();
+                                }
+                                
+                                info!("✅ Backend force terminated");
                             }
                         }
                         WindowEvent::Focused(focused) => {
@@ -290,14 +289,29 @@ fn main() {
                 match event {
                     RunEvent::Exit => {
                         info!("=================================================");
-                        info!("🚪 App Exit Event");
+                        info!("🚪 App Exit Event - Final Cleanup");
                         info!("=================================================");
 
+                        // Final cleanup
                         if let Some(child) = child_handle.lock().unwrap().take() {
                             let pid = child.pid();
-                            info!("🔄 Cleaning up backend process (PID: {})", pid);
-                            kill_process_tree(pid);
-                            info!("✅ Cleanup complete");
+                            info!("🔄 Final cleanup of backend process (PID: {})", pid);
+                            
+                            #[cfg(target_os = "windows")]
+                            {
+                                let _ = Command::new("taskkill")
+                                    .args(&["/PID", &pid.to_string(), "/T", "/F"])
+                                    .status();
+                            }
+                            
+                            #[cfg(not(target_os = "windows"))]
+                            {
+                                let _ = Command::new("kill")
+                                    .args(&["-9", &pid.to_string()])
+                                    .status();
+                            }
+                            
+                            info!("✅ Final cleanup complete");
                         }
 
                         info!("=================================================");
@@ -309,4 +323,33 @@ fn main() {
                 }
             }
         });
+}
+
+/// Clean old log files on startup
+fn cleanup_old_logs(app_handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    let app_data_dir = app_handle.path().app_data_dir()?;
+    let logs_dir = app_data_dir.join("logs");
+    
+    if logs_dir.exists() {
+        println!("🧹 Cleaning old logs from: {:?}", logs_dir);
+        if let Ok(entries) = fs::read_dir(&logs_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(extension) = path.extension() {
+                        if extension == "log" {
+                            match fs::remove_file(&path) {
+                                Ok(_) => println!("✅ Deleted old log: {:?}", path.file_name()),
+                                Err(e) => eprintln!("❌ Failed to delete {:?}: {}", path, e),
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        println!("📁 Logs directory doesn't exist yet, will be created");
+    }
+    
+    Ok(())
 }
