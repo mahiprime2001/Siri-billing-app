@@ -122,7 +122,7 @@ export default function BillingAndCart() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [barcodeInput, setBarcodeInput] = useState("")
-  const [isScanning, setIsScanning] = useState(false)
+  const [lastScanned, setLastScanned] = useState<Product | null>(null)
   const [showAllProducts, setShowAllProducts] = useState(false)
   const [isLoadingProducts, setIsLoadingProducts] = useState(false) 
   // paperSize state moved to InvoicePreview
@@ -141,6 +141,10 @@ export default function BillingAndCart() {
   const [currentInvoice, setCurrentInvoice] = useState<Invoice | null>(null)
 
   const barcodeInputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+  barcodeInputRef.current?.focus()
+}, [])
+
 
   const activeBillingInstance = billingTabs.find((tab) => tab.id === activeTab)
 
@@ -464,52 +468,57 @@ export default function BillingAndCart() {
   })
 }
 
+  const normalizeBarcode = (code: string) => {
+  return code.trim().replace(/^0+/, "")
+}
 
-  const handleBarcodeSearch = () => {
-    const trimmedBarcodeInput = barcodeInput.trim();
-    console.log("handleBarcodeSearch called with input:", trimmedBarcodeInput);
-    console.log("Current products state:", products);
+const handleBarcodeSearch = () => {
+  const rawInput = barcodeInput.trim()
+  if (!rawInput) return
 
-    if (!trimmedBarcodeInput) return;
+  const input = normalizeBarcode(rawInput)
 
-    const product = products.find((p) => {
-      if (p.barcodes) {
-        const productBarcodes = p.barcodes.split(',').map(b => b.trim());
-        console.log(`Checking product ${p.name} (ID: ${p.id}) with barcodes:`, productBarcodes);
-        return productBarcodes.includes(trimmedBarcodeInput);
-      }
-      return false;
-    });
+  const product = products.find((p) => {
+    if (!p.barcodes) return false
 
-    if (product) {
-      console.log("Product found:", product);
-      addToCart(product.id, 1);
-      setBarcodeInput("");
-    } else {
-      console.log("Product not found for barcode:", trimmedBarcodeInput);
-      toast({
-        title: "Error",
-        description: "Product not found with this barcode.",
-        variant: "destructive",
-      })
-    }
-  };
+    const productBarcodes = p.barcodes
+      .split(",")
+      .map((b) => normalizeBarcode(b))
 
-  const handleBarcodeKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      handleBarcodeSearch()
-    }
-  }
+    return productBarcodes.includes(input)
+  })
 
-  const startBarcodeScanning = () => {
-    setIsScanning(true)
-    barcodeInputRef.current?.focus()
+  if (product) {
+    addToCart(product.id, 1)
+    setLastScanned(product)
+    setBarcodeInput("")
+
+    setTimeout(() => {
+      barcodeInputRef.current?.focus()
+    }, 0)
+  } else {
+    setBarcodeInput("")
     toast({
-      title: "Success",
-      description: "Barcode scanner ready! Scan or type barcode and press Enter.",
-      variant: "default",
+      title: "Not Found",
+      description: `No product found for barcode: ${rawInput}`,
+      variant: "destructive",
     })
+
+    setTimeout(() => {
+      barcodeInputRef.current?.focus()
+    }, 0)
   }
+}
+
+
+  const handleBarcodeKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  if (e.key === "Enter") {
+    e.preventDefault()
+    handleBarcodeSearch()
+  }
+}
+
+
 
   const removeFromCart = (id: string) => {
     if (!activeBillingInstance) return
@@ -874,31 +883,40 @@ console.log("  - Total:", billData.total_amount);
         {/* Left Column - Product Search & Barcode Scanner */}
         <div className="space-y-6">
           {/* Barcode Scanner */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <ScanLine className="h-5 w-5 mr-2" />
-                Barcode Scanner
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex space-x-2">
-                <Input
-                  ref={barcodeInputRef}
-                  placeholder="Scan or enter barcode/product ID"
-                  value={barcodeInput}
-                  onChange={(e) => setBarcodeInput(e.target.value)}
-                  onKeyPress={handleBarcodeKeyPress}
-                  className={isScanning ? "border-green-500 bg-green-50" : ""}
-                />
-                <Button onClick={startBarcodeScanning} variant="outline">
-                  <ScanLine className="h-4 w-4 mr-2" />
-                  Scan
-                </Button>
-              </div>
-              {isScanning && <p className="text-sm text-green-600">Scanner active - scan barcode or type manually</p>}
-            </CardContent>
-          </Card>
+<Card>
+  <CardHeader>
+    <CardTitle className="flex items-center">
+      <ScanLine className="h-5 w-5 mr-2" />
+      Barcode Scanner
+    </CardTitle>
+  </CardHeader>
+
+  <CardContent className="space-y-3">
+    <Input
+      ref={barcodeInputRef}
+      placeholder="Scan barcode here..."
+      value={barcodeInput}
+      onChange={(e) => setBarcodeInput(e.target.value)}
+      onKeyDown={handleBarcodeKeyPress}
+      className="text-lg font-mono"
+      autoComplete="off"
+      onFocus={(e) => e.target.select()}
+    />
+
+    <p className="text-sm text-green-600">
+      Scanner ready – scan continuously, press Enter to add
+    </p>
+
+    {lastScanned && (
+      <div className="text-sm text-gray-700 bg-gray-50 border rounded p-2">
+        Last scanned:{" "}
+        <span className="font-semibold">{lastScanned.name}</span> — ₹
+        {lastScanned.selling_price}
+      </div>
+    )}
+  </CardContent>
+</Card>
+
 
           {/* Product Search */}
           <Card>

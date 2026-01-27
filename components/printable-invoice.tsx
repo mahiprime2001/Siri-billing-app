@@ -57,17 +57,6 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
             }}
           >
             {/* Logo */}
-            <div style={{ textAlign: "center", marginBottom: 6 }}>
-              <img
-                src="https://dresscirclemalls.com/wp-content/uploads/2022/11/Dress-circle-logo-header.png"
-                alt="Company Logo"
-                style={{
-                  width: "95%", // full width usage
-                  height: "auto",
-                  margin: "0 auto",
-                }}
-              />
-            </div>
 
             {/* Header */}
             <div style={{ textAlign: "center", marginBottom: 6 }}>

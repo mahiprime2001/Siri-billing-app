@@ -85,72 +85,79 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
   }
 
   const fetchBillingHistory = useCallback(async () => {
-    if (!currentStore) {
-      console.log("No current store selected")
-      return
-    }
+  if (!currentStore) {
+    console.log("No current store selected")
+    return
+  }
 
-    try {
-      console.log(`Fetching billing history for store: ${currentStore.id}`)
-      const token = localStorage.getItem("token")
-      const response = await apiClient(`/api/bills?store_id=${currentStore.id}&limit=100`, {
+  try {
+    console.log(`Fetching billing history for store: ${currentStore.id}`)
+
+    // ❌ DO NOT read localStorage here
+    // ❌ DO NOT set Authorization header here
+    // ✅ Let apiClient + authManager handle the token
+
+    const response = await apiClient(
+      `/api/bills?store_id=${currentStore.id}&limit=100`,
+      {
         method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
       }
+    )
 
-      const bills: RawInvoice[] = await response.json()
-
-      // Normalize backend snake_case fields into the frontend camelCase `Invoice` shape
-      const normalized = bills.map((b) => ({
-        id: b.id,
-        storeId: b.storeid || b.store_id || b.storeId || "",
-        storeName: b.storeName || b.stores?.name || b.companyName || "",
-        storeAddress: b.storeAddress || b.stores?.address || b.companyAddress || "",
-        storePhone: b.storePhone || b.stores?.phone || b.companyPhone || "",
-        customerId: b.customerid || b.customer_id || b.customerId || "",
-        customerName: b.customerName || b.customers?.name || "",
-        customerPhone: b.customerPhone || b.customers?.phone || "",
-        customerEmail: b.customerEmail || b.customers?.email || "",
-        customerAddress: b.customerAddress || b.customers?.address || "",
-        userId: b.userid || b.user_id || b.userId || "",
-        subtotal: b.subtotal ?? 0,
-        taxPercentage: b.taxpercentage ?? b.tax_percentage ?? 0,
-        taxAmount: b.taxamount ?? b.tax_amount ?? 0,
-        discountPercentage: b.discountpercentage ?? b.discount_percentage ?? 0,
-        discountAmount: b.discountamount ?? b.discount_amount ?? 0,
-        total: b.total ?? 0,
-        paymentMethod: b.paymentmethod || b.payment_method || b.paymentMethod || "Cash",
-        timestamp: b.timestamp || b.created_at || new Date().toISOString(),
-        status: b.status || "completed",
-        createdBy: b.createdby || b.created_by || b.createdBy || "",
-        createdAt: b.created_at || b.createdAt || new Date().toISOString(),
-        updatedAt: b.updated_at || b.updatedAt || new Date().toISOString(),
-        notes: b.notes || "",
-        gstin: b.gstin || "",
-        companyName: b.companyName || "",
-        companyAddress: b.companyAddress || "",
-        companyPhone: b.companyPhone || "",
-        companyEmail: b.companyEmail || "",
-        billFormat: b.billFormat || b.bill_format || "Thermal 80mm",
-        items: b.items || [],
-      }))
-
-      // Sort by timestamp (most recent first)
-      normalized.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-
-      setInvoices(normalized)
-      setFilteredInvoices(normalized)
-      console.log(`✅ Loaded ${normalized.length} invoices from backend`)
-    } catch (error) {
-      console.error("❌ Failed to fetch billing history:", error)
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
-  }, [currentStore])
+
+    const bills: RawInvoice[] = await response.json()
+
+    const normalized = bills.map((b) => ({
+      id: b.id,
+      storeId: b.storeid || b.store_id || b.storeId || "",
+      storeName: b.storeName || b.stores?.name || b.companyName || "",
+      storeAddress: b.storeAddress || b.stores?.address || b.companyAddress || "",
+      storePhone: b.storePhone || b.stores?.phone || b.companyPhone || "",
+      customerId: b.customerid || b.customer_id || b.customerId || "",
+      customerName: b.customerName || b.customers?.name || "",
+      customerPhone: b.customerPhone || b.customers?.phone || "",
+      customerEmail: b.customerEmail || b.customers?.email || "",
+      customerAddress: b.customerAddress || b.customers?.address || "",
+      userId: b.userid || b.user_id || b.userId || "",
+      subtotal: b.subtotal ?? 0,
+      taxPercentage: b.taxpercentage ?? b.tax_percentage ?? 0,
+      taxAmount: b.taxamount ?? b.tax_amount ?? 0,
+      discountPercentage: b.discountpercentage ?? b.discount_percentage ?? 0,
+      discountAmount: b.discountamount ?? b.discount_amount ?? 0,
+      total: b.total ?? 0,
+      paymentMethod: b.paymentmethod || b.payment_method || b.paymentMethod || "Cash",
+      timestamp: b.timestamp || b.created_at || new Date().toISOString(),
+      status: b.status || "completed",
+      createdBy: b.createdby || b.created_by || b.createdBy || "",
+      createdAt: b.created_at || b.createdAt || new Date().toISOString(),
+      updatedAt: b.updated_at || b.updatedAt || new Date().toISOString(),
+      notes: b.notes || "",
+      gstin: b.gstin || "",
+      companyName: b.companyName || "",
+      companyAddress: b.companyAddress || "",
+      companyPhone: b.companyPhone || "",
+      companyEmail: b.companyEmail || "",
+      billFormat: b.billFormat || b.bill_format || "Thermal 80mm",
+      items: b.items || [],
+    }))
+
+    normalized.sort(
+      (a: any, b: any) =>
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    )
+
+    setInvoices(normalized)
+    setFilteredInvoices(normalized)
+
+    console.log(`✅ Loaded ${normalized.length} invoices from backend`)
+  } catch (error) {
+    console.error("❌ Failed to fetch billing history:", error)
+  }
+}, [currentStore])
+
 
   useEffect(() => {
     fetchBillingHistory()
