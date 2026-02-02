@@ -33,8 +33,8 @@ import { useRouter } from "next/navigation"
 import { useToast } from "@/components/ui/use-toast"
 import { LogOut } from "lucide-react"
 import { useOnlineStatus } from "@/hooks/use-online-status"
-import { useIsMobile } from "@/hooks/use-mobile" // Import useIsMobile hook
-import { apiClient } from "@/lib/api-client"; // Import apiClient
+import { useIsMobile } from "@/hooks/use-mobile"
+import { apiClient } from "@/lib/api-client"
 
 interface User {
   id: string;
@@ -57,7 +57,7 @@ interface UserStore {
 interface Product {
   id: string;
   name: string;
-  selling_price: number; // Changed from 'price' to 'selling_price'
+  selling_price: number;
   stock: number;
   createdAt: string;
   updatedAt: string;
@@ -69,23 +69,19 @@ interface CartItem {
   productId: string;
   name: string;
   quantity: number;
-  price: number; // This 'price' in CartItem will now store the selling_price of the product
+  price: number;
   total: number;
-  gstRate: number; // Retaining gstRate for potential use in invoice details, but it will be 0 for products
   barcodes?: string;
 }
 
 interface Settings {
   id: number;
   gstin: string;
-  taxPercentage: number;
   companyName: string;
   companyAddress: string;
   companyPhone: string;
   companyEmail: string;
 }
-
-// Uses global `Invoice` declared in app/globals.d.ts
 
 interface BillingInstance {
   id: string
@@ -99,7 +95,6 @@ interface BillingInstance {
 }
 
 const SUGGESTED_DISCOUNTS = [5]
-const DEFAULT_GST_RATE = 0
 
 const createNewBillingInstance = (id: string): BillingInstance => ({
   id,
@@ -115,8 +110,8 @@ const createNewBillingInstance = (id: string): BillingInstance => ({
 export default function BillingAndCart() {
   const router = useRouter()
   const { toast } = useToast()
-  const isOnline = useOnlineStatus() // Get online status
-  const isMobile = useIsMobile() // Use the hook
+  const isOnline = useOnlineStatus()
+  const isMobile = useIsMobile()
   const [products, setProducts] = useState<Product[]>([])
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([])
   const [settings, setSettings] = useState<Settings | null>(null)
@@ -124,8 +119,7 @@ export default function BillingAndCart() {
   const [barcodeInput, setBarcodeInput] = useState("")
   const [lastScanned, setLastScanned] = useState<Product | null>(null)
   const [showAllProducts, setShowAllProducts] = useState(false)
-  const [isLoadingProducts, setIsLoadingProducts] = useState(false) 
-  // paperSize state moved to InvoicePreview
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false)
 
   const [users, setUsers] = useState<User[]>([])
   const [stores, setStores] = useState<Store[]>([])
@@ -136,58 +130,42 @@ export default function BillingAndCart() {
   const [billingTabs, setBillingTabs] = useState<BillingInstance[]>([createNewBillingInstance("bill-1")])
   const [activeTab, setActiveTab] = useState<string>("bill-1")
 
-  // Invoice preview
   const [showPreview, setShowPreview] = useState(false)
   const [currentInvoice, setCurrentInvoice] = useState<Invoice | null>(null)
 
   const barcodeInputRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
-  barcodeInputRef.current?.focus()
-}, [])
-
+    barcodeInputRef.current?.focus()
+  }, [])
 
   const activeBillingInstance = billingTabs.find((tab) => tab.id === activeTab)
 
   const calculateSubtotal = useCallback(() => {
     if (!activeBillingInstance) return 0
     const subtotal = activeBillingInstance.cartItems.reduce((sum, item) => sum + item.total, 0)
-    return Math.round(subtotal * 100) / 100 // Round to 2 decimal places
+    return Math.round(subtotal * 100) / 100
   }, [activeBillingInstance])
 
   const calculateDiscountAmount = useCallback(() => {
     if (!activeBillingInstance) return 0
     const subtotal = calculateSubtotal()
     const discountAmount = (subtotal * activeBillingInstance.discount) / 100
-    return Math.round(discountAmount * 100) / 100 // Round to 2 decimal places
+    return Math.round(discountAmount * 100) / 100
   }, [activeBillingInstance, calculateSubtotal])
 
-  const calculateTaxableAmount = useCallback(() => {
-    const taxableAmount = calculateSubtotal() - calculateDiscountAmount()
-    return Math.round(taxableAmount * 100) / 100 // Round to 2 decimal places
+  const calculateFinalTotal = useCallback(() => {
+    const finalTotal = calculateSubtotal() - calculateDiscountAmount()
+    return Math.round(finalTotal * 100) / 100
   }, [calculateSubtotal, calculateDiscountAmount])
 
-  const calculateTaxAmount = useCallback(() => {
-    if (!settings) return 0
-    const taxableAmount = calculateTaxableAmount()
-    const taxAmount = (taxableAmount * (settings.taxPercentage || 0)) / 100
-    return Math.round(taxAmount * 100) / 100 // Round to 2 decimal places
-  }, [settings, calculateTaxableAmount])
-
-  const calculateFinalTotal = useCallback(() => {
-    const finalTotal = calculateTaxableAmount() + calculateTaxAmount()
-    return Math.round(finalTotal * 100) / 100 // Round to 2 decimal places
-  }, [calculateTaxableAmount, calculateTaxAmount])
-
-  // Effect to update editableTotal when cart, discount, or settings change, unless actively editing
   useEffect(() => {
     if (activeBillingInstance && !activeBillingInstance.isEditingTotal) {
       const finalTotal = calculateFinalTotal();
-      // Only update if the calculated finalTotal is different from the current editableTotal
       if (finalTotal !== activeBillingInstance.editableTotal) {
         updateBillingInstance(activeTab, { editableTotal: finalTotal });
       }
     }
-  }, [activeBillingInstance?.cartItems, activeBillingInstance?.discount, settings, calculateFinalTotal, activeTab, activeBillingInstance?.isEditingTotal, activeBillingInstance?.editableTotal]);
+  }, [activeBillingInstance?.cartItems, activeBillingInstance?.discount, calculateFinalTotal, activeTab, activeBillingInstance?.isEditingTotal, activeBillingInstance?.editableTotal]);
 
   useEffect(() => {
     fetchProducts()
@@ -195,12 +173,9 @@ export default function BillingAndCart() {
     fetchUserData()
   }, [isOnline])
 
-  // ✅ FIXED: Effect to fetch current user and store (no auth redirects)
-    // ✅ FIXED: Effect to fetch current user and store
   useEffect(() => {
     const fetchCurrentUserAndStore = async () => {
       try {
-        // Fetch user data
         const userRes = await apiClient("/api/auth/me");
         
         if (!userRes.ok) {
@@ -209,18 +184,14 @@ export default function BillingAndCart() {
         }
         
         const userData = await userRes.json();
-        
-        // ✅ Handle both response formats: { user: {...} } or direct user object
         const user = userData.user || userData;
         setCurrentUser(user);
         console.log('✅ User data loaded:', user);
 
-        // Fetch ALL stores
         try {
           const storesRes = await apiClient("/api/stores");
           if (storesRes.ok) {
             const storesData = await storesRes.json();
-            // ✅ Handle both array and { stores: [] } format
             const storesArray = Array.isArray(storesData) ? storesData : storesData.stores || [];
             setStores(storesArray);
             console.log('✅ All stores loaded:', storesArray.length, 'stores');
@@ -229,7 +200,6 @@ export default function BillingAndCart() {
           console.error("Failed to fetch stores:", err);
         }
 
-        // Fetch user-store associations
         try {
           const userStoresRes = await apiClient("/api/user-stores");
           if (userStoresRes.ok) {
@@ -241,7 +211,6 @@ export default function BillingAndCart() {
           console.error("Failed to fetch user stores:", err);
         }
 
-        // ✅ NEW: Fetch current user's assigned store directly (with full details)
         try {
           const currentStoreRes = await apiClient("/api/stores/current");
           if (currentStoreRes.ok) {
@@ -256,7 +225,6 @@ export default function BillingAndCart() {
           console.error("Failed to fetch current store:", err);
         }
 
-        // Fetch products and settings
         fetchProducts();
         fetchSettings();
 
@@ -269,9 +237,6 @@ export default function BillingAndCart() {
     fetchCurrentUserAndStore();
   }, [router]);
 
-
-
-  // Effect to set the store based on the current user
   useEffect(() => {
     if (currentUser && stores && userStores && stores.length > 0 && userStores.length > 0) {
       const userStoreMapping = userStores.find(us => us.userId === currentUser.id);
@@ -304,7 +269,6 @@ export default function BillingAndCart() {
     }
   };
 
-
   useEffect(() => {
     if (searchTerm.trim() === "") {
       setFilteredProducts(showAllProducts ? products : [])
@@ -324,12 +288,9 @@ export default function BillingAndCart() {
     )
   }
 
-
-    const fetchProducts = async () => {
+  const fetchProducts = async () => {
     try {
       setIsLoadingProducts(true);
-      
-      // ✅ This endpoint now returns store inventory data, not products table
       const response = await apiClient("/api/products");
       
       if (!response.ok) {
@@ -338,7 +299,6 @@ export default function BillingAndCart() {
       
       const data = await response.json();
       console.log("✅ Fetched store inventory products:", data.length, "items");
-      console.log("📦 Sample product:", data[0]);
       
       setProducts(data);
       setFilteredProducts([]);
@@ -355,46 +315,31 @@ export default function BillingAndCart() {
     }
   };
 
-
   const fetchSettings = async () => {
-  try {
-    console.log("⚙️ Fetching system settings...")
-    const response = await apiClient("/api/settings")
-    
-    if (!response.ok) {
-      throw new Error("Failed to fetch settings")
-    }
-    
-    let data = await response.json()
-    if (Array.isArray(data) && data.length > 0) {
-      data = data[0]
-    }
-    if (data && data.taxPercentage) {
-      data.taxPercentage = parseFloat(data.taxPercentage)
-    }
-    
-    console.log("✅ Settings loaded:", data)
-    console.log("📊 Tax percentage:", data?.taxPercentage)
-    
-    setSettings(data)
-    
-    if (!data || data.taxPercentage === undefined) {
+    try {
+      console.log("⚙️ Fetching system settings...")
+      const response = await apiClient("/api/settings")
+      
+      if (!response.ok) {
+        throw new Error("Failed to fetch settings")
+      }
+      
+      let data = await response.json()
+      if (Array.isArray(data) && data.length > 0) {
+        data = data[0]
+      }
+      
+      console.log("✅ Settings loaded:", data)
+      setSettings(data)
+    } catch (error) {
+      console.error("❌ Error fetching settings:", error)
       toast({
-        title: "Settings Warning",
-        description: "Tax percentage not configured. Please check system settings.",
-        variant: "destructive"
+        title: "Settings Error",
+        description: "Failed to load system settings",
+        variant: "destructive",
       })
     }
-  } catch (error) {
-    console.error("❌ Error fetching settings:", error)
-    toast({
-      title: "Settings Error",
-      description: "Failed to load system settings",
-      variant: "destructive",
-    })
   }
-}
-
 
   const fetchUserData = async () => {
     try {
@@ -419,106 +364,101 @@ export default function BillingAndCart() {
     }
   }
 
-
   const addToCart = (productId: string, qty = 1) => {
-  if (!activeBillingInstance) return
-  const product = products.find((p) => p.id === productId)
-  if (!product) return
+    if (!activeBillingInstance) return
+    const product = products.find((p) => p.id === productId)
+    if (!product) return
 
-  console.log("🛒 Adding to cart:", {
-    product: product.name,
-    price: product.selling_price,
-    quantity: qty
-  })
-
-  const existingItem = activeBillingInstance.cartItems.find((item) => item.productId === product.id)
-
-  let updatedCartItems: CartItem[]
-  if (existingItem) {
-    console.log("📦 Item exists, updating quantity:", existingItem.quantity, "→", existingItem.quantity + qty)
-    updatedCartItems = activeBillingInstance.cartItems.map((item) =>
-      item.productId === product.id
-        ? { ...item, quantity: item.quantity + qty, total: (item.quantity + qty) * item.price }
-        : item,
-    )
-  } else {
-    console.log("✨ New item added to cart")
-    const newItem: CartItem = {
-      id: Date.now().toString(),
-      productId: product.id,
-      name: product.name,
-      quantity: qty,
-      price: Number(product.selling_price),
-      total: Number(product.selling_price) * qty,
-      barcodes: product.barcodes?.split(',')[0] || '',
-      gstRate: 0,
-    }
-    updatedCartItems = [...activeBillingInstance.cartItems, newItem]
-  }
-
-  const newSubtotal = updatedCartItems.reduce((sum, item) => sum + item.total, 0)
-  console.log("🧮 Updated cart items:", updatedCartItems)
-  console.log("💰 New subtotal:", newSubtotal)
-
-  updateBillingInstance(activeTab, { cartItems: updatedCartItems })
-  
-  toast({
-    title: "Added to Cart",
-    description: `${product.name} x${qty}`,
-  })
-}
-
-  const normalizeBarcode = (code: string) => {
-  return code.trim().replace(/^0+/, "")
-}
-
-const handleBarcodeSearch = () => {
-  const rawInput = barcodeInput.trim()
-  if (!rawInput) return
-
-  const input = normalizeBarcode(rawInput)
-
-  const product = products.find((p) => {
-    if (!p.barcodes) return false
-
-    const productBarcodes = p.barcodes
-      .split(",")
-      .map((b) => normalizeBarcode(b))
-
-    return productBarcodes.includes(input)
-  })
-
-  if (product) {
-    addToCart(product.id, 1)
-    setLastScanned(product)
-    setBarcodeInput("")
-
-    setTimeout(() => {
-      barcodeInputRef.current?.focus()
-    }, 0)
-  } else {
-    setBarcodeInput("")
-    toast({
-      title: "Not Found",
-      description: `No product found for barcode: ${rawInput}`,
-      variant: "destructive",
+    console.log("🛒 Adding to cart:", {
+      product: product.name,
+      price: product.selling_price,
+      quantity: qty
     })
 
-    setTimeout(() => {
-      barcodeInputRef.current?.focus()
-    }, 0)
-  }
-}
+    const existingItem = activeBillingInstance.cartItems.find((item) => item.productId === product.id)
 
+    let updatedCartItems: CartItem[]
+    if (existingItem) {
+      console.log("📦 Item exists, updating quantity:", existingItem.quantity, "→", existingItem.quantity + qty)
+      updatedCartItems = activeBillingInstance.cartItems.map((item) =>
+        item.productId === product.id
+          ? { ...item, quantity: item.quantity + qty, total: (item.quantity + qty) * item.price }
+          : item,
+      )
+    } else {
+      console.log("✨ New item added to cart")
+      const newItem: CartItem = {
+        id: Date.now().toString(),
+        productId: product.id,
+        name: product.name,
+        quantity: qty,
+        price: Number(product.selling_price),
+        total: Number(product.selling_price) * qty,
+        barcodes: product.barcodes?.split(',')[0] || '',
+      }
+      updatedCartItems = [...activeBillingInstance.cartItems, newItem]
+    }
+
+    const newSubtotal = updatedCartItems.reduce((sum, item) => sum + item.total, 0)
+    console.log("🧮 Updated cart items:", updatedCartItems)
+    console.log("💰 New subtotal:", newSubtotal)
+
+    updateBillingInstance(activeTab, { cartItems: updatedCartItems })
+    
+    toast({
+      title: "Added to Cart",
+      description: `${product.name} x${qty}`,
+    })
+  }
+
+  const normalizeBarcode = (code: string) => {
+    return code.trim().replace(/^0+/, "")
+  }
+
+  const handleBarcodeSearch = () => {
+    const rawInput = barcodeInput.trim()
+    if (!rawInput) return
+
+    const input = normalizeBarcode(rawInput)
+
+    const product = products.find((p) => {
+      if (!p.barcodes) return false
+
+      const productBarcodes = p.barcodes
+        .split(",")
+        .map((b) => normalizeBarcode(b))
+
+      return productBarcodes.includes(input)
+    })
+
+    if (product) {
+      addToCart(product.id, 1)
+      setLastScanned(product)
+      setBarcodeInput("")
+
+      setTimeout(() => {
+        barcodeInputRef.current?.focus()
+      }, 0)
+    } else {
+      setBarcodeInput("")
+      toast({
+        title: "Not Found",
+        description: `No product found for barcode: ${rawInput}`,
+        variant: "destructive",
+      })
+
+      setTimeout(() => {
+        barcodeInputRef.current?.focus()
+      }, 0)
+    }
+  }
 
   const handleBarcodeKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-  if (e.key === "Enter") {
-    e.preventDefault()
-    handleBarcodeSearch()
+    if (e.key === "Enter") {
+      e.preventDefault()
+      handleBarcodeSearch()
+    }
   }
-}
-
-
 
   const removeFromCart = (id: string) => {
     if (!activeBillingInstance) return
@@ -544,11 +484,9 @@ const handleBarcodeSearch = () => {
     updateBillingInstance(activeTab, { editableTotal: newTotal, isEditingTotal: true })
 
     const subtotal = calculateSubtotal()
-    const currentTaxAmount = calculateTaxAmount()
-    const targetTaxableAmount = newTotal - currentTaxAmount
 
     if (subtotal > 0) {
-      const newDiscountAmount = subtotal - targetTaxableAmount
+      const newDiscountAmount = subtotal - newTotal
       const newDiscountPercentage = Math.min(5, Math.max(0, (newDiscountAmount / subtotal) * 100))
       updateBillingInstance(activeTab, {
         discount: Math.round(newDiscountPercentage * 100) / 100,
@@ -619,14 +557,13 @@ const handleBarcodeSearch = () => {
       customerPhone: activeBillingInstance.customerPhone || "",
       customerAddress: "",
       customerId: "",
-      // Required system fields to satisfy global Invoice type
       userId: currentUser?.id || "",
       status: "pending",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       subtotal: calculateSubtotal(),
-      taxPercentage: settings?.taxPercentage || 0,
-      taxAmount: calculateTaxAmount(),
+      taxPercentage: 0,
+      taxAmount: 0,
       discountPercentage: activeBillingInstance.discount,
       discountAmount: calculateDiscountAmount(),
       total: activeBillingInstance.editableTotal,
@@ -647,97 +584,108 @@ const handleBarcodeSearch = () => {
   }
 
   const handleSaveInvoice = async (invoiceToSave: Invoice, isReplay = false) => {
-  // Check if online
-  if (!isOnline) {
-    toast({
-      title: "Error",
-      description: "Cannot save invoice while offline. Please connect to the internet.",
-      variant: "destructive",
-    });
-    return false;
-  }
-
-  try {
-    console.log("💾 Saving invoice:", invoiceToSave);
-
-    // ✅ Transform invoice data to match Flask backend expectations
-    const billData = {
-  store_id: invoiceToSave.storeId,
-  customer_name: invoiceToSave.customerName || 'Walk-in Customer',
-  customer_phone: invoiceToSave.customerPhone || '',
-  customer_email: invoiceToSave.customerEmail || '',
-  customer_address: invoiceToSave.customerAddress || '',
-  subtotal: invoiceToSave.subtotal,  // ✅ ADD THIS LINE
-  tax_percentage: invoiceToSave.taxPercentage,  // ✅ ADD THIS LINE
-  tax_amount: invoiceToSave.taxAmount,
-  discount_percentage: invoiceToSave.discountPercentage,  // ✅ ADD THIS LINE
-  discount_amount: invoiceToSave.discountAmount,
-  total_amount: invoiceToSave.total,
-  payment_method: invoiceToSave.paymentMethod,
-  notes: invoiceToSave.notes || '',
-  items: invoiceToSave.items.map((item: any) => ({
-    product_id: item.productId,
-    quantity: item.quantity,
-    unit_price: item.price,
-    item_total: item.total
-  }))
-};
-
-// ✅ ADD THESE DEBUG LOGS
-console.log("📤 Sending bill data to backend:", billData);
-console.log("📊 Breakdown:");
-console.log("  - Subtotal:", billData.subtotal);
-console.log("  - Tax %:", billData.tax_percentage);
-console.log("  - Tax Amount:", billData.tax_amount);
-console.log("  - Discount %:", billData.discount_percentage);
-console.log("  - Discount Amount:", billData.discount_amount);
-console.log("  - Total:", billData.total_amount);
-
-    // ✅ Changed from /api/billing/save to /api/bills
-    const response = await apiClient("/api/bills", {
-      method: "POST",
-      body: JSON.stringify(billData),
-    });
-
-    console.log("📥 Response status:", response.status);
-
-    if (response.ok) {
-      const result = await response.json();
-      console.log("✅ Bill saved successfully:", result);
-
+    if (!isOnline) {
       toast({
-        title: "Success",
-        description: `Invoice ${isReplay ? "synced" : "saved"} successfully!`,
-        variant: "default",
+        title: "Error",
+        description: "Cannot save invoice while offline. Please connect to the internet.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    try {
+      console.log("💾 Saving invoice:", invoiceToSave);
+
+      const billData = {
+        store_id: invoiceToSave.storeId,
+        customer_name: invoiceToSave.customerName || 'Walk-in Customer',
+        customer_phone: invoiceToSave.customerPhone || '',
+        customer_email: invoiceToSave.customerEmail || '',
+        customer_address: invoiceToSave.customerAddress || '',
+        subtotal: invoiceToSave.subtotal,
+        tax_percentage: 0,
+        tax_amount: 0,
+        discount_percentage: invoiceToSave.discountPercentage,
+        discount_amount: invoiceToSave.discountAmount,
+        total_amount: invoiceToSave.total,
+        payment_method: invoiceToSave.paymentMethod,
+        notes: invoiceToSave.notes || '',
+        items: invoiceToSave.items.map((item: any) => ({
+          product_id: item.productId,
+          quantity: item.quantity,
+          unit_price: item.price,
+          item_total: item.total
+        }))
+      };
+
+      console.log("📤 Sending bill data to backend:", billData);
+
+      const response = await apiClient("/api/bills", {
+        method: "POST",
+        body: JSON.stringify(billData),
       });
 
-      // Reset the current tab only if it's not a replay
-      if (!isReplay) {
-        const newId = `bill-${Date.now()}`;
-        const newTabs = billingTabs.map((tab) =>
-          tab.id === activeTab ? createNewBillingInstance(newId) : tab
-        );
-        setBillingTabs(newTabs);
-        setActiveTab(newId);
+      console.log("📥 Response status:", response.status);
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log("✅ Bill saved successfully:", result);
+
+        toast({
+          title: "Success",
+          description: `Invoice ${isReplay ? "synced" : "saved"} successfully!`,
+          variant: "default",
+        });
+
+        if (!isReplay) {
+          const newId = `bill-${Date.now()}`;
+          const newTabs = billingTabs.map((tab) =>
+            tab.id === activeTab ? createNewBillingInstance(newId) : tab
+          );
+          setBillingTabs(newTabs);
+          setActiveTab(newId);
+        }
+
+        setShowPreview(false);
+        return true;
+      } else {
+        let errorMessage = "Failed to save invoice";
+        let errorDetails = "";
+
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+          errorDetails = errorData.error || "";
+          console.error("❌ Server error response:", errorData);
+        } catch (parseError) {
+          const textError = await response.text();
+          console.error("❌ Non-JSON error response:", textError.substring(0, 200));
+          errorMessage = `Server error: ${response.status} ${response.statusText}`;
+        }
+
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+
+        if (errorDetails) {
+          console.error("❌ Error details:", errorDetails);
+        }
+
+        return false;
       }
+    } catch (error: any) {
+      console.error("❌ Error saving invoice:", error);
 
-      setShowPreview(false);
-      return true;
-    } else {
-      // ✅ Better error handling - try to parse JSON error, fallback to text
-      let errorMessage = "Failed to save invoice";
-      let errorDetails = "";
-
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.message || errorData.error || errorMessage;
-        errorDetails = errorData.error || "";
-        console.error("❌ Server error response:", errorData);
-      } catch (parseError) {
-        // If response is not JSON (e.g., HTML 404 page)
-        const textError = await response.text();
-        console.error("❌ Non-JSON error response:", textError.substring(0, 200));
-        errorMessage = `Server error: ${response.status} ${response.statusText}`;
+      let errorMessage = "An error occurred while saving the invoice.";
+      
+      if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        errorMessage = "Network error: Cannot connect to server. Check if backend is running.";
       }
 
       toast({
@@ -745,43 +693,15 @@ console.log("  - Total:", billData.total_amount);
         description: errorMessage,
         variant: "destructive",
       });
-
-      // Show additional error details in console
-      if (errorDetails) {
-        console.error("❌ Error details:", errorDetails);
-      }
-
+      
       return false;
     }
-  } catch (error: any) {
-    console.error("❌ Error saving invoice:", error);
-
-    // ✅ Better error handling for network errors
-    let errorMessage = "An error occurred while saving the invoice.";
-    
-    if (error.message) {
-      errorMessage = error.message;
-    }
-    
-    if (error.name === 'TypeError' && error.message.includes('fetch')) {
-      errorMessage = "Network error: Cannot connect to server. Check if backend is running.";
-    }
-
-    toast({
-      title: "Error",
-      description: errorMessage,
-      variant: "destructive",
-    });
-    
-    return false;
-  }
-};
-
+  };
 
   const handlePrintAndSave = async (invoiceToPrintAndSave: Invoice) => {
     const saved = await handleSaveInvoice(invoiceToPrintAndSave)
     if (saved) {
-      // Printing functionality is now expected to be handled by the InvoicePreview component.
+      // Printing functionality is handled by InvoicePreview component
     }
   }
 
@@ -804,7 +724,7 @@ console.log("  - Total:", billData.total_amount);
   }
 
   const closeTab = (tabId: string) => {
-    if (billingTabs.length === 1) return // Prevent closing the last tab
+    if (billingTabs.length === 1) return
 
     const tabIndex = billingTabs.findIndex((tab) => tab.id === tabId)
     const newTabs = billingTabs.filter((tab) => tab.id !== tabId)
@@ -817,7 +737,7 @@ console.log("  - Total:", billData.total_amount);
   }
 
   if (!activeBillingInstance) {
-    return <div>Loading...</div> // Or some other placeholder
+    return <div>Loading...</div>
   }
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -855,7 +775,7 @@ console.log("  - Total:", billData.total_amount);
           description: "Products uploaded successfully!",
           variant: "default",
         })
-        fetchProducts(); // Refresh product list
+        fetchProducts();
       } else {
         const errorData = await response.json();
         toast({
@@ -871,7 +791,7 @@ console.log("  - Total:", billData.total_amount);
         variant: "destructive",
       })
     } finally {
-      event.target.value = ""; // Clear the file input
+      event.target.value = "";
     }
   };
 
@@ -883,40 +803,36 @@ console.log("  - Total:", billData.total_amount);
         {/* Left Column - Product Search & Barcode Scanner */}
         <div className="space-y-6">
           {/* Barcode Scanner */}
-<Card>
-  <CardHeader>
-    <CardTitle className="flex items-center">
-      <ScanLine className="h-5 w-5 mr-2" />
-      Barcode Scanner
-    </CardTitle>
-  </CardHeader>
-
-  <CardContent className="space-y-3">
-    <Input
-      ref={barcodeInputRef}
-      placeholder="Scan barcode here..."
-      value={barcodeInput}
-      onChange={(e) => setBarcodeInput(e.target.value)}
-      onKeyDown={handleBarcodeKeyPress}
-      className="text-lg font-mono"
-      autoComplete="off"
-      onFocus={(e) => e.target.select()}
-    />
-
-    <p className="text-sm text-green-600">
-      Scanner ready – scan continuously, press Enter to add
-    </p>
-
-    {lastScanned && (
-      <div className="text-sm text-gray-700 bg-gray-50 border rounded p-2">
-        Last scanned:{" "}
-        <span className="font-semibold">{lastScanned.name}</span> — ₹
-        {lastScanned.selling_price}
-      </div>
-    )}
-  </CardContent>
-</Card>
-
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <ScanLine className="h-5 w-5 mr-2" />
+                Barcode Scanner
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Input
+                ref={barcodeInputRef}
+                placeholder="Scan barcode here..."
+                value={barcodeInput}
+                onChange={(e) => setBarcodeInput(e.target.value)}
+                onKeyDown={handleBarcodeKeyPress}
+                className="text-lg font-mono"
+                autoComplete="off"
+                onFocus={(e) => e.target.select()}
+              />
+              <p className="text-sm text-green-600">
+                Scanner ready – scan continuously, press Enter to add
+              </p>
+              {lastScanned && (
+                <div className="text-sm text-gray-700 bg-gray-50 border rounded p-2">
+                  Last scanned:{" "}
+                  <span className="font-semibold">{lastScanned.name}</span> — ₹
+                  {lastScanned.selling_price}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Product Search */}
           <Card>
@@ -939,7 +855,6 @@ console.log("  - Total:", billData.total_amount);
                 />
               </div>
 
-              {/* Upload Products Button */}
               <div className="flex items-center space-x-2">
                 <Input
                   id="json-upload"
@@ -1119,7 +1034,6 @@ console.log("  - Total:", billData.total_amount);
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
-                        {/* Quick Discount Buttons */}
                         <div className="space-y-2">
                           <Label>Quick Discount Options</Label>
                           <div className="flex flex-wrap gap-2">
@@ -1143,7 +1057,6 @@ console.log("  - Total:", billData.total_amount);
                           </div>
                         </div>
 
-                        {/* Custom Discount & Editable Total */}
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
                             <Label htmlFor={`customDiscount-${tab.id}`}>Custom Discount (%)</Label>
@@ -1177,7 +1090,7 @@ console.log("  - Total:", billData.total_amount);
                       <CardHeader>
                         <CardTitle className="flex items-center">
                           <Receipt className="h-5 w-5 mr-2" />
-                          Tax Invoice Summary
+                          Invoice Summary
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
@@ -1189,13 +1102,6 @@ console.log("  - Total:", billData.total_amount);
                           <div className="flex justify-between text-lg">
                             <span>Discount ({tab.discount.toFixed(2)}%):</span>
                             <span className="text-green-600">-₹{calculateDiscountAmount().toLocaleString()}</span>
-                          </div>
-
-                          <div className="flex justify-between text-lg">
-                            <span>
-                              Tax ({settings?.taxPercentage || 0}%):
-                            </span>
-                            <span className="text-purple-600">+₹{calculateTaxAmount().toLocaleString()}</span>
                           </div>
                           <div className="border-t pt-3">
                             <div className="flex justify-between text-2xl font-bold">
@@ -1219,7 +1125,6 @@ console.log("  - Total:", billData.total_amount);
                           )}
                         </div>
 
-                        {/* Invoice Settings & Actions */}
                         <div className="mt-6 space-y-4">
                           <Button
                             onClick={handlePreview}
@@ -1228,7 +1133,7 @@ console.log("  - Total:", billData.total_amount);
                             size="lg"
                           >
                             <FileText className="h-4 w-4 mr-2" />
-                            Generate Tax Invoice
+                            Generate Invoice
                           </Button>
                         </div>
                       </CardContent>

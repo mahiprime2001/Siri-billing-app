@@ -1,7 +1,6 @@
 "use client";
 import React, { forwardRef } from "react";
 
-
 interface PrintableInvoiceProps {
   invoice: Invoice;
   paperSize: string;
@@ -14,7 +13,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
       return Number(value).toLocaleString();
     };
 
-    const pageWidth = "80mm"; // full roll width
+    const pageWidth = "80mm";
 
     const safeInvoice = {
       ...invoice,
@@ -22,7 +21,6 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
       total: invoice.total || 0,
       discountPercentage: invoice.discountPercentage || 0,
       discountAmount: invoice.discountAmount || 0,
-      taxAmount: invoice.taxAmount || 0,
       items:
         invoice.items?.map((item) => ({
           ...item,
@@ -56,8 +54,6 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
               color: "#000",
             }}
           >
-            {/* Logo */}
-
             {/* Header */}
             <div style={{ textAlign: "center", marginBottom: 6 }}>
               <div style={{ fontWeight: "bold", fontSize: 14 }}>
@@ -66,7 +62,9 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
               <div style={{ fontSize: 10 }}>{safeInvoice.companyAddress}</div>
               <div style={{ fontSize: 10 }}>Ph: {safeInvoice.companyPhone}</div>
               <div style={{ fontSize: 10 }}>Email: {safeInvoice.companyEmail}</div>
-              <div style={{ fontSize: 10 }}>GSTIN: {safeInvoice.gstin}</div>
+              {safeInvoice.gstin && (
+                <div style={{ fontSize: 10 }}>GSTIN: {safeInvoice.gstin}</div>
+              )}
             </div>
 
             <hr style={{ border: "none", borderTop: "1px dashed #000" }} />
@@ -126,10 +124,6 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
                   <span>-₹{formatNumber(safeInvoice.discountAmount)}</span>
                 </div>
               )}
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>Tax</span>
-                <span>₹{formatNumber(safeInvoice.taxAmount)}</span>
-              </div>
               <div
                 style={{
                   display: "flex",
