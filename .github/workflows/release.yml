@@ -108,7 +108,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # --------------------------------------------------
+           # --------------------------------------------------
       # 9. Setup Python
       # --------------------------------------------------
       - name: Setup Python
@@ -117,13 +117,12 @@ jobs:
           python-version: '3.11'
 
       # --------------------------------------------------
-      # 10. Install pip and uv
+      # 10. Setup uv
       # --------------------------------------------------
-      - name: Install uv
-        shell: bash
-        run: |
-          pip install --upgrade pip
-          pip install uv
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
 
       # --------------------------------------------------
       # 11. Install Python dependencies with uv
@@ -141,12 +140,12 @@ jobs:
         shell: bash
         run: |
           cd backend
-          pyinstaller --onefile --name backend your_main_script.py
+          uv run pyinstaller --onefile --name backend your_main_script.py
           echo "✅ PyInstaller build complete"
           ls -lah dist/
 
       # --------------------------------------------------
-      # 13. Copy backend executable to Tauri binaries
+      # 13. Copy backend binary to Tauri binaries
       # --------------------------------------------------
       - name: Copy backend binary to Tauri
         shell: bash
