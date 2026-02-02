@@ -82,7 +82,7 @@ jobs:
           # Pull and push with retry logic
           echo "🔄 Attempting to push changes..."
           for i in {1..3}; do
-            echo "   Attempt $i/3"
+            echo "  Attempt $i/3"
             if git pull --rebase origin ${{ github.ref_name }}; then
               if git push; then
                 echo "✅ Successfully pushed version bump"
@@ -109,7 +109,55 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # --------------------------------------------------
-      # 9. Build Tauri app (MSI only)
+      # 9. Setup Python
+      # --------------------------------------------------
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # --------------------------------------------------
+      # 10. Install pip and uv
+      # --------------------------------------------------
+      - name: Install uv
+        shell: bash
+        run: |
+          pip install --upgrade pip
+          pip install uv
+
+      # --------------------------------------------------
+      # 11. Install Python dependencies with uv
+      # --------------------------------------------------
+      - name: Install Python dependencies
+        shell: bash
+        run: |
+          cd backend
+          uv sync
+
+      # --------------------------------------------------
+      # 12. Build Python backend with PyInstaller
+      # --------------------------------------------------
+      - name: Build backend executable
+        shell: bash
+        run: |
+          cd backend
+          pyinstaller --onefile --name backend your_main_script.py
+          echo "✅ PyInstaller build complete"
+          ls -lah dist/
+
+      # --------------------------------------------------
+      # 13. Copy backend executable to Tauri binaries
+      # --------------------------------------------------
+      - name: Copy backend binary to Tauri
+        shell: bash
+        run: |
+          mkdir -p src-tauri/binaries
+          cp backend/dist/*.exe src-tauri/binaries/
+          echo "✅ Copied backend executable to src-tauri/binaries"
+          ls -lah src-tauri/binaries/
+
+      # --------------------------------------------------
+      # 14. Build Tauri app (MSI only)
       # --------------------------------------------------
       - name: Build Tauri (MSI only)
         run: cargo tauri build --ci --bundles msi
@@ -118,7 +166,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       # --------------------------------------------------
-      # 10. Debug - Show built files
+      # 15. Debug - Show built files
       # --------------------------------------------------
       - name: Debug built files
         shell: bash
@@ -133,7 +181,7 @@ jobs:
           ls src-tauri/target/release/bundle/msi/*.sig
 
       # --------------------------------------------------
-      # 11. Create latest.json (MSI only)
+      # 16. Create latest.json (MSI only)
       # --------------------------------------------------
       - name: Create latest.json
         shell: bash
@@ -142,58 +190,56 @@ jobs:
           VERSION="${{ steps.bump.outputs.version }}"
           REPO="${{ github.repository }}"
           TAG="v$VERSION"
-
+          
           # Find MSI file
           MSI_FILE=$(ls "$MSI_DIR"/*.msi 2>/dev/null | head -n 1)
-          
           if [ -z "$MSI_FILE" ]; then
             echo "❌ No MSI file found in $MSI_DIR"
             ls -la "$MSI_DIR"
             exit 1
           fi
-
+          
           # Verify signature exists
           if [ ! -f "$MSI_FILE.sig" ]; then
             echo "❌ MSI signature file not found: $MSI_FILE.sig"
             exit 1
           fi
-
+          
           # Get filename and signature
           MSI_NAME=$(basename "$MSI_FILE")
           MSI_SIG=$(cat "$MSI_FILE.sig")
-
+          
           echo "📦 MSI File: $MSI_NAME"
           echo "🔗 Download URL: https://github.com/$REPO/releases/download/$TAG/$MSI_NAME"
-
+          
           # Create latest.json
           cat > "$MSI_DIR/latest.json" <<EOF
           {
             "version": "$VERSION",
-            "notes": "Auto release v$VERSION",
-            "pub_date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "notes": "Auto-release v$VERSION",
+            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "platforms": {
               "windows-x86_64": {
-                "url": "https://github.com/$REPO/releases/download/$TAG/$MSI_NAME",
-                "signature": "$MSI_SIG"
+                "signature": "$MSI_SIG",
+                "url": "https://github.com/$REPO/releases/download/$TAG/$MSI_NAME"
               }
             }
           }
           EOF
-
-          echo ""
-          echo "✅ latest.json created successfully"
-          echo "📄 Contents:"
+          
+          echo "✅ Created latest.json:"
           cat "$MSI_DIR/latest.json"
 
       # --------------------------------------------------
-      # 12. Create GitHub Release
+      # 17. Create GitHub Release
       # --------------------------------------------------
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.bump.outputs.version }}
-          name: v${{ steps.bump.outputs.version }}
-          generate_release_notes: true
+          name: Release v${{ steps.bump.outputs.version }}
+          draft: false
+          prerelease: false
           files: |
             src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/msi/*.sig
