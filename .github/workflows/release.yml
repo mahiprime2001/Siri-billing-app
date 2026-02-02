@@ -140,7 +140,7 @@ jobs:
         shell: bash
         run: |
           cd backend
-          uv run pyinstaller --onefile --name backend your_main_script.py
+          uv run pyinstaller --clean --runtime-tmpdir . --name "Siribilling-backend-x86_64-pc-windows-msvc" --onefile --add-data ".env:." --add-data "utils:utils" --add-data "config:config" --add-data "logger:logger" --add-data "background_tasks:background_tasks" --add-data "routes:routes" --add-data "auth:auth" --add-data "data_access:data_access" --add-data "helpers:helpers" --add-data "notifications:notifications" --add-data "session_logging:session_logging"  main.py
           echo "✅ PyInstaller build complete"
           ls -lah dist/
 
