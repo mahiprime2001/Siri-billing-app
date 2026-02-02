@@ -15,4 +15,5 @@ dependencies = [
     "supabase>=2.24.0",
     "flask-jwt-extended>=4.7.1",
     "bcrypt>=5.0.0",
+    "pyinstaller>=6.18.0",
 ]
