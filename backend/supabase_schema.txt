@@ -49,10 +49,6 @@ CREATE TABLE public.bills (
   customerid character varying,
   userid character varying,
   subtotal numeric,
-  taxpercentage numeric,
-  taxamount numeric,
-  discountpercentage numeric,
-  discountamount numeric,
   total numeric,
   paymentmethod character varying,
   timestamp timestamp without time zone,
@@ -60,6 +56,8 @@ CREATE TABLE public.bills (
   createdby character varying,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  discount_amount numeric DEFAULT 0,
+  discount_percentage numeric DEFAULT 0,
   CONSTRAINT bills_pkey PRIMARY KEY (id),
   CONSTRAINT bills_ibfk_1 FOREIGN KEY (storeid) REFERENCES public.stores(id),
   CONSTRAINT bills_ibfk_2 FOREIGN KEY (createdby) REFERENCES public.users(id),
@@ -116,20 +114,17 @@ CREATE TABLE public.products (
   createdat timestamp without time zone,
   updatedat timestamp without time zone,
   barcode character varying,
+  tax numeric DEFAULT 0,
   CONSTRAINT products_pkey PRIMARY KEY (id),
   CONSTRAINT fk_products_batch FOREIGN KEY (batchid) REFERENCES public.batch(id)
 );
 CREATE TABLE public.returns (
   s_no integer NOT NULL DEFAULT nextval('returns_s_no_seq'::regclass),
   return_id character varying NOT NULL,
-  product_name character varying NOT NULL,
   product_id character varying,
-  customer_name character varying,
-  customer_phone_number character varying,
   message text,
   refund_method USER-DEFINED DEFAULT 'cash'::refund_method_enum,
   bill_id character varying,
-  item_index integer,
   return_amount numeric,
   status USER-DEFINED DEFAULT 'pending'::return_status_enum,
   created_by character varying,
@@ -137,8 +132,10 @@ CREATE TABLE public.returns (
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   original_quantity integer,
   return_quantity integer,
+  customer_id character varying,
   CONSTRAINT returns_pkey PRIMARY KEY (s_no),
-  CONSTRAINT returns_ibfk_2 FOREIGN KEY (product_id) REFERENCES public.products(id)
+  CONSTRAINT returns_ibfk_2 FOREIGN KEY (product_id) REFERENCES public.products(id),
+  CONSTRAINT returns_customer_fk FOREIGN KEY (customer_id) REFERENCES public.customers(id)
 );
 CREATE TABLE public.storeinventory (
   id character varying NOT NULL,

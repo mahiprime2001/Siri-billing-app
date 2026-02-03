@@ -3,7 +3,7 @@ from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
 from utils.connection_pool import get_supabase_client
 
-product_bp = Blueprint('product', __name__)  # ✅ FIXED THIS LINE
+product_bp = Blueprint('product', __name__)
 
 @product_bp.route('/products', methods=['GET'])
 @require_auth
@@ -13,7 +13,6 @@ def get_products():
         current_user_id = get_jwt_identity()
         app.logger.info(f"📦 User {current_user_id} fetching store inventory products")
         
-        # Get search/filter parameters
         search = request.args.get('search', '').strip()
         limit = request.args.get('limit', 100, type=int)
         
@@ -32,7 +31,7 @@ def get_products():
         store_id = user_store_response.data[0]['storeId']
         app.logger.info(f"📍 Fetching inventory for store: {store_id}")
         
-        # ✅ Step 2: Get storeinventory data (PRIMARY SOURCE)
+        # ✅ Step 2: Get storeinventory data
         inventory_query = supabase.table('storeinventory') \
             .select('id, storeid, productid, quantity, minstocklevel, maxstocklevel, assignedat, updatedat') \
             .eq('storeid', store_id)
@@ -46,19 +45,18 @@ def get_products():
         inventory_items = inventory_response.data
         app.logger.info(f"📦 Found {len(inventory_items)} inventory items")
         
-        # ✅ Step 3: Get product IDs from inventory
+        # ✅ Step 3: Get product IDs
         product_ids = [item['productid'] for item in inventory_items if item.get('productid')]
         
         if not product_ids:
             app.logger.warning(f"⚠️ No product IDs found in inventory")
             return jsonify([]), 200
         
-        # ✅ Step 4: Get ONLY product names and barcodes from products table
+        # ✅ Step 4: Get product details INCLUDING tax field
         products_query = supabase.table('products') \
-            .select('id, name, barcode, selling_price, price') \
+            .select('id, name, barcode, selling_price, price, tax') \
             .in_('id', product_ids)
         
-        # Apply search filter if provided
         if search:
             products_query = products_query.or_(
                 f'name.ilike.%{search}%,barcode.ilike.%{search}%'
@@ -71,33 +69,27 @@ def get_products():
             return jsonify([]), 200
         
         products = products_response.data
-        
-        # ✅ Step 5: Create a map of product IDs to product info
         product_info_map = {p['id']: p for p in products}
         
-        # ✅ Step 6: Build final product list with storeinventory as PRIMARY source
+        # ✅ Step 5: Build final product list
         final_products = []
         for inv_item in inventory_items:
             product_id = inv_item.get('productid')
             
-            # Skip if product doesn't exist or doesn't match search
             if product_id not in product_info_map:
                 continue
             
             product_info = product_info_map[product_id]
             
-            # ✅ Build product object with storeinventory as primary source
             product = {
                 'id': product_id,
-                # Only name and barcode from products table
                 'name': product_info.get('name', 'Unknown Product'),
                 'barcode': product_info.get('barcode', ''),
-                'barcodes': product_info.get('barcode', ''),  # For compatibility
+                'barcodes': product_info.get('barcode', ''),
                 'selling_price': product_info.get('selling_price', 0),
                 'price': product_info.get('price', 0),
-                
-                # ✅ ALL inventory data from storeinventory table
-                'stock': inv_item.get('quantity', 0),  # THIS IS THE KEY - stock from storeinventory
+                'tax': product_info.get('tax', 0),  # ✅ ADDED TAX FIELD
+                'stock': inv_item.get('quantity', 0),
                 'quantity': inv_item.get('quantity', 0),
                 'store_quantity': inv_item.get('quantity', 0),
                 'minstocklevel': inv_item.get('minstocklevel', 0),
@@ -105,7 +97,7 @@ def get_products():
                 'assignedat': inv_item.get('assignedat'),
                 'updatedat': inv_item.get('updatedat'),
                 'storeid': inv_item.get('storeid'),
-                'inventory_id': inv_item.get('id'),  # Store inventory record ID
+                'inventory_id': inv_item.get('id'),
             }
             
             final_products.append(product)
@@ -130,7 +122,7 @@ def get_product(product_id):
         
         supabase = get_supabase_client()
         
-        # ✅ Get user's store ID
+        # Get user's store ID
         user_store_response = supabase.table('userstores') \
             .select('storeId') \
             .eq('userId', current_user_id) \
@@ -141,7 +133,7 @@ def get_product(product_id):
         
         store_id = user_store_response.data[0]['storeId']
         
-        # ✅ Get from storeinventory
+        # Get from storeinventory
         inventory_response = supabase.table('storeinventory') \
             .select('*') \
             .eq('storeid', store_id) \
@@ -153,9 +145,9 @@ def get_product(product_id):
         
         inv_item = inventory_response.data[0]
         
-        # ✅ Get product name, barcode, and prices only
+        # Get product details including tax
         product_response = supabase.table('products') \
-            .select('id, name, barcode, selling_price, price') \
+            .select('id, name, barcode, selling_price, price, tax') \
             .eq('id', product_id) \
             .execute()
         
@@ -164,7 +156,6 @@ def get_product(product_id):
         
         product_info = product_response.data[0]
         
-        # ✅ Build response with storeinventory as primary source
         product = {
             'id': product_id,
             'name': product_info.get('name'),
@@ -172,7 +163,8 @@ def get_product(product_id):
             'barcodes': product_info.get('barcode', ''),
             'selling_price': product_info.get('selling_price', 0),
             'price': product_info.get('price', 0),
-            'stock': inv_item.get('quantity', 0),  # From storeinventory
+            'tax': product_info.get('tax', 0),  # ✅ ADDED TAX FIELD
+            'stock': inv_item.get('quantity', 0),
             'quantity': inv_item.get('quantity', 0),
             'minstocklevel': inv_item.get('minstocklevel', 0),
             'maxstocklevel': inv_item.get('maxstocklevel'),

@@ -21,6 +21,9 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
       total: invoice.total || 0,
       discountPercentage: invoice.discountPercentage || 0,
       discountAmount: invoice.discountAmount || 0,
+      cgst: invoice.cgst || 0,
+      sgst: invoice.sgst || 0,
+      taxAmount: invoice.taxAmount || 0,
       items:
         invoice.items?.map((item) => ({
           ...item,
@@ -87,6 +90,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
               {safeInvoice.customerPhone && (
                 <div>Phone: {safeInvoice.customerPhone}</div>
               )}
+              <div>Billed by: {safeInvoice.billedBy || "N/A"}</div>
             </div>
 
             <hr style={{ border: "none", borderTop: "1px dashed #000" }} />
@@ -124,6 +128,19 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
                   <span>-₹{formatNumber(safeInvoice.discountAmount)}</span>
                 </div>
               )}
+              {/* CGST and SGST */}
+              {(safeInvoice.cgst > 0 || safeInvoice.sgst > 0) && (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>CGST</span>
+                    <span>₹{formatNumber(safeInvoice.cgst)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>SGST</span>
+                    <span>₹{formatNumber(safeInvoice.sgst)}</span>
+                  </div>
+                </>
+              )}
               <div
                 style={{
                   display: "flex",
@@ -138,11 +155,28 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
               </div>
             </div>
 
+            <hr style={{ border: "none", borderTop: "1px dashed #000", marginTop: 6 }} />
+
             {/* Footer */}
             <div style={{ textAlign: "center", fontSize: 10, marginTop: 6 }}>
-              <div>Thank you for your business!</div>
               <div>This is a computer-generated invoice</div>
-              <div>{new Date().toLocaleString()}</div>
+              
+              {/* ✅ Savings Message - BOLD */}
+              {safeInvoice.discountPercentage > 0 && safeInvoice.discountAmount > 0 && (
+                <div style={{ fontWeight: "bold", marginTop: 4, marginBottom: 4 }}>
+                  You have saved ₹{formatNumber(safeInvoice.discountAmount)} by shopping here!
+                </div>
+              )}
+              
+              {/* ✅ Thank You Message */}
+              <div style={{ marginTop: 6 }}>
+                <div style={{ fontWeight: "bold" }}>Thank You!</div>
+                <div>Please visit us again</div>
+              </div>
+              
+              <div style={{ marginTop: 4, fontSize: 9 }}>
+                {new Date().toLocaleString()}
+              </div>
             </div>
           </div>
         </div>

@@ -5,6 +5,7 @@ declare module '*.css' {
 
 interface Invoice {
   id: string;
+  billedBy?: string;
   storeId: string;
   customerId: string;
   userId: string;
@@ -14,6 +15,8 @@ interface Invoice {
   discountPercentage: number;
   discountAmount: number;
   total: number;
+  cgst: number;
+  sgst: number;
   paymentMethod: string;
   timestamp: string;
   status: string;

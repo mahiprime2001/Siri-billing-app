@@ -62,6 +62,7 @@ interface Product {
   createdAt: string;
   updatedAt: string;
   barcodes?: string;
+  tax: number;  // ✅ Tax percentage from products table
 }
 
 interface CartItem {
@@ -69,9 +70,11 @@ interface CartItem {
   productId: string;
   name: string;
   quantity: number;
-  price: number;
-  total: number;
+  price: number;  // This is the BASE price (without tax)
+  sellingPrice: number;  // This is the original selling price (with tax)
+  total: number;  // quantity * base price
   barcodes?: string;
+  taxPercentage: number;  // Tax % for this product
 }
 
 interface Settings {
@@ -140,8 +143,16 @@ export default function BillingAndCart() {
 
   const activeBillingInstance = billingTabs.find((tab) => tab.id === activeTab)
 
+  // ✅ Calculate base price from selling price (reverse calculation)
+  const calculateBasePrice = (sellingPrice: number, taxPercentage: number): number => {
+    // Formula: base_price = selling_price / (1 + tax_percentage/100)
+    const basePrice = sellingPrice / (1 + taxPercentage / 100)
+    return Math.round(basePrice * 100) / 100
+  }
+
   const calculateSubtotal = useCallback(() => {
     if (!activeBillingInstance) return 0
+    // Subtotal = sum of (base_price * quantity) for all items
     const subtotal = activeBillingInstance.cartItems.reduce((sum, item) => sum + item.total, 0)
     return Math.round(subtotal * 100) / 100
   }, [activeBillingInstance])
@@ -153,10 +164,42 @@ export default function BillingAndCart() {
     return Math.round(discountAmount * 100) / 100
   }, [activeBillingInstance, calculateSubtotal])
 
-  const calculateFinalTotal = useCallback(() => {
-    const finalTotal = calculateSubtotal() - calculateDiscountAmount()
-    return Math.round(finalTotal * 100) / 100
+  const calculateTaxableAmount = useCallback(() => {
+    // Taxable amount = subtotal - discount
+    const taxableAmount = calculateSubtotal() - calculateDiscountAmount()
+    return Math.round(taxableAmount * 100) / 100
   }, [calculateSubtotal, calculateDiscountAmount])
+
+  const calculateTotalTax = useCallback(() => {
+    if (!activeBillingInstance) return { cgst: 0, sgst: 0, total: 0 }
+    
+    const taxableAmount = calculateTaxableAmount()
+    
+    // Calculate weighted average tax from all items
+    let totalTaxAmount = 0
+    
+    activeBillingInstance.cartItems.forEach(item => {
+      const itemTaxableAmount = item.total - (item.total * activeBillingInstance.discount / 100)
+      const itemTaxAmount = (itemTaxableAmount * item.taxPercentage) / 100
+      totalTaxAmount += itemTaxAmount
+    })
+    
+    const cgst = totalTaxAmount / 2
+    const sgst = totalTaxAmount / 2
+    
+    return {
+      cgst: Math.round(cgst * 100) / 100,
+      sgst: Math.round(sgst * 100) / 100,
+      total: Math.round(totalTaxAmount * 100) / 100
+    }
+  }, [activeBillingInstance, calculateTaxableAmount])
+
+  const calculateFinalTotal = useCallback(() => {
+    const taxableAmount = calculateTaxableAmount()
+    const tax = calculateTotalTax()
+    const finalTotal = taxableAmount + tax.total
+    return Math.round(finalTotal)  // ✅ Round to nearest integer
+  }, [calculateTaxableAmount, calculateTotalTax])
 
   useEffect(() => {
     if (activeBillingInstance && !activeBillingInstance.isEditingTotal) {
@@ -299,6 +342,7 @@ export default function BillingAndCart() {
       
       const data = await response.json();
       console.log("✅ Fetched store inventory products:", data.length, "items");
+      console.log("📦 Sample product with tax:", data[0]);
       
       setProducts(data);
       setFilteredProducts([]);
@@ -369,9 +413,14 @@ export default function BillingAndCart() {
     const product = products.find((p) => p.id === productId)
     if (!product) return
 
+    // ✅ Calculate base price (without tax)
+    const basePrice = calculateBasePrice(product.selling_price, product.tax || 0)
+
     console.log("🛒 Adding to cart:", {
       product: product.name,
-      price: product.selling_price,
+      sellingPrice: product.selling_price,
+      tax: product.tax,
+      basePrice: basePrice,
       quantity: qty
     })
 
@@ -382,7 +431,11 @@ export default function BillingAndCart() {
       console.log("📦 Item exists, updating quantity:", existingItem.quantity, "→", existingItem.quantity + qty)
       updatedCartItems = activeBillingInstance.cartItems.map((item) =>
         item.productId === product.id
-          ? { ...item, quantity: item.quantity + qty, total: (item.quantity + qty) * item.price }
+          ? { 
+              ...item, 
+              quantity: item.quantity + qty, 
+              total: (item.quantity + qty) * item.price 
+            }
           : item,
       )
     } else {
@@ -392,16 +445,14 @@ export default function BillingAndCart() {
         productId: product.id,
         name: product.name,
         quantity: qty,
-        price: Number(product.selling_price),
-        total: Number(product.selling_price) * qty,
+        price: basePrice,  // Base price without tax
+        sellingPrice: product.selling_price,  // Original selling price
+        total: basePrice * qty,
         barcodes: product.barcodes?.split(',')[0] || '',
+        taxPercentage: product.tax || 0,
       }
       updatedCartItems = [...activeBillingInstance.cartItems, newItem]
     }
-
-    const newSubtotal = updatedCartItems.reduce((sum, item) => sum + item.total, 0)
-    console.log("🧮 Updated cart items:", updatedCartItems)
-    console.log("💰 New subtotal:", newSubtotal)
 
     updateBillingInstance(activeTab, { cartItems: updatedCartItems })
     
@@ -484,9 +535,11 @@ export default function BillingAndCart() {
     updateBillingInstance(activeTab, { editableTotal: newTotal, isEditingTotal: true })
 
     const subtotal = calculateSubtotal()
+    const tax = calculateTotalTax()
 
     if (subtotal > 0) {
-      const newDiscountAmount = subtotal - newTotal
+      const targetTaxableAmount = newTotal - tax.total
+      const newDiscountAmount = subtotal - targetTaxableAmount
       const newDiscountPercentage = Math.min(5, Math.max(0, (newDiscountAmount / subtotal) * 100))
       updateBillingInstance(activeTab, {
         discount: Math.round(newDiscountPercentage * 100) / 100,
@@ -547,6 +600,8 @@ export default function BillingAndCart() {
       return
     }
 
+    const tax = calculateTotalTax()
+
     const invoice: Invoice = {
       id: generateInvoiceId(),
       storeId: currentStore?.id || "",
@@ -562,8 +617,10 @@ export default function BillingAndCart() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       subtotal: calculateSubtotal(),
-      taxPercentage: 0,
-      taxAmount: 0,
+      taxPercentage: 0,  // Not used - we have CGST/SGST
+      taxAmount: tax.total,
+      cgst: tax.cgst,
+      sgst: tax.sgst,
       discountPercentage: activeBillingInstance.discount,
       discountAmount: calculateDiscountAmount(),
       total: activeBillingInstance.editableTotal,
@@ -577,6 +634,7 @@ export default function BillingAndCart() {
       companyEmail: settings?.companyEmail || "",
       billFormat: "Thermal 80mm",
       createdBy: currentUser?.id || "",
+      billedBy: currentUser?.name || "",  // ✅ ADDED: User name who created the bill
       items: activeBillingInstance.cartItems,
     };
     setCurrentInvoice(invoice)
@@ -604,7 +662,7 @@ export default function BillingAndCart() {
         customer_address: invoiceToSave.customerAddress || '',
         subtotal: invoiceToSave.subtotal,
         tax_percentage: 0,
-        tax_amount: 0,
+        tax_amount: invoiceToSave.taxAmount,
         discount_percentage: invoiceToSave.discountPercentage,
         discount_amount: invoiceToSave.discountAmount,
         total_amount: invoiceToSave.total,
@@ -795,7 +853,7 @@ export default function BillingAndCart() {
     }
   };
 
-  console.log({ currentStore });
+  const tax = calculateTotalTax()
 
   return (
     <>
@@ -885,6 +943,7 @@ export default function BillingAndCart() {
                       <p className="text-sm text-gray-500">
                         Stock: {product.stock}
                         {product.barcodes && ` • ${product.barcodes.split(',')[0]}${product.barcodes.split(',').length > 1 ? '...' : ''}`}
+                        {product.tax > 0 && ` • Tax: ${product.tax}%`}
                       </p>
                     </div>
                     <div className="text-right">
@@ -980,7 +1039,14 @@ export default function BillingAndCart() {
                             <TableBody>
                               {tab.cartItems.map((item) => (
                                 <TableRow key={item.id}>
-                                  <TableCell className="font-medium">{item.name}</TableCell>
+                                  <TableCell className="font-medium">
+                                    {item.name}
+                                    {item.taxPercentage > 0 && (
+                                      <span className="text-xs text-gray-500 block">
+                                        (Tax: {item.taxPercentage}%)
+                                      </span>
+                                    )}
+                                  </TableCell>
                                   <TableCell>₹{item.price.toLocaleString()}</TableCell>
                                   <TableCell>
                                     <div className="flex items-center space-x-2">
@@ -1099,9 +1165,23 @@ export default function BillingAndCart() {
                             <span>Subtotal:</span>
                             <span>₹{calculateSubtotal().toLocaleString()}</span>
                           </div>
+                          {tab.discount > 0 && (
+                            <div className="flex justify-between text-lg">
+                              <span>Discount ({tab.discount.toFixed(2)}%):</span>
+                              <span className="text-green-600">-₹{calculateDiscountAmount().toLocaleString()}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between text-sm text-gray-600">
+                            <span>Taxable Amount:</span>
+                            <span>₹{calculateTaxableAmount().toLocaleString()}</span>
+                          </div>
                           <div className="flex justify-between text-lg">
-                            <span>Discount ({tab.discount.toFixed(2)}%):</span>
-                            <span className="text-green-600">-₹{calculateDiscountAmount().toLocaleString()}</span>
+                            <span>CGST:</span>
+                            <span className="text-purple-600">+₹{tax.cgst.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between text-lg">
+                            <span>SGST:</span>
+                            <span className="text-purple-600">+₹{tax.sgst.toLocaleString()}</span>
                           </div>
                           <div className="border-t pt-3">
                             <div className="flex justify-between text-2xl font-bold">

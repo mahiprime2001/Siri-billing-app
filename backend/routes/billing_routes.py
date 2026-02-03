@@ -120,10 +120,8 @@ def create_bill():
             'customerid': customer_id,  # ✅ Defaults to Walk-in Customer
             'userid': current_user_id,
             'subtotal': data.get('subtotal', data['total_amount']),
-            'taxpercentage': data.get('tax_percentage', 0),
-            'taxamount': data.get('tax_amount', 0),
-            'discountpercentage': data.get('discount_percentage', 0),
-            'discountamount': data.get('discount_amount', 0),
+            'discount_percentage': data.get('discount_percentage', 0),
+            'discount_amount': data.get('discount_amount', 0),
             'total': data['total_amount'],
             'paymentmethod': data.get('payment_method', 'cash'),
             'timestamp': now,
