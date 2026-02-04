@@ -8,6 +8,7 @@ import traceback
 
 # Import stock update function
 from data_access.data_access import update_both_inventory_and_product_stock
+from utils.stock_stream import publish
 
 # ✅ Default Walk-in Customer ID
 DEFAULT_WALKIN_CUSTOMER_ID = "CUST-1754821420265"
@@ -148,6 +149,7 @@ def create_bill():
         # Process each item and create bill items + update stock
         bill_items_created = []
         stock_update_errors = []
+        updated_product_ids = []
         
         for item in items:
             product_id = item.get('product_id')
@@ -197,6 +199,7 @@ def create_bill():
                     app.logger.error(f"❌ Failed to update stock for {product_id}")
                 else:
                     app.logger.info(f"✅ Stock updated for {product_id}")
+                    updated_product_ids.append(product_id)
                     
             except Exception as stock_error:
                 stock_update_errors.append(product_id)
@@ -215,6 +218,14 @@ def create_bill():
         if stock_update_errors:
             response_data["stock_update_errors"] = stock_update_errors
             response_data["warning"] = f"Stock update failed for {len(stock_update_errors)} products"
+
+        if updated_product_ids:
+            publish({
+                "type": "stock_update",
+                "store_id": store_id,
+                "product_ids": updated_product_ids,
+                "ts": datetime.now(timezone.utc).isoformat()
+            })
         
         app.logger.info(f"✅ Bill {bill_id} completed with {len(bill_items_created)} items")
         

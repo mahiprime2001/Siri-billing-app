@@ -359,6 +359,31 @@ export default function BillingAndCart() {
     }
   };
 
+  useEffect(() => {
+    if (!currentStore) return
+
+    const streamUrl = "http://localhost:8080/api/stock/stream"
+    const source = new EventSource(streamUrl, { withCredentials: true })
+
+    source.addEventListener("stock", (event) => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data || "{}")
+        if (data.store_id && data.store_id !== currentStore.id) return
+        fetchProducts()
+      } catch (error) {
+        console.error("❌ Failed to parse stock event:", error)
+      }
+    })
+
+    source.addEventListener("error", (event) => {
+      console.warn("⚠️ Stock stream disconnected:", event)
+    })
+
+    return () => {
+      source.close()
+    }
+  }, [currentStore?.id])
+
   const fetchSettings = async () => {
     try {
       console.log("⚙️ Fetching system settings...")
@@ -703,6 +728,9 @@ export default function BillingAndCart() {
           setBillingTabs(newTabs);
           setActiveTab(newId);
         }
+
+        // Refresh products to update stock immediately
+        await fetchProducts();
 
         setShowPreview(false);
         return true;

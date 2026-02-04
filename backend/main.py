@@ -41,6 +41,7 @@ from routes.return_routes import return_bp
 from routes.sync_routes import sync_bp
 from routes.health_routes import health_bp
 from routes.notification_routes import notification_bp
+from routes.stock_stream_routes import stock_stream_bp
 
 if sys.platform == 'win32':
     import codecs
@@ -271,6 +272,7 @@ app.register_blueprint(return_bp, url_prefix='/api')
 app.register_blueprint(sync_bp, url_prefix='/api')
 app.register_blueprint(health_bp, url_prefix='/api')
 app.register_blueprint(notification_bp, url_prefix='/api')
+app.register_blueprint(stock_stream_bp, url_prefix='/api')
 
 # ==================== Main ====================
 if __name__ == '__main__':
