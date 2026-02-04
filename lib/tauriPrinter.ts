@@ -39,23 +39,49 @@ export async function listPrinters(): Promise<string[]> {
   }
 }
 
+type SilentPrintOptions = {
+  printerName?: string;
+  paperSize?: string;
+  copies?: number;
+};
+
+const getThermalWidthMm = (paperSize?: string): number | undefined => {
+  if (!paperSize) return undefined;
+  if (paperSize === "Thermal 58mm") return 58;
+  if (paperSize === "Thermal 80mm") return 80;
+  return undefined;
+};
+
 export async function silentPrintText(
   content: string,
-  printerName?: string
+  options?: SilentPrintOptions
 ): Promise<void> {
   if (!isTauriApp()) {
     throw new Error("Silent printing is only available in the desktop app.");
   }
+  const printerName = options?.printerName;
+  const copies = Math.max(
+    1,
+    Number.isFinite(options?.copies) ? Number(options?.copies) : 1
+  );
+  const paperWidthMm = getThermalWidthMm(options?.paperSize);
   debugLog("Printing via plugin...", {
     printer: printerName || "SYSTEM_DEFAULT",
+    copies,
+    paperSize: options?.paperSize,
     contentLength: content.length,
   });
   await printHtml({
-    html: `<pre style="font-family: 'Courier New', monospace; font-size: 12px; white-space: pre-wrap;">${content
+    id: `receipt-${Date.now()}`,
+    html: `<pre style="font-family: 'Courier New', monospace; font-size: 12px; white-space: pre-wrap;${
+      paperWidthMm ? ` width: ${paperWidthMm}mm;` : ""
+    }">${content
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")}</pre>`,
-    printer: printerName || undefined,
+    printer: printerName || "",
+    page_width: paperWidthMm,
+    copies,
   });
   debugLog("Print job submitted.");
 }

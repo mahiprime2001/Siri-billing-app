@@ -293,7 +293,11 @@ export default function InvoicePreview({
         const copies = Math.max(1, Number.isFinite(printCopies) ? printCopies : 1)
         for (let i = 0; i < copies; i += 1) {
           const content = i % 2 === 0 ? storeCopy : customerCopy
-          await silentPrintText(content, printer)
+          await silentPrintText(content, {
+            printerName: printer,
+            paperSize,
+            copies: 1,
+          })
         }
         console.log("✅ [InvoicePreview] Silent print completed successfully")
         setIsPrinting(false)
