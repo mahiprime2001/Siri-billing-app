@@ -17,6 +17,9 @@ use log::{info, error, warn, debug};
 use serde::{Serialize, Deserialize};
 use reqwest::blocking::Client;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 #[derive(Clone, Serialize, Deserialize)]
 struct UpdateInfo {
     available: bool,
@@ -106,18 +109,30 @@ async fn install_update(app_handle: tauri::AppHandle) -> Result<String, String> 
 // PRINTER COMMANDS (WINDOWS ONLY)
 // ============================================================================
 
+#[cfg(target_os = "windows")]
+fn run_powershell(command: &str) -> Result<std::process::Output, String> {
+    Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            command,
+        ])
+        // CREATE_NO_WINDOW
+        .creation_flags(0x08000000)
+        .output()
+        .map_err(|e| format!("Failed to run PowerShell: {}", e))
+}
+
 #[tauri::command]
 fn list_printers() -> Result<Vec<String>, String> {
     #[cfg(target_os = "windows")]
     {
-        let output = Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-Command",
-                "Get-CimInstance Win32_Printer | Select-Object -ExpandProperty Name",
-            ])
-            .output()
-            .map_err(|e| format!("Failed to list printers: {}", e))?;
+        let output = run_powershell(
+            "Get-CimInstance Win32_Printer | Select-Object -ExpandProperty Name",
+        )?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let mut printers: Vec<String> = stdout
@@ -176,13 +191,15 @@ fn print_text(content: String, printer_name: Option<String>) -> Result<(), Strin
 
         if let Some(name) = printer_name {
             let escaped_name = name.replace('\'', "''");
-            command.push_str(&format!(" -Name '{}'", escaped_name));
+            // Validate printer exists; Out-Printer silently falls back to default
+            command = format!(
+                "$p = Get-Printer -Name '{}' -ErrorAction Stop; \
+Get-Content -Raw -LiteralPath '{}' | Out-Printer -Name $p.Name",
+                escaped_name, escaped_path
+            );
         }
 
-        let output = Command::new("powershell")
-            .args(["-NoProfile", "-Command", &command])
-            .output()
-            .map_err(|e| format!("Failed to print: {}", e))?;
+        let output = run_powershell(&command)?;
 
         let _ = fs::remove_file(&path);
 
