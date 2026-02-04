@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::process::Command;
 use std::fs;
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use std::thread;
 
 use tauri::{Manager, RunEvent, WindowEvent, State};
@@ -16,9 +16,6 @@ use tauri_plugin_updater::UpdaterExt;
 use log::{info, error, warn, debug};
 use serde::{Serialize, Deserialize};
 use reqwest::blocking::Client;
-
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct UpdateInfo {
@@ -105,116 +102,6 @@ async fn install_update(app_handle: tauri::AppHandle) -> Result<String, String> 
     }
 }
 
-// ============================================================================
-// PRINTER COMMANDS (WINDOWS ONLY)
-// ============================================================================
-
-#[cfg(target_os = "windows")]
-fn run_powershell(command: &str) -> Result<std::process::Output, String> {
-    Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-WindowStyle",
-            "Hidden",
-            "-Command",
-            command,
-        ])
-        // CREATE_NO_WINDOW
-        .creation_flags(0x08000000)
-        .output()
-        .map_err(|e| format!("Failed to run PowerShell: {}", e))
-}
-
-#[tauri::command]
-fn list_printers() -> Result<Vec<String>, String> {
-    #[cfg(target_os = "windows")]
-    {
-        let output = run_powershell(
-            "Get-CimInstance Win32_Printer | Select-Object -ExpandProperty Name",
-        )?;
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let mut printers: Vec<String> = stdout
-            .lines()
-            .map(|line| line.trim())
-            .filter(|line| !line.is_empty())
-            .map(|line| line.to_string())
-            .collect();
-
-        if printers.is_empty() {
-            // Fallback for systems without PrintManagement module (e.g., Windows Home)
-            let fallback = Command::new("wmic")
-                .args(["printer", "get", "name"])
-                .output()
-                .map_err(|e| format!("Failed to list printers (wmic): {}", e))?;
-
-            let fallback_stdout = String::from_utf8_lossy(&fallback.stdout);
-            printers = fallback_stdout
-                .lines()
-                .map(|line| line.trim())
-                .filter(|line| !line.is_empty() && line.to_lowercase() != "name")
-                .map(|line| line.to_string())
-                .collect();
-        }
-
-        if printers.is_empty() && !output.status.success() {
-            return Err("Failed to list printers".to_string());
-        }
-
-        Ok(printers)
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        Err("Printer listing is only supported on Windows.".to_string())
-    }
-}
-
-#[tauri::command]
-fn print_text(content: String, printer_name: Option<String>) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        let mut path = std::env::temp_dir();
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis();
-        path.push(format!("siri-receipt-{}.txt", timestamp));
-
-        fs::write(&path, content).map_err(|e| format!("Failed to write print file: {}", e))?;
-
-        let escaped_path = path
-            .to_string_lossy()
-            .replace('\'', "''");
-        let mut command = format!("Get-Content -Raw -LiteralPath '{}' | Out-Printer", escaped_path);
-
-        if let Some(name) = printer_name {
-            let escaped_name = name.replace('\'', "''");
-            // Validate printer exists; Out-Printer silently falls back to default
-            command = format!(
-                "$p = Get-Printer -Name '{}' -ErrorAction Stop; \
-Get-Content -Raw -LiteralPath '{}' | Out-Printer -Name $p.Name",
-                escaped_name, escaped_path
-            );
-        }
-
-        let output = run_powershell(&command)?;
-
-        let _ = fs::remove_file(&path);
-
-        if !output.status.success() {
-            return Err("Silent print failed".to_string());
-        }
-
-        Ok(())
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        Err("Silent printing is only supported on Windows.".to_string())
-    }
-}
 
 fn main() {
     let child_handle: Arc<Mutex<Option<CommandChild>>> = Arc::new(Mutex::new(None));
@@ -241,9 +128,7 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             check_for_updates,
-            install_update,
-            list_printers,
-            print_text
+            install_update
         ])
         .setup({
             let child_handle = Arc::clone(&child_handle);

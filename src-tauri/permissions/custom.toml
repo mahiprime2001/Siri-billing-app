@@ -2,8 +2,3 @@
 identifier = "allow-open-print-window"
 description = "Allows invoking the open_print_window command"
 commands.allow = ["open_print_window"]
-
-[[permission]]
-identifier = "allow-printer-commands"
-description = "Allows invoking printer listing and silent printing commands"
-commands.allow = ["list_printers", "print_text"]
