@@ -37,6 +37,15 @@ jobs:
         uses: pnpm/action-setup@v3
         with:
           version: 9
+          run_install: false
+
+      # --------------------------------------------------
+      # 3b. Ensure pnpm is available on PATH (Windows)
+      # --------------------------------------------------
+      - name: Enable Corepack (pnpm)
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
 
       # --------------------------------------------------
       # 4. Setup Rust
