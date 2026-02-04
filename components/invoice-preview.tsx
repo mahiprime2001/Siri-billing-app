@@ -69,6 +69,7 @@ export default function InvoicePreview({
   const [selectedPrinter, setSelectedPrinter] = useState("SYSTEM_DEFAULT")
   const [isTauriRuntime, setIsTauriRuntime] = useState(false)
   const [printCopies, setPrintCopies] = useState(2)
+  const [printerDebug, setPrinterDebug] = useState(false)
 
   // Autocomplete states
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -93,6 +94,14 @@ export default function InvoicePreview({
       if (!tauri) {
         setAvailablePrinters([])
         return
+      }
+      try {
+        const debugFlag =
+          typeof window !== "undefined" &&
+          window.localStorage.getItem("printerDebug") === "true"
+        setPrinterDebug(debugFlag)
+      } catch {
+        setPrinterDebug(false)
       }
       const printers = await listPrinters()
       setAvailablePrinters(printers)
@@ -500,6 +509,23 @@ export default function InvoicePreview({
                       setPrintCopies(Number.isNaN(value) ? 2 : Math.max(1, value))
                     }}
                   />
+                </div>
+                <div className="mt-4 flex items-center gap-2">
+                  <input
+                    id="printerDebug"
+                    type="checkbox"
+                    checked={printerDebug}
+                    onChange={(e) => {
+                      const checked = e.target.checked
+                      setPrinterDebug(checked)
+                      try {
+                        window.localStorage.setItem("printerDebug", String(checked))
+                      } catch {
+                        // ignore storage errors
+                      }
+                    }}
+                  />
+                  <Label htmlFor="printerDebug">Enable Printer Debug Logs</Label>
                 </div>
               </div>
             )}
