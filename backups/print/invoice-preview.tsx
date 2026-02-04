@@ -22,8 +22,6 @@ import { Button } from "@/components/ui/button"
 import { Save, Printer, AlertCircle, User, CreditCard } from "lucide-react"
 import PrintableInvoice from "./printable-invoice"
 import { safePrint } from "@/lib/printUtils"
-import { isTauriApp, listPrinters, silentPrintText } from "@/lib/tauriPrinter"
-import { generateReceiptText } from "@/lib/receiptText"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -65,9 +63,6 @@ export default function InvoicePreview({
   const [customerPhone, setCustomerPhone] = useState(initialCustomerPhone)
   const [paymentMethod, setPaymentMethod] = useState(initialPaymentMethod)
   const [paperSize, setPaperSize] = useState(initialPaperSize)
-  const [availablePrinters, setAvailablePrinters] = useState<string[]>([])
-  const [selectedPrinter, setSelectedPrinter] = useState("SYSTEM_DEFAULT")
-  const [isTauriRuntime, setIsTauriRuntime] = useState(false)
 
   // Autocomplete states
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -82,23 +77,6 @@ export default function InvoicePreview({
     setPaymentMethod(initialPaymentMethod)
     setPaperSize(initialPaperSize)
   }, [initialCustomerName, initialCustomerPhone, initialPaymentMethod, initialPaperSize])
-
-  useEffect(() => {
-    if (!isOpen) return
-
-    const loadPrinters = async () => {
-      const tauri = isTauriApp()
-      setIsTauriRuntime(tauri)
-      if (!tauri) {
-        setAvailablePrinters([])
-        return
-      }
-      const printers = await listPrinters()
-      setAvailablePrinters(printers)
-    }
-
-    loadPrinters()
-  }, [isOpen])
 
   // Simplified fetch - just get customers directly
   useEffect(() => {
@@ -267,29 +245,10 @@ export default function InvoicePreview({
     setPrintError(null)
 
     try {
-      const updatedInvoice = getUpdatedInvoice()
-      const isThermal = paperSize.includes("Thermal")
-
-      if (isTauriRuntime && isThermal) {
-        const receiptText = generateReceiptText(updatedInvoice, paperSize, [
-          { label: "Store Copy" },
-          { label: "Customer Copy" },
-        ])
-
-        console.log("🖨 [InvoicePreview] Starting silent print...")
-        await silentPrintText(
-          receiptText,
-          selectedPrinter === "SYSTEM_DEFAULT" ? undefined : selectedPrinter
-        )
-        console.log("✅ [InvoicePreview] Silent print completed successfully")
-        setIsPrinting(false)
-        return
-      }
-
       const printContent = printRef.current.innerHTML
       const htmlContent = generatePrintHTML(printContent, paperSize, invoice.id)
 
-      console.log("🖨 [InvoicePreview] Starting print dialog...")
+      console.log("🖨 [InvoicePreview] Starting print process...")
       const result = await safePrint(htmlContent, paperSize)
 
       if (!result.success) {
@@ -471,33 +430,6 @@ export default function InvoicePreview({
                 </SelectContent>
               </Select>
             </div>
-
-            {/* Printer Selection (Desktop App) */}
-            {isTauriRuntime && (
-              <div className="p-4 border rounded-lg shadow-sm bg-gray-50">
-                <h3 className="font-semibold text-lg mb-2 flex items-center">
-                  <Printer className="h-5 w-5 mr-2" /> Printer
-                </h3>
-                <Select value={selectedPrinter} onValueChange={setSelectedPrinter}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="SYSTEM_DEFAULT">System Default</SelectItem>
-                    {availablePrinters.map((printer) => (
-                      <SelectItem key={printer} value={printer}>
-                        {printer}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {availablePrinters.length === 0 && (
-                  <p className="text-xs text-gray-500 mt-2">
-                    No printers detected by the desktop app.
-                  </p>
-                )}
-              </div>
-            )}
 
             {/* Error Alert */}
             {printError && (

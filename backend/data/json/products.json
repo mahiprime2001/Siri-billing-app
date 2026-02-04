@@ -370,5 +370,29 @@
         "updatedat": "2026-01-28T12:14:16.508573",
         "barcode": "1769580800562393",
         "tax": 0
+    },
+    {
+        "id": "84676894-f542-4651-9e0f-af8858bdea1f",
+        "name": "testing",
+        "price": 500.0,
+        "stock": 25,
+        "batchid": "d05f9ea1-7bf5-4cb4-ab9d-41550923d86a",
+        "selling_price": 750.0,
+        "createdat": "2026-02-02T10:24:46.209179",
+        "updatedat": "2026-02-02T10:24:46.209179",
+        "barcode": "2026020215728",
+        "tax": null
+    },
+    {
+        "id": "60b39918-5ca3-4e7b-91c9-ca700ff8f4b3",
+        "name": "testing",
+        "price": 500.0,
+        "stock": 30,
+        "batchid": "d05f9ea1-7bf5-4cb4-ab9d-41550923d86a",
+        "selling_price": 750.0,
+        "createdat": "2026-01-29T12:43:16.225797",
+        "updatedat": "2026-01-29T12:43:16.225797",
+        "barcode": "2026012992862",
+        "tax": null
     }
 ]

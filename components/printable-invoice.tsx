@@ -33,6 +33,28 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
         })) || [],
     };
 
+    const discountPercent = safeInvoice.discountPercentage || 0;
+
+    const taxClassificationRows = safeInvoice.items.map((item) => {
+      const itemTotal = Number(item.total || 0);
+      const taxableAmount =
+        Math.round((itemTotal - (itemTotal * discountPercent) / 100) * 100) / 100;
+      const taxPercent = Number(item.taxPercentage || 0);
+      const totalTax = Math.round((taxableAmount * taxPercent / 100) * 100) / 100;
+      const cgst = Math.round((totalTax / 2) * 100) / 100;
+      const sgst = Math.round((totalTax / 2) * 100) / 100;
+      const hsnCode = item.hsnCode || item.hsn || item.hsn_code || "-";
+
+      return {
+        gst: taxPercent,
+        hsnCode,
+        cgst,
+        sgst,
+        igst: 0,
+        taxableAmount,
+      };
+    });
+
     return (
       <>
         <div
@@ -59,7 +81,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
           >
             {/* Header */}
             <div style={{ textAlign: "center", marginBottom: 6 }}>
-              <div style={{ fontWeight: "bold", fontSize: 14 }}>
+              <div style={{ fontWeight: "bold", fontSize: 16 }}>
                 {safeInvoice.companyName}
               </div>
               <div style={{ fontSize: 10 }}>
@@ -124,24 +146,70 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
                 <span>Subtotal</span>
                 <span>₹{formatNumber(safeInvoice.subtotal)}</span>
               </div>
+            </div>
+
+            {/* Tax Classification */}
+            <div style={{ fontSize: 10, marginTop: 6 }}>
+              <div style={{ fontWeight: "bold", marginBottom: 4 }}>
+                Tax Classification
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr 1fr",
+                  gap: 0,
+                  fontWeight: "bold",
+                  border: "1px solid #000",
+                }}
+              >
+                <span style={{ padding: "2px 4px", borderRight: "1px solid #000" }}>GST</span>
+                <span style={{ padding: "2px 4px", borderRight: "1px solid #000" }}>HSN Code</span>
+                <span style={{ padding: "2px 4px", borderRight: "1px solid #000" }}>SGST</span>
+                <span style={{ padding: "2px 4px", borderRight: "1px solid #000" }}>CGST</span>
+                <span style={{ padding: "2px 4px", borderRight: "1px solid #000" }}>IGST</span>
+                <span style={{ padding: "2px 4px" }}>Tax Amount</span>
+              </div>
+              {taxClassificationRows.map((row, index) => (
+                <div
+                  key={index}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr 1fr",
+                    gap: 0,
+                    borderLeft: "1px solid #000",
+                    borderRight: "1px solid #000",
+                    borderBottom: "1px solid #000",
+                  }}
+                >
+                  <span style={{ padding: "2px 4px", borderRight: "1px solid #000" }}>
+                    {row.gst}%
+                  </span>
+                  <span style={{ padding: "2px 4px", borderRight: "1px solid #000" }}>
+                    {row.hsnCode}
+                  </span>
+                  <span style={{ padding: "2px 4px", borderRight: "1px solid #000" }}>
+                    ₹{formatNumber(row.sgst)}
+                  </span>
+                  <span style={{ padding: "2px 4px", borderRight: "1px solid #000" }}>
+                    ₹{formatNumber(row.cgst)}
+                  </span>
+                  <span style={{ padding: "2px 4px", borderRight: "1px solid #000" }}>
+                    ₹{formatNumber(row.igst)}
+                  </span>
+                  <span style={{ padding: "2px 4px" }}>
+                    ₹{formatNumber(row.taxableAmount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Discount + Total */}
+            <div style={{ fontSize: 10, marginTop: 6 }}>
               {safeInvoice.discountPercentage > 0 && (
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span>Discount ({safeInvoice.discountPercentage}%)</span>
                   <span>-₹{formatNumber(safeInvoice.discountAmount)}</span>
                 </div>
-              )}
-              {/* CGST and SGST */}
-              {(safeInvoice.cgst > 0 || safeInvoice.sgst > 0) && (
-                <>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>CGST</span>
-                    <span>₹{formatNumber(safeInvoice.cgst)}</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>SGST</span>
-                    <span>₹{formatNumber(safeInvoice.sgst)}</span>
-                  </div>
-                </>
               )}
               <div
                 style={{
@@ -149,7 +217,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
                   justifyContent: "space-between",
                   fontWeight: "bold",
                   marginTop: 6,
-                  fontSize: 12,
+                  fontSize: 14,
                 }}
               >
                 <span>TOTAL</span>
@@ -193,6 +261,15 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
             padding: 0;
             -webkit-print-color-adjust: exact;
             background: #fff;
+          }
+          @media print {
+            html,
+            body {
+              height: auto !important;
+            }
+            .invoice-wrapper {
+              height: auto !important;
+            }
           }
         `}</style>
       </>
