@@ -50,7 +50,6 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
         hsnCode,
         cgst,
         sgst,
-        igst: 0,
         taxableAmount,
       };
     });
@@ -156,7 +155,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr 1fr",
+                  gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr",
                   gap: 0,
                   fontWeight: "bold",
                   border: "1px solid #000",
@@ -166,7 +165,6 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
                 <span style={{ padding: "2px 4px", borderRight: "1px solid #000" }}>HSN Code</span>
                 <span style={{ padding: "2px 4px", borderRight: "1px solid #000" }}>SGST</span>
                 <span style={{ padding: "2px 4px", borderRight: "1px solid #000" }}>CGST</span>
-                <span style={{ padding: "2px 4px", borderRight: "1px solid #000" }}>IGST</span>
                 <span style={{ padding: "2px 4px" }}>Tax Amount</span>
               </div>
               {taxClassificationRows.map((row, index) => (
@@ -174,7 +172,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
                   key={index}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr 1fr",
+                    gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr",
                     gap: 0,
                     borderLeft: "1px solid #000",
                     borderRight: "1px solid #000",
@@ -192,9 +190,6 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
                   </span>
                   <span style={{ padding: "2px 4px", borderRight: "1px solid #000" }}>
                     ₹{formatNumber(row.cgst)}
-                  </span>
-                  <span style={{ padding: "2px 4px", borderRight: "1px solid #000" }}>
-                    ₹{formatNumber(row.igst)}
                   </span>
                   <span style={{ padding: "2px 4px" }}>
                     ₹{formatNumber(row.taxableAmount)}
@@ -261,15 +256,6 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
             padding: 0;
             -webkit-print-color-adjust: exact;
             background: #fff;
-          }
-          @media print {
-            html,
-            body {
-              height: auto !important;
-            }
-            .invoice-wrapper {
-              height: auto !important;
-            }
           }
         `}</style>
       </>

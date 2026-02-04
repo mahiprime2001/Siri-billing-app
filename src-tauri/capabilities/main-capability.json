@@ -15,6 +15,9 @@
     "log:allow-log",
     "dialog:default",
     "updater:default",
+    "printer:allow-get-printers",
+    "printer:allow-print-html",
+    "printer:allow-print-pdf",
     {
       "identifier": "shell:allow-spawn",
       "allow": [

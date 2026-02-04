@@ -12,6 +12,9 @@
     {
       "identifier": "core:webview:allow-print"
     },
+    "printer:allow-get-printers",
+    "printer:allow-print-html",
+    "printer:allow-print-pdf",
     {
       "identifier": "core:webview:allow-create-webview"
     },

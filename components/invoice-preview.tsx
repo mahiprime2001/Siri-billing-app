@@ -271,16 +271,17 @@ export default function InvoicePreview({
       const isThermal = paperSize.includes("Thermal")
 
       if (isTauriRuntime && isThermal) {
-        const receiptText = generateReceiptText(updatedInvoice, paperSize, [
+        const printer = selectedPrinter === "SYSTEM_DEFAULT" ? undefined : selectedPrinter
+        const storeCopy = generateReceiptText(updatedInvoice, paperSize, [
           { label: "Store Copy" },
+        ])
+        const customerCopy = generateReceiptText(updatedInvoice, paperSize, [
           { label: "Customer Copy" },
         ])
 
-        console.log("🖨 [InvoicePreview] Starting silent print...")
-        await silentPrintText(
-          receiptText,
-          selectedPrinter === "SYSTEM_DEFAULT" ? undefined : selectedPrinter
-        )
+        console.log("🖨 [InvoicePreview] Starting silent print (2 jobs)...")
+        await silentPrintText(storeCopy, printer)
+        await silentPrintText(customerCopy, printer)
         console.log("✅ [InvoicePreview] Silent print completed successfully")
         setIsPrinting(false)
         return
