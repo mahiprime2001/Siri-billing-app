@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button"
 import { Save, Printer, AlertCircle, User, CreditCard } from "lucide-react"
 import PrintableInvoice from "./printable-invoice"
 import { safePrint } from "@/lib/printUtils"
-import { isTauriApp, listPrinters, silentPrintText } from "@/lib/tauriPrinter"
+import { isTauriApp, listPrinters, silentPrintText, printHtmlContent } from "@/lib/tauriPrinter"
 import { generateReceiptText } from "@/lib/receiptText"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -279,9 +279,9 @@ export default function InvoicePreview({
     try {
       const updatedInvoice = getUpdatedInvoice()
       const isThermal = paperSize.includes("Thermal")
+      const printer = selectedPrinter === "SYSTEM_DEFAULT" ? undefined : selectedPrinter
 
       if (isTauriRuntime && isThermal) {
-        const printer = selectedPrinter === "SYSTEM_DEFAULT" ? undefined : selectedPrinter
         const storeCopy = generateReceiptText(updatedInvoice, paperSize, [
           { label: "Store Copy" },
         ])
@@ -297,6 +297,7 @@ export default function InvoicePreview({
             printerName: printer,
             paperSize,
             copies: 1,
+            debug: printerDebug,
           })
         }
         console.log("✅ [InvoicePreview] Silent print completed successfully")
@@ -307,13 +308,24 @@ export default function InvoicePreview({
       const printContent = printRef.current.innerHTML
       const htmlContent = generatePrintHTML(printContent, paperSize, invoice.id)
 
-      console.log("🖨 [InvoicePreview] Starting print dialog...")
-      const result = await safePrint(htmlContent, paperSize)
-
-      if (!result.success) {
-        setPrintError(result.error || "Failed to print. Please try again.")
-      } else {
+      if (isTauriRuntime) {
+        console.log("🖨 [InvoicePreview] Printing via Tauri plugin...")
+        await printHtmlContent(htmlContent, {
+          printerName: printer,
+          paperSize,
+          copies: Math.max(1, Number.isFinite(printCopies) ? printCopies : 1),
+          debug: printerDebug,
+        })
         console.log("✅ [InvoicePreview] Print completed successfully")
+      } else {
+        console.log("🖨 [InvoicePreview] Starting print dialog...")
+        const result = await safePrint(htmlContent, paperSize)
+
+        if (!result.success) {
+          setPrintError(result.error || "Failed to print. Please try again.")
+        } else {
+          console.log("✅ [InvoicePreview] Print completed successfully")
+        }
       }
     } catch (error) {
       const errorMessage =

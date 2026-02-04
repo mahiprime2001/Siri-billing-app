@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Eye, Search, Printer } from "lucide-react"
 import InvoicePreview from "./invoice-preview"
 import { apiClient } from "@/lib/api-client"
+import { isTauriApp, printHtmlContent } from "@/lib/tauriPrinter"
 
 // Raw invoice shape returned by backend (snake_case).
 interface RawInvoice {
@@ -31,6 +32,11 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
   const [showPrintDialog, setShowPrintDialog] = useState(false)
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null)
   const [printPaperSize, setPrintPaperSize] = useState("Thermal 80mm")
+  const [isTauriRuntime, setIsTauriRuntime] = useState(false)
+
+  useEffect(() => {
+    setIsTauriRuntime(isTauriApp())
+  }, [])
 
   // ✅ Helper function to get customer name (handles both old and new formats)
   const getCustomerName = (invoice: Invoice): string => {
@@ -207,16 +213,29 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
     setShowPrintDialog(true)
   }
 
-  const handleConfirmPrint = () => {
+  const handleConfirmPrint = async () => {
     if (printInvoice) {
       setShowPrintDialog(false)
       setSelectedInvoice(printInvoice)
       setShowPreview(true)
 
-      setTimeout(() => {
+      setTimeout(async () => {
+        const printContent = generatePrintContent(printInvoice, printPaperSize)
+
+        if (isTauriRuntime) {
+          try {
+            await printHtmlContent(printContent, {
+              paperSize: printPaperSize,
+              copies: 1,
+            })
+          } catch (error) {
+            console.error("❌ [BillingHistory] Tauri print failed:", error)
+          }
+          return
+        }
+
         const printWindow = window.open("", "_blank")
         if (printWindow) {
-          const printContent = generatePrintContent(printInvoice, printPaperSize)
           printWindow.document.write(printContent)
           printWindow.document.close()
           printWindow.focus()

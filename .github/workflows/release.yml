@@ -27,6 +27,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       # --------------------------------------------------
       # 3. Setup pnpm
@@ -42,6 +44,21 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       # --------------------------------------------------
+      # 4b. Cache Rust/Cargo
+      # --------------------------------------------------
+      - name: Cache Rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      # --------------------------------------------------
       # 5. Install Tauri CLI
       # --------------------------------------------------
       - name: Install Tauri CLI
@@ -55,10 +72,12 @@ jobs:
         shell: bash
         run: |
           FILE="src-tauri/tauri.conf.json"
+          PACKAGE="package.json"
           CURRENT=$(jq -r '.version' "$FILE")
           IFS='.' read -r M m p <<< "$CURRENT"
           NEW="$M.$m.$((p+1))"
           jq ".version=\"$NEW\"" "$FILE" > tmp && mv tmp "$FILE"
+          jq ".version=\"$NEW\"" "$PACKAGE" > tmp && mv tmp "$PACKAGE"
           echo "version=$NEW" >> $GITHUB_OUTPUT
 
       # --------------------------------------------------
@@ -69,7 +88,7 @@ jobs:
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git add src-tauri/tauri.conf.json
+          git add src-tauri/tauri.conf.json package.json
           
           # Check if there are changes to commit
           if git diff --staged --quiet; then
@@ -123,6 +142,19 @@ jobs:
         uses: astral-sh/setup-uv@v4
         with:
           version: "latest"
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}\uv-cache
+
+      # --------------------------------------------------
+      # 10b. Cache uv
+      # --------------------------------------------------
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\uv-cache
+          key: ${{ runner.os }}-uv-${{ hashFiles('backend/uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
 
       # --------------------------------------------------
       # 11. Install Python dependencies with uv
