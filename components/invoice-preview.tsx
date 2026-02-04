@@ -455,22 +455,7 @@ export default function InvoicePreview({
             </div>
 
             {/* Print Type */}
-            <div className="p-4 border rounded-lg shadow-sm bg-gray-50">
-              <h3 className="font-semibold text-lg mb-2 flex items-center">
-                <Printer className="h-5 w-5 mr-2" /> Print Format
-              </h3>
-              <Select value={paperSize} onValueChange={setPaperSize}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Thermal 80mm">Thermal 80mm</SelectItem>
-                  <SelectItem value="Thermal 58mm">Thermal 58mm</SelectItem>
-                  <SelectItem value="A4">A4</SelectItem>
-                  <SelectItem value="Letter">Letter</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Print Format removed from preview as requested */}
 
             {/* Printer Selection (Desktop App) */}
             {isTauriRuntime && (
@@ -493,7 +478,8 @@ export default function InvoicePreview({
                 </Select>
                 {availablePrinters.length === 0 && (
                   <p className="text-xs text-gray-500 mt-2">
-                    No printers detected by the desktop app.
+                    No printers detected by the desktop app. If this is Windows,
+                    we can try a different enumeration method.
                   </p>
                 )}
               </div>

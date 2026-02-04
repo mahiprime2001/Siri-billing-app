@@ -119,17 +119,33 @@ fn list_printers() -> Result<Vec<String>, String> {
             .output()
             .map_err(|e| format!("Failed to list printers: {}", e))?;
 
-        if !output.status.success() {
-            return Err("Failed to list printers".to_string());
-        }
-
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let printers = stdout
+        let mut printers: Vec<String> = stdout
             .lines()
             .map(|line| line.trim())
             .filter(|line| !line.is_empty())
             .map(|line| line.to_string())
             .collect();
+
+        if printers.is_empty() {
+            // Fallback for systems without PrintManagement module (e.g., Windows Home)
+            let fallback = Command::new("wmic")
+                .args(["printer", "get", "name"])
+                .output()
+                .map_err(|e| format!("Failed to list printers (wmic): {}", e))?;
+
+            let fallback_stdout = String::from_utf8_lossy(&fallback.stdout);
+            printers = fallback_stdout
+                .lines()
+                .map(|line| line.trim())
+                .filter(|line| !line.is_empty() && line.to_lowercase() != "name")
+                .map(|line| line.to_string())
+                .collect();
+        }
+
+        if printers.is_empty() && !output.status.success() {
+            return Err("Failed to list printers".to_string());
+        }
 
         Ok(printers)
     }
