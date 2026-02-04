@@ -68,6 +68,7 @@ export default function InvoicePreview({
   const [availablePrinters, setAvailablePrinters] = useState<string[]>([])
   const [selectedPrinter, setSelectedPrinter] = useState("SYSTEM_DEFAULT")
   const [isTauriRuntime, setIsTauriRuntime] = useState(false)
+  const [printCopies, setPrintCopies] = useState(2)
 
   // Autocomplete states
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -279,9 +280,12 @@ export default function InvoicePreview({
           { label: "Customer Copy" },
         ])
 
-        console.log("🖨 [InvoicePreview] Starting silent print (2 jobs)...")
-        await silentPrintText(storeCopy, printer)
-        await silentPrintText(customerCopy, printer)
+        console.log("🖨 [InvoicePreview] Starting silent print (multiple jobs)...")
+        const copies = Math.max(1, Number.isFinite(printCopies) ? printCopies : 1)
+        for (let i = 0; i < copies; i += 1) {
+          const content = i % 2 === 0 ? storeCopy : customerCopy
+          await silentPrintText(content, printer)
+        }
         console.log("✅ [InvoicePreview] Silent print completed successfully")
         setIsPrinting(false)
         return
@@ -483,6 +487,20 @@ export default function InvoicePreview({
                     we can try a different enumeration method.
                   </p>
                 )}
+                <div className="mt-4">
+                  <Label htmlFor="printCopies">Copies</Label>
+                  <Input
+                    id="printCopies"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={printCopies}
+                    onChange={(e) => {
+                      const value = Number.parseInt(e.target.value, 10)
+                      setPrintCopies(Number.isNaN(value) ? 2 : Math.max(1, value))
+                    }}
+                  />
+                </div>
               </div>
             )}
 
