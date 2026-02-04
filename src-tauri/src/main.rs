@@ -114,7 +114,7 @@ fn list_printers() -> Result<Vec<String>, String> {
             .args([
                 "-NoProfile",
                 "-Command",
-                "Get-Printer | Select-Object -ExpandProperty Name",
+                "Get-CimInstance Win32_Printer | Select-Object -ExpandProperty Name",
             ])
             .output()
             .map_err(|e| format!("Failed to list printers: {}", e))?;
