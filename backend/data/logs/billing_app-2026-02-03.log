@@ -4693,3 +4693,66 @@ postgrest.exceptions.APIError: {'message': "Could not find the 'discountamount' 
 2026-02-04 00:52:57,531 - main - DEBUG - background_tasks.py:81 - Delta pull for UserStores with last_sync: 2026-02-04T00:47:56.025816
 2026-02-04 00:52:57,682 - main - INFO - background_tasks.py:86 - Delta pull sync for UserStores completed successfully.
 2026-02-04 00:52:57,682 - main - INFO - background_tasks.py:124 - No new records for UserStores during delta pull.
+2026-02-04 00:57:54,217 - main - INFO - background_tasks.py:142 - Background JSON to Supabase push sync starting. Next push in 5 minutes.
+2026-02-04 00:57:55,372 - main - INFO - background_tasks.py:167 - Background JSON to Supabase push sync completed successfully. Stats: {'Products': {'pushed': 31}, 'Customers': {'pushed': 1}, 'Users': {'pushed': 3}, 'Stores': {'pushed': 1}, 'SystemSettings': {'pushed': 1}, 'BillFormats': {'pushed': 5}}
+2026-02-04 00:57:57,702 - main - INFO - background_tasks.py:76 - Background pull sync starting. Next sync in 5 minutes.
+2026-02-04 00:57:57,703 - main - DEBUG - background_tasks.py:81 - Delta pull for Products with last_sync: 2026-02-04T00:52:56.214051
+2026-02-04 00:57:57,863 - main - INFO - background_tasks.py:86 - Delta pull sync for Products completed successfully.
+2026-02-04 00:57:57,864 - main - INFO - background_tasks.py:124 - No new records for Products during delta pull.
+2026-02-04 00:57:57,865 - main - DEBUG - background_tasks.py:81 - Delta pull for Customers with last_sync: 2026-02-04T00:52:56.365898
+2026-02-04 00:57:58,027 - main - INFO - background_tasks.py:86 - Delta pull sync for Customers completed successfully.
+2026-02-04 00:57:58,028 - main - INFO - background_tasks.py:124 - No new records for Customers during delta pull.
+2026-02-04 00:57:58,028 - main - DEBUG - background_tasks.py:81 - Delta pull for Users with last_sync: 2026-02-04T00:52:56.548672
+2026-02-04 00:57:58,186 - main - INFO - background_tasks.py:86 - Delta pull sync for Users completed successfully.
+2026-02-04 00:57:58,187 - main - INFO - background_tasks.py:124 - No new records for Users during delta pull.
+2026-02-04 00:57:58,188 - main - DEBUG - background_tasks.py:81 - Delta pull for Stores with last_sync: 2026-02-04T00:52:56.714040
+2026-02-04 00:57:58,344 - main - INFO - background_tasks.py:86 - Delta pull sync for Stores completed successfully.
+2026-02-04 00:57:58,344 - main - INFO - background_tasks.py:124 - No new records for Stores during delta pull.
+2026-02-04 00:57:58,344 - main - DEBUG - background_tasks.py:81 - Delta pull for SystemSettings with last_sync: 2026-02-04T00:52:56.864616
+2026-02-04 00:57:58,504 - main - INFO - background_tasks.py:86 - Delta pull sync for SystemSettings completed successfully.
+2026-02-04 00:57:58,504 - main - INFO - background_tasks.py:124 - No new records for SystemSettings during delta pull.
+2026-02-04 00:57:58,504 - main - DEBUG - background_tasks.py:81 - Delta pull for Returns with last_sync: 2026-02-04T00:52:57.037657
+2026-02-04 00:57:58,659 - main - INFO - background_tasks.py:86 - Delta pull sync for Returns completed successfully.
+2026-02-04 00:57:58,659 - main - INFO - background_tasks.py:124 - No new records for Returns during delta pull.
+2026-02-04 00:57:58,659 - main - DEBUG - background_tasks.py:81 - Delta pull for Bills with last_sync: 2026-02-04T00:52:57.198328
+2026-02-04 00:57:58,816 - main - INFO - background_tasks.py:86 - Delta pull sync for Bills completed successfully.
+2026-02-04 00:57:58,817 - main - INFO - background_tasks.py:124 - No new records for Bills during delta pull.
+2026-02-04 00:57:58,818 - main - DEBUG - background_tasks.py:81 - Delta pull for BillFormats with last_sync: 2026-02-04T00:52:57.365662
+2026-02-04 00:57:58,970 - main - INFO - background_tasks.py:86 - Delta pull sync for BillFormats completed successfully.
+2026-02-04 00:57:58,970 - main - INFO - background_tasks.py:90 - Found 5 new/updated records for BillFormats.
+2026-02-04 00:57:58,970 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\bill_formats.json for BillFormats.
+2026-02-04 00:57:58,970 - main - DEBUG - background_tasks.py:81 - Delta pull for UserStores with last_sync: 2026-02-04T00:52:57.531835
+2026-02-04 00:57:59,138 - main - INFO - background_tasks.py:86 - Delta pull sync for UserStores completed successfully.
+2026-02-04 00:57:59,138 - main - INFO - background_tasks.py:124 - No new records for UserStores during delta pull.
+2026-02-04 01:02:55,388 - main - INFO - background_tasks.py:142 - Background JSON to Supabase push sync starting. Next push in 5 minutes.
+2026-02-04 01:02:56,540 - main - INFO - background_tasks.py:167 - Background JSON to Supabase push sync completed successfully. Stats: {'Products': {'pushed': 31}, 'Customers': {'pushed': 1}, 'Users': {'pushed': 3}, 'Stores': {'pushed': 1}, 'SystemSettings': {'pushed': 1}, 'BillFormats': {'pushed': 5}}
+2026-02-04 01:02:59,169 - main - INFO - background_tasks.py:76 - Background pull sync starting. Next sync in 5 minutes.
+2026-02-04 01:02:59,169 - main - DEBUG - background_tasks.py:81 - Delta pull for Products with last_sync: 2026-02-04T00:57:57.703875
+2026-02-04 01:02:59,324 - main - INFO - background_tasks.py:86 - Delta pull sync for Products completed successfully.
+2026-02-04 01:02:59,326 - main - INFO - background_tasks.py:124 - No new records for Products during delta pull.
+2026-02-04 01:02:59,326 - main - DEBUG - background_tasks.py:81 - Delta pull for Customers with last_sync: 2026-02-04T00:57:57.865554
+2026-02-04 01:02:59,490 - main - INFO - background_tasks.py:86 - Delta pull sync for Customers completed successfully.
+2026-02-04 01:02:59,492 - main - INFO - background_tasks.py:124 - No new records for Customers during delta pull.
+2026-02-04 01:02:59,492 - main - DEBUG - background_tasks.py:81 - Delta pull for Users with last_sync: 2026-02-04T00:57:58.029612
+2026-02-04 01:02:59,642 - main - INFO - background_tasks.py:86 - Delta pull sync for Users completed successfully.
+2026-02-04 01:02:59,643 - main - INFO - background_tasks.py:124 - No new records for Users during delta pull.
+2026-02-04 01:02:59,644 - main - DEBUG - background_tasks.py:81 - Delta pull for Stores with last_sync: 2026-02-04T00:57:58.188010
+2026-02-04 01:02:59,798 - main - INFO - background_tasks.py:86 - Delta pull sync for Stores completed successfully.
+2026-02-04 01:02:59,799 - main - INFO - background_tasks.py:124 - No new records for Stores during delta pull.
+2026-02-04 01:02:59,800 - main - DEBUG - background_tasks.py:81 - Delta pull for SystemSettings with last_sync: 2026-02-04T00:57:58.344941
+2026-02-04 01:02:59,943 - main - INFO - background_tasks.py:86 - Delta pull sync for SystemSettings completed successfully.
+2026-02-04 01:02:59,943 - main - INFO - background_tasks.py:124 - No new records for SystemSettings during delta pull.
+2026-02-04 01:02:59,943 - main - DEBUG - background_tasks.py:81 - Delta pull for Returns with last_sync: 2026-02-04T00:57:58.504816
+2026-02-04 01:03:00,101 - main - INFO - background_tasks.py:86 - Delta pull sync for Returns completed successfully.
+2026-02-04 01:03:00,101 - main - INFO - background_tasks.py:124 - No new records for Returns during delta pull.
+2026-02-04 01:03:00,101 - main - DEBUG - background_tasks.py:81 - Delta pull for Bills with last_sync: 2026-02-04T00:57:58.659354
+2026-02-04 01:03:00,255 - main - INFO - background_tasks.py:86 - Delta pull sync for Bills completed successfully.
+2026-02-04 01:03:00,255 - main - INFO - background_tasks.py:124 - No new records for Bills during delta pull.
+2026-02-04 01:03:00,255 - main - DEBUG - background_tasks.py:81 - Delta pull for BillFormats with last_sync: 2026-02-04T00:57:58.818677
+2026-02-04 01:03:00,410 - main - INFO - background_tasks.py:86 - Delta pull sync for BillFormats completed successfully.
+2026-02-04 01:03:00,410 - main - INFO - background_tasks.py:90 - Found 5 new/updated records for BillFormats.
+2026-02-04 01:03:00,410 - main - INFO - background_tasks.py:122 - Merged and updated D:\Siri-apps\Siri-billing-app\backend\data\json\bill_formats.json for BillFormats.
+2026-02-04 01:03:00,410 - main - DEBUG - background_tasks.py:81 - Delta pull for UserStores with last_sync: 2026-02-04T00:57:58.982493
+2026-02-04 01:03:00,569 - main - INFO - background_tasks.py:86 - Delta pull sync for UserStores completed successfully.
+2026-02-04 01:03:00,569 - main - INFO - background_tasks.py:124 - No new records for UserStores during delta pull.
+2026-02-04 01:03:17,829 - main - INFO - main.py:96 - 🧹 No PyInstaller temp folders found

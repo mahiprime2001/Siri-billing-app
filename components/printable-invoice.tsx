@@ -62,7 +62,9 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
               <div style={{ fontWeight: "bold", fontSize: 14 }}>
                 {safeInvoice.companyName}
               </div>
-              <div style={{ fontSize: 10 }}>{safeInvoice.companyAddress}</div>
+              <div style={{ fontSize: 10 }}>
+                {safeInvoice.storeAddress || safeInvoice.companyAddress}
+              </div>
               <div style={{ fontSize: 10 }}>Ph: {safeInvoice.companyPhone}</div>
               <div style={{ fontSize: 10 }}>Email: {safeInvoice.companyEmail}</div>
               {safeInvoice.gstin && (
