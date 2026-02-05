@@ -667,7 +667,7 @@ export default function BillingAndCart() {
 
   const handleDiscountChange = (newDiscount: number) => {
     const normalizedDiscount = Math.min(100, Math.max(0, Number.isFinite(newDiscount) ? newDiscount : 0))
-    const wasWithinLimit = activeBillingInstance?.discount <= 10
+    const wasWithinLimit = (activeBillingInstance?.discount ?? 0) <= 10
 
     if (normalizedDiscount > 10 && wasWithinLimit) {
       toast({
