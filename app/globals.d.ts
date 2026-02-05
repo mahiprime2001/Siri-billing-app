@@ -14,6 +14,8 @@ interface Invoice {
   taxAmount: number;
   discountPercentage: number;
   discountAmount: number;
+  discountRequestId?: string;
+  discountApprovalStatus?: "not_required" | "pending" | "approved" | "denied";
   total: number;
   cgst: number;
   sgst: number;

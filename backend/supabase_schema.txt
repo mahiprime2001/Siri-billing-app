@@ -74,6 +74,20 @@ CREATE TABLE public.customers (
   updatedat timestamp without time zone,
   CONSTRAINT customers_pkey PRIMARY KEY (id)
 );
+CREATE TABLE public.discounts (
+  s_no integer NOT NULL DEFAULT nextval('discounts_s_no_seq'::regclass),
+  discount_id character varying NOT NULL,
+  user_id character varying,
+  discount numeric,
+  discount_amount numeric,
+  bill_id character varying,
+  status character varying DEFAULT 'pending'::character varying,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT discounts_pkey PRIMARY KEY (s_no),
+  CONSTRAINT discounts_bill_fk FOREIGN KEY (bill_id) REFERENCES public.bills(id),
+  CONSTRAINT discounts_user_fk FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
 CREATE TABLE public.notifications (
   id bigint NOT NULL DEFAULT nextval('notifications_id_seq'::regclass),
   type character varying NOT NULL,

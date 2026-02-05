@@ -21,12 +21,11 @@ import {
 import { Button } from "@/components/ui/button"
 import { Save, Printer, AlertCircle, User, CreditCard } from "lucide-react"
 import PrintableInvoice from "./printable-invoice"
-import { safePrint } from "@/lib/printUtils"
-import { isTauriApp, listPrinters, silentPrintText, printHtmlContent } from "@/lib/tauriPrinter"
-import { generateReceiptText } from "@/lib/receiptText"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useToast } from "@/components/ui/use-toast"
+import { apiClient } from "@/lib/api-client"
 
 
 
@@ -56,20 +55,20 @@ export default function InvoicePreview({
   const printRef = useRef<HTMLDivElement>(null)
   const nameInputRef = useRef<HTMLDivElement>(null)
   const phoneInputRef = useRef<HTMLDivElement>(null)
+  const { toast } = useToast()
   
   const [isPrinting, setIsPrinting] = useState(false)
   const [printError, setPrintError] = useState<string | null>(null)
+  const [discountApprovalStatus, setDiscountApprovalStatus] = useState<Invoice["discountApprovalStatus"]>(
+    invoice.discountApprovalStatus || "not_required"
+  )
+  const [discountRequestId, setDiscountRequestId] = useState<string | undefined>(invoice.discountRequestId)
 
   // Editable states
   const [customerName, setCustomerName] = useState(initialCustomerName)
   const [customerPhone, setCustomerPhone] = useState(initialCustomerPhone)
   const [paymentMethod, setPaymentMethod] = useState(initialPaymentMethod)
   const [paperSize, setPaperSize] = useState(initialPaperSize)
-  const [availablePrinters, setAvailablePrinters] = useState<string[]>([])
-  const [selectedPrinter, setSelectedPrinter] = useState("SYSTEM_DEFAULT")
-  const [isTauriRuntime, setIsTauriRuntime] = useState(false)
-  const [printCopies, setPrintCopies] = useState(2)
-  const [printerDebug, setPrinterDebug] = useState(false)
 
   // Autocomplete states
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -86,29 +85,9 @@ export default function InvoicePreview({
   }, [initialCustomerName, initialCustomerPhone, initialPaymentMethod, initialPaperSize])
 
   useEffect(() => {
-    if (!isOpen) return
-
-    const loadPrinters = async () => {
-      const tauri = isTauriApp()
-      setIsTauriRuntime(tauri)
-      if (!tauri) {
-        setAvailablePrinters([])
-        return
-      }
-      try {
-        const debugFlag =
-          typeof window !== "undefined" &&
-          window.localStorage.getItem("printerDebug") === "true"
-        setPrinterDebug(debugFlag)
-      } catch {
-        setPrinterDebug(false)
-      }
-      const printers = await listPrinters()
-      setAvailablePrinters(printers)
-    }
-
-    loadPrinters()
-  }, [isOpen])
+    setDiscountApprovalStatus(invoice.discountApprovalStatus || "not_required")
+    setDiscountRequestId(invoice.discountRequestId)
+  }, [invoice.discountApprovalStatus, invoice.discountRequestId])
 
   // Simplified fetch - just get customers directly
   useEffect(() => {
@@ -144,6 +123,49 @@ export default function InvoicePreview({
     }
   }, [isOpen])
 
+  useEffect(() => {
+    if (!discountRequestId || discountApprovalStatus !== "pending") return
+
+    let cancelled = false
+
+    const pollStatus = async () => {
+      try {
+        const response = await apiClient(`/api/discounts/${discountRequestId}`)
+        if (!response.ok) return
+        const data = await response.json()
+        const nextStatus = data?.status
+
+        if (!cancelled && nextStatus && nextStatus !== discountApprovalStatus) {
+          setDiscountApprovalStatus(nextStatus)
+
+          if (nextStatus === "approved") {
+            toast({
+              title: "Discount Approved",
+              description: "You can now save or print the invoice.",
+              variant: "default",
+            })
+          } else if (nextStatus === "denied") {
+            toast({
+              title: "Discount Denied",
+              description: "Please adjust the discount or request again.",
+              variant: "destructive",
+            })
+          }
+        }
+      } catch (error) {
+        console.error("Failed to poll discount status:", error)
+      }
+    }
+
+    pollStatus()
+    const interval = setInterval(pollStatus, 4000)
+
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [discountRequestId, discountApprovalStatus, toast])
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -163,23 +185,13 @@ export default function InvoicePreview({
   const handleNameChange = (value: string) => {
     setCustomerName(value)
     
-    console.log('🔍 Name input:', value)
-    console.log('👥 Total customers:', customers.length)
-    console.log('👥 All customers:', customers)
-    
     if (value.trim().length > 0) {
       const filtered = customers.filter(customer => {
-        console.log('🔎 Checking customer:', customer)
         if (!customer.name || typeof customer.name !== 'string') {
           return false
         }
-        const match = customer.name.toLowerCase().includes(value.toLowerCase())
-        console.log(`🔎 "${customer.name}" matches "${value}": ${match}`)
-        return match
+        return customer.name.toLowerCase().includes(value.toLowerCase())
       })
-      
-      console.log('✨ Filtered customers:', filtered)
-      console.log('✨ Filtered count:', filtered.length)
       
       setFilteredCustomers(filtered)
       setShowNameSuggestions(filtered.length > 0)
@@ -194,9 +206,6 @@ export default function InvoicePreview({
   const handlePhoneChange = (value: string) => {
     setCustomerPhone(value)
     
-    console.log('📱 Phone input:', value)
-    console.log('👥 Total customers:', customers.length)
-    
     if (value.trim().length > 0) {
       const filtered = customers.filter(customer => {
         if (!customer.phone || typeof customer.phone !== 'string') {
@@ -204,8 +213,6 @@ export default function InvoicePreview({
         }
         return customer.phone.includes(value)
       })
-      
-      console.log('✨ Filtered customers by phone:', filtered)
       
       setFilteredCustomers(filtered)
       setShowPhoneSuggestions(filtered.length > 0)
@@ -218,11 +225,8 @@ export default function InvoicePreview({
 
   // Select customer from suggestions - AUTO FILLS BOTH NAME AND PHONE
   const selectCustomer = (customer: Customer) => {
-    console.log('✅ Selected customer:', customer)
-    // Auto-fill BOTH name and phone
     setCustomerName(customer.name)
     setCustomerPhone(customer.phone)
-    // Close both dropdowns
     setShowNameSuggestions(false)
     setShowPhoneSuggestions(false)
     setFilteredCustomers([])
@@ -236,127 +240,24 @@ export default function InvoicePreview({
     billFormat: paperSize,
     discountPercentage: invoice.discountPercentage,
     discountAmount: invoice.discountAmount,
+    discountRequestId,
+    discountApprovalStatus,
     total: invoice.total,
     taxAmount: invoice.taxAmount,
   })
 
   const handleSaveClick = () => {
-    if (onSave) {
-      onSave(getUpdatedInvoice())
-    }
-  }
-
-  const handlePrintAndSaveClick = async () => {
-    setIsPrinting(true)
-    setPrintError(null)
-    try {
-      const updatedInvoice = getUpdatedInvoice()
-      if (onPrintAndSave) {
-        console.log("💾 [InvoicePreview] Saving invoice...")
-        await onPrintAndSave(updatedInvoice)
-      }
-      await handlePrint()
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "An error occurred during save and print."
-      console.error("❌ [InvoicePreview] Print and save error:", error)
-      setPrintError(errorMessage)
-      setIsPrinting(false)
-    }
-  }
-
-  const handlePrint = async () => {
-    if (!printRef.current) {
-      setPrintError("Print content not available. Please try again.")
+    if (isDiscountBlocked) {
+      toast({
+        title: "Approval Required",
+        description: "Discount must be approved before saving.",
+        variant: "destructive",
+      })
       return
     }
-
-    setIsPrinting(true)
-    setPrintError(null)
-
-    try {
-      const updatedInvoice = getUpdatedInvoice()
-      const isThermal = paperSize.includes("Thermal")
-      const printer = selectedPrinter === "SYSTEM_DEFAULT" ? undefined : selectedPrinter
-
-      if (isTauriRuntime && isThermal) {
-        const storeCopy = generateReceiptText(updatedInvoice, paperSize, [
-          { label: "Store Copy" },
-        ])
-        const customerCopy = generateReceiptText(updatedInvoice, paperSize, [
-          { label: "Customer Copy" },
-        ])
-
-        console.log("🖨 [InvoicePreview] Starting silent print (multiple jobs)...")
-        const copies = Math.max(1, Number.isFinite(printCopies) ? printCopies : 1)
-        for (let i = 0; i < copies; i += 1) {
-          const content = i % 2 === 0 ? storeCopy : customerCopy
-          await silentPrintText(content, {
-            printerName: printer,
-            paperSize,
-            copies: 1,
-            debug: printerDebug,
-          })
-        }
-        console.log("✅ [InvoicePreview] Silent print completed successfully")
-        setIsPrinting(false)
-        return
-      }
-
-      const printContent = printRef.current.innerHTML
-      const htmlContent = generatePrintHTML(printContent, paperSize, invoice.id)
-
-      if (isTauriRuntime) {
-        console.log("🖨 [InvoicePreview] Printing via Tauri plugin...")
-        await printHtmlContent(htmlContent, {
-          printerName: printer,
-          paperSize,
-          copies: Math.max(1, Number.isFinite(printCopies) ? printCopies : 1),
-          debug: printerDebug,
-        })
-        console.log("✅ [InvoicePreview] Print completed successfully")
-      } else {
-        console.log("🖨 [InvoicePreview] Starting print dialog...")
-        const result = await safePrint(htmlContent, paperSize)
-
-        if (!result.success) {
-          setPrintError(result.error || "Failed to print. Please try again.")
-        } else {
-          console.log("✅ [InvoicePreview] Print completed successfully")
-        }
-      }
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "An unexpected error occurred while printing."
-      console.error("❌ [InvoicePreview] Print error:", error)
-      setPrintError(errorMessage)
-    } finally {
-      setIsPrinting(false)
-    }
-  }
-
-  const handlePrintAndSave = async () => {
-    setIsPrinting(true)
-    setPrintError(null)
-
-    try {
-      if (onPrintAndSave) {
-        console.log("💾 [InvoicePreview] Saving invoice...")
-        await onPrintAndSave(getUpdatedInvoice())
-      }
-      await handlePrint()
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "An error occurred during save and print."
-      console.error("❌ [InvoicePreview] Print and save error:", error)
-      setPrintError(errorMessage)
-      setIsPrinting(false)
+    if (onSave) {
+      onSave(getUpdatedInvoice())
+      onClose()
     }
   }
 
@@ -365,184 +266,262 @@ export default function InvoicePreview({
     onClose()
   }
 
+  /**
+   * ✅ FIXED: Opens print dialog ONCE, but user can set copies in the dialog
+   * Browser's native print dialog has a "copies" field where user can select how many
+   */
+  const handlePrintAndSave = async () => {
+    setIsPrinting(true)
+    setPrintError(null)
+
+    try {
+      if (isDiscountBlocked) {
+        toast({
+          title: "Approval Required",
+          description: "Discount must be approved before printing.",
+          variant: "destructive",
+        })
+        setIsPrinting(false)
+        return
+      }
+
+      console.log('🖨️ Starting native print process...')
+      
+      if (!printRef.current) {
+        throw new Error('Print reference not found')
+      }
+
+      const printContent = printRef.current.innerHTML
+      const html = generatePrintHTML(printContent, paperSize, invoice.id || 'unknown')
+
+      // ✅ Create hidden iframe for printing
+      const printFrame = document.createElement('iframe')
+      printFrame.style.cssText = `
+        position: fixed;
+        top: -9999px;
+        left: -9999px;
+        width: 0;
+        height: 0;
+        border: none;
+        visibility: hidden;
+      `
+      document.body.appendChild(printFrame)
+
+      // Wait for iframe to be ready
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      const frameDoc = printFrame.contentDocument || printFrame.contentWindow?.document
+      if (!frameDoc) {
+        throw new Error('Failed to access iframe document')
+      }
+
+      // Write HTML to iframe
+      frameDoc.open()
+      frameDoc.write(html)
+      frameDoc.close()
+
+      // Wait for content to load
+      await new Promise(resolve => {
+        if (frameDoc.readyState === 'complete') {
+          resolve(null)
+        } else {
+          printFrame.onload = () => resolve(null)
+        }
+      })
+
+      console.log('📄 Print content ready')
+
+      // ✅ Call print() ONCE - user sets copies in the dialog
+      const printWindow = printFrame.contentWindow
+      if (!printWindow) {
+        throw new Error('Failed to access iframe window')
+      }
+
+      console.log('🖨️ Opening print dialog')
+      printWindow.focus()
+      printWindow.print()
+
+      // Clean up iframe after a delay
+      setTimeout(() => {
+        if (document.body.contains(printFrame)) {
+          document.body.removeChild(printFrame)
+          console.log('🧹 Print frame cleaned up')
+        }
+      }, 2000)
+
+      console.log('✅ Print dialog opened successfully')
+
+      // Save the invoice after successful print
+      if (onPrintAndSave) {
+        console.log('💾 Saving invoice...')
+        onPrintAndSave(getUpdatedInvoice())
+      }
+
+      // Close dialog
+      handleClose()
+    } catch (error) {
+      console.error('❌ Print error:', error)
+      setPrintError(error instanceof Error ? error.message : 'Unknown print error')
+    } finally {
+      setIsPrinting(false)
+    }
+  }
+
   const isThermal = paperSize.includes("Thermal")
   const isA4 = paperSize === "A4"
   const isLetter = paperSize === "Letter"
+  const requiresDiscountApproval = invoice.discountPercentage > 10
+  const isDiscountPending = requiresDiscountApproval && discountApprovalStatus === "pending"
+  const isDiscountDenied = requiresDiscountApproval && discountApprovalStatus === "denied"
+  const isDiscountBlocked = requiresDiscountApproval && discountApprovalStatus !== "approved"
+  const discountStatusLabel =
+    discountApprovalStatus === "approved"
+      ? "Approved"
+      : discountApprovalStatus === "denied"
+      ? "Denied"
+      : "Pending Approval"
+  const discountStatusClass =
+    discountApprovalStatus === "approved"
+      ? "border-green-200 bg-green-50 text-green-800"
+      : discountApprovalStatus === "denied"
+      ? "border-red-200 bg-red-50 text-red-800"
+      : "border-amber-200 bg-amber-50 text-amber-800"
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-visible">
+    <Dialog open={isOpen} modal={false} onOpenChange={(open) => !open && handleClose()}>
+      <DialogContent showOverlay={false} className="max-w-7xl max-h-[95vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Tax Invoice Preview - {invoice.id}</DialogTitle>
+          <DialogTitle className="text-2xl font-bold">Invoice Preview</DialogTitle>
           <DialogDescription>
-            Review the invoice details before saving or printing.
+            Review and customize your invoice before printing or saving
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-h-[70vh] overflow-y-auto">
-          {/* Left Column: Customer Info, Payment, Print Type */}
-          <div className="lg:col-span-1 space-y-4 overflow-visible">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 py-4">
+          {/* Left Column: Edit Options */}
+          <div className="lg:col-span-1 space-y-4">
             {/* Customer Information */}
-            <div className="p-4 border rounded-lg shadow-sm bg-gray-50 overflow-visible">
-              <h3 className="font-semibold text-lg mb-2 flex items-center">
-                <User className="h-5 w-5 mr-2" /> Customer Details
+            <div className="space-y-3">
+              <h3 className="font-semibold text-lg flex items-center">
+                <User className="h-4 w-4 mr-2" />
+                Customer Details
               </h3>
               
-              {/* Customer Name with Dropdown */}
-              <div className="space-y-2 mb-4" ref={nameInputRef}>
+              {/* Customer Name with Autocomplete */}
+              <div ref={nameInputRef} className="relative">
                 <Label htmlFor="customerName">Customer Name</Label>
-                <div className="relative">
-                  <Input
-                    id="customerName"
-                    value={customerName}
-                    onChange={(e) => handleNameChange(e.target.value)}
-                    onFocus={() => {
-                      if (customerName.trim().length > 0 && filteredCustomers.length > 0) {
-                        setShowNameSuggestions(true)
-                      }
-                    }}
-                    placeholder="Walk-in Customer"
-                    autoComplete="off"
-                  />
-                  
-                  {/* Suggestions Dropdown for Name */}
-                  {showNameSuggestions && filteredCustomers.length > 0 && (
-                    <div 
-                      className="absolute left-0 right-0 mt-1 bg-white border-2 border-blue-400 rounded-md shadow-xl max-h-60 overflow-auto"
-                      style={{ zIndex: 9999 }}
-                    >
-                      {filteredCustomers.map((customer) => (
-                        <div
-                          key={customer.id}
-                          className="px-4 py-3 cursor-pointer hover:bg-blue-50 active:bg-blue-100 border-b last:border-b-0 transition-colors"
-                          onClick={() => selectCustomer(customer)}
-                        >
-                          <div className="font-semibold text-gray-900">{customer.name}</div>
-                          <div className="text-sm text-gray-600">📱 {customer.phone || 'No phone'}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <Input
+                  id="customerName"
+                  value={customerName}
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  onFocus={() => {
+                    if (customerName.trim() && filteredCustomers.length > 0) {
+                      setShowNameSuggestions(true)
+                    }
+                  }}
+                  placeholder="Enter customer name"
+                  className="w-full"
+                />
+                
+                {/* Autocomplete Dropdown for Name */}
+                {showNameSuggestions && filteredCustomers.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                    {filteredCustomers.map((customer) => (
+                      <div
+                        key={customer.id}
+                        onClick={() => selectCustomer(customer)}
+                        className="px-4 py-2 hover:bg-gray-100 cursor-pointer flex justify-between items-center"
+                      >
+                        <span className="font-medium">{customer.name}</span>
+                        <span className="text-sm text-gray-500">{customer.phone}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              {/* Customer Phone with Dropdown */}
-              <div className="space-y-2" ref={phoneInputRef}>
+              {/* Customer Phone with Autocomplete */}
+              <div ref={phoneInputRef} className="relative">
                 <Label htmlFor="customerPhone">Customer Phone</Label>
-                <div className="relative">
-                  <Input
-                    id="customerPhone"
-                    value={customerPhone}
-                    onChange={(e) => handlePhoneChange(e.target.value)}
-                    onFocus={() => {
-                      if (customerPhone.trim().length > 0 && filteredCustomers.length > 0) {
-                        setShowPhoneSuggestions(true)
-                      }
-                    }}
-                    placeholder="N/A"
-                    autoComplete="off"
-                  />
-                  
-                  {/* Suggestions Dropdown for Phone */}
-                  {showPhoneSuggestions && filteredCustomers.length > 0 && (
-                    <div 
-                      className="absolute left-0 right-0 mt-1 bg-white border-2 border-blue-400 rounded-md shadow-xl max-h-60 overflow-auto"
-                      style={{ zIndex: 9999 }}
-                    >
-                      {filteredCustomers.map((customer) => (
-                        <div
-                          key={customer.id}
-                          className="px-4 py-3 cursor-pointer hover:bg-blue-50 active:bg-blue-100 border-b last:border-b-0 transition-colors"
-                          onClick={() => selectCustomer(customer)}
-                        >
-                          <div className="font-semibold text-gray-900">{customer.name}</div>
-                          <div className="text-sm text-gray-600">📱 {customer.phone || 'No phone'}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <Input
+                  id="customerPhone"
+                  value={customerPhone}
+                  onChange={(e) => handlePhoneChange(e.target.value)}
+                  onFocus={() => {
+                    if (customerPhone.trim() && filteredCustomers.length > 0) {
+                      setShowPhoneSuggestions(true)
+                    }
+                  }}
+                  placeholder="Enter phone number"
+                  className="w-full"
+                />
+                
+                {/* Autocomplete Dropdown for Phone */}
+                {showPhoneSuggestions && filteredCustomers.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                    {filteredCustomers.map((customer) => (
+                      <div
+                        key={customer.id}
+                        onClick={() => selectCustomer(customer)}
+                        className="px-4 py-2 hover:bg-gray-100 cursor-pointer flex justify-between items-center"
+                      >
+                        <span className="font-medium">{customer.phone}</span>
+                        <span className="text-sm text-gray-500">{customer.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Payment Method */}
-            <div className="p-4 border rounded-lg shadow-sm bg-gray-50">
-              <h3 className="font-semibold text-lg mb-2 flex items-center">
-                <CreditCard className="h-5 w-5 mr-2" /> Payment Method
+            <div className="space-y-3">
+              <h3 className="font-semibold text-lg flex items-center">
+                <CreditCard className="h-4 w-4 mr-2" />
+                Payment Method
               </h3>
               <Select value={paymentMethod} onValueChange={setPaymentMethod}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Cash">💵 Cash</SelectItem>
-                  <SelectItem value="UPI">📱 UPI</SelectItem>
-                  <SelectItem value="Card">💳 Card</SelectItem>
-                  <SelectItem value="UPI+Cash">UPI+Cash</SelectItem>
-                  <SelectItem value="Card+Cash">Card+Cash</SelectItem>
+                  <SelectItem value="Cash">Cash</SelectItem>
+                  <SelectItem value="UPI">UPI</SelectItem>
+                  <SelectItem value="Card">Card</SelectItem>
+                  <SelectItem value="Credit">Credit</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Print Type */}
-            {/* Print Format removed from preview as requested */}
+            {/* Paper Size */}
+            <div className="space-y-3">
+              <h3 className="font-semibold text-lg flex items-center">
+                <Printer className="h-4 w-4 mr-2" />
+                Paper Size
+              </h3>
+              <Select value={paperSize} onValueChange={setPaperSize}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Thermal 80mm">Thermal 80mm</SelectItem>
+                  <SelectItem value="Thermal 58mm">Thermal 58mm</SelectItem>
+                  <SelectItem value="A4">A4</SelectItem>
+                  <SelectItem value="Letter">Letter</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-            {/* Printer Selection (Desktop App) */}
-            {isTauriRuntime && (
-              <div className="p-4 border rounded-lg shadow-sm bg-gray-50">
-                <h3 className="font-semibold text-lg mb-2 flex items-center">
-                  <Printer className="h-5 w-5 mr-2" /> Printer
-                </h3>
-                <Select value={selectedPrinter} onValueChange={setSelectedPrinter}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="SYSTEM_DEFAULT">System Default</SelectItem>
-                    {availablePrinters.map((printer) => (
-                      <SelectItem key={printer} value={printer}>
-                        {printer}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {availablePrinters.length === 0 && (
-                  <p className="text-xs text-gray-500 mt-2">
-                    No printers detected by the desktop app. If this is Windows,
-                    we can try a different enumeration method.
-                  </p>
+            {requiresDiscountApproval && (
+              <div className={`rounded-md border px-4 py-3 ${discountStatusClass}`}>
+                <div className="text-sm font-semibold">Discount Approval</div>
+                <div className="text-sm">Status: {discountStatusLabel}</div>
+                {isDiscountPending && (
+                  <div className="text-xs mt-1">Waiting for approval. You can keep working in other tabs.</div>
                 )}
-                <div className="mt-4">
-                  <Label htmlFor="printCopies">Copies</Label>
-                  <Input
-                    id="printCopies"
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={printCopies}
-                    onChange={(e) => {
-                      const value = Number.parseInt(e.target.value, 10)
-                      setPrintCopies(Number.isNaN(value) ? 2 : Math.max(1, value))
-                    }}
-                  />
-                </div>
-                <div className="mt-4 flex items-center gap-2">
-                  <input
-                    id="printerDebug"
-                    type="checkbox"
-                    checked={printerDebug}
-                    onChange={(e) => {
-                      const checked = e.target.checked
-                      setPrinterDebug(checked)
-                      try {
-                        window.localStorage.setItem("printerDebug", String(checked))
-                      } catch {
-                        // ignore storage errors
-                      }
-                    }}
-                  />
-                  <Label htmlFor="printerDebug">Enable Printer Debug Logs</Label>
-                </div>
+                {isDiscountDenied && (
+                  <div className="text-xs mt-1">Please reduce the discount or request approval again.</div>
+                )}
               </div>
             )}
 
@@ -607,14 +586,14 @@ export default function InvoicePreview({
           <Button
             onClick={handlePrintAndSave}
             className="bg-blue-600 hover:bg-blue-700"
-            disabled={isPrinting}
+            disabled={isPrinting || isDiscountBlocked}
           >
             <Printer className="h-4 w-4 mr-2" />
             {isPrinting ? "Processing..." : "Print & Save"}
           </Button>
 
           {onSave && (
-            <Button onClick={handleSaveClick} variant="outline" disabled={isPrinting}>
+            <Button onClick={handleSaveClick} variant="outline" disabled={isPrinting || isDiscountBlocked}>
               <Save className="h-4 w-4 mr-2" />
               Save Only
             </Button>
@@ -629,7 +608,7 @@ export default function InvoicePreview({
             <div className="text-center text-sm text-gray-600 ml-4">
               <div className="inline-flex items-center">
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
-                Preparing print...
+                Opening print dialog...
               </div>
             </div>
           )}
@@ -640,7 +619,8 @@ export default function InvoicePreview({
 }
 
 /**
- * Generate complete HTML for printing with proper styles
+ * ✅ Generate print HTML with CSS to suggest default copies
+ * Note: Not all browsers support CSS copies, so user may need to set in dialog
  */
 function generatePrintHTML(printContent: string, paperSize: string, invoiceId: string): string {
   const getPageStyles = (): string => {
@@ -648,66 +628,60 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
       return `
         @page {
           size: 58mm auto;
-          margin: 1mm 2mm;
+          margin: 0;
         }
         body {
-          width: 48mm;
+          width: 58mm;
+          margin: 0;
+          padding: 2mm;
         }
       `
     } else if (paperSize === "Thermal 80mm") {
       return `
         @page {
           size: 80mm auto;
-          margin: 2mm 3mm;
+          margin: 0;
         }
         body {
-          width: 72mm;
+          width: 80mm;
+          margin: 0;
+          padding: 2mm;
         }
       `
     } else if (paperSize === "A4") {
       return `
         @page {
           size: A4 portrait;
-          margin: 15mm 10mm;
+          margin: 0;
+        }
+        body {
+          margin: 0;
+          padding: 15mm 10mm;
         }
       `
     } else if (paperSize === "Letter") {
       return `
         @page {
           size: Letter portrait;
-          margin: 0.6in 0.4in;
+          margin: 0;
+        }
+        body {
+          margin: 0;
+          padding: 0.6in 0.4in;
         }
       `
     }
     return `
       @page {
         size: A4 portrait;
-        margin: 15mm 10mm;
+        margin: 0;
+      }
+      body {
+        margin: 0;
+        padding: 15mm 10mm;
       }
     `
   }
-
-  const isThermal = paperSize.includes("Thermal")
-  const labelStyle = isThermal
-    ? "font-size: 10px; text-align: center; margin: 0 0 4px 0; font-weight: bold;"
-    : "font-size: 12px; text-align: center; margin: 0 0 8px 0; font-weight: bold;"
-
-  const separator = isThermal
-    ? `<div style="border-top: 1px dashed #000; margin: 8px 0;"></div>`
-    : `<div style="page-break-after: always;"></div>`
-
-  const copyBlock = (label: string) => `
-    <div class="print-copy">
-      <div style="${labelStyle}">${label}</div>
-      ${printContent}
-    </div>
-  `
-
-  const copiesContent = `
-    ${copyBlock("Store Copy")}
-    ${separator}
-    ${copyBlock("Customer Copy")}
-  `
 
   return `
     <!DOCTYPE html>
@@ -718,39 +692,51 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
         <title>Invoice-${invoiceId}</title>
         <style>
           ${getPageStyles()}
-          * { box-sizing: border-box; }
-          html, body {
+          
+          * { 
+            box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: Arial, sans-serif;
-            font-size: ${paperSize.includes("Thermal") ? "11px" : "14px"};
-            line-height: 1.4;
-            -webkit-print-color-adjust: exact;
-            background: white;
           }
+          
+          html, body {
+            font-family: 'Courier New', monospace;
+            font-size: ${paperSize.includes("Thermal") ? "12px" : "14px"};
+            line-height: 1.5;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            background: white;
+            color: black;
+          }
+          
           @media print {
             html, body {
               margin: 0 !important;
-              padding: 0 !important;
               overflow: visible !important;
+              height: auto !important;
             }
-            .no-print { display: none !important; }
-            .invoice-section { page-break-inside: avoid; margin-bottom: 6px; }
+            
+            /* Remove default browser headers/footers */
+            @page {
+              margin: 0;
+            }
+            
+            .no-print { 
+              display: none !important; 
+            }
           }
+          
           .print-container {
             width: 100%;
             max-width: 100%;
             padding: 0;
             margin: 0 auto;
           }
-          .print-copy {
-            width: 100%;
-          }
         </style>
       </head>
       <body>
         <div class="print-container">
-          ${copiesContent}
+          ${printContent}
         </div>
       </body>
     </html>

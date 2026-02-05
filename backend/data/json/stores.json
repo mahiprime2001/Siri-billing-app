@@ -7,5 +7,77 @@
         "status": "active",
         "createdat": "2026-01-29T12:39:48.982482",
         "updatedat": "2026-01-29T12:39:48.982482"
+    },
+    {
+        "id": "STR-1762160885710",
+        "name": "testingstore",
+        "address": "mypadu reddy,",
+        "phone": "675435678",
+        "status": "active",
+        "createdat": "2025-11-03T14:38:05",
+        "updatedat": null
+    },
+    {
+        "id": "store3",
+        "name": "SIRI ART JEWELLERY - Mall",
+        "address": "789 Mall Complex, City",
+        "phone": null,
+        "status": "active",
+        "createdat": null,
+        "updatedat": null
+    },
+    {
+        "id": "store_1",
+        "name": "Main Store",
+        "address": "123 Jewellery Street, City",
+        "phone": null,
+        "status": "active",
+        "createdat": null,
+        "updatedat": null
+    },
+    {
+        "id": "STR-1758042415183",
+        "name": "dress cricle ",
+        "address": "kanakamahall gate, nellore",
+        "phone": "6300936015",
+        "status": "active",
+        "createdat": "2025-09-16T22:36:55",
+        "updatedat": null
+    },
+    {
+        "id": "STR-1761569064837",
+        "name": "dress cricle ",
+        "address": "something",
+        "phone": "",
+        "status": "active",
+        "createdat": "2025-10-27T18:14:24",
+        "updatedat": null
+    },
+    {
+        "id": "fb304b5a-bc11-46a6-919c-ce3157a066c0",
+        "name": "testing the stores",
+        "address": "changed the store details ",
+        "phone": "",
+        "status": "active",
+        "createdat": "2025-12-02T23:53:26.239124",
+        "updatedat": "2025-12-03T00:04:53.863043"
+    },
+    {
+        "id": "STR-1764574507863",
+        "name": "dress cricle ",
+        "address": "this is a testing store ",
+        "phone": "",
+        "status": "active",
+        "createdat": "2025-12-01T13:05:07.863375",
+        "updatedat": "2025-12-01T13:05:07.863375"
+    },
+    {
+        "id": "STR-1764438854928",
+        "name": "testing",
+        "address": "testing testing ",
+        "phone": "",
+        "status": "active",
+        "createdat": "2025-11-29T23:24:14.928058",
+        "updatedat": "2025-11-29T23:24:14.928058"
     }
 ]

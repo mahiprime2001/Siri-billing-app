@@ -92,6 +92,8 @@ interface BillingInstance {
   customerName: string
   customerPhone: string
   discount: number
+  discountRequestId: string | null
+  discountApprovalStatus: "not_required" | "pending" | "approved" | "denied"
   editableTotal: number
   isEditingTotal: boolean
   paymentMethod: string
@@ -105,6 +107,8 @@ const createNewBillingInstance = (id: string): BillingInstance => ({
   customerName: "Walk-in Customer",
   customerPhone: "",
   discount: 0,
+  discountRequestId: null,
+  discountApprovalStatus: "not_required",
   editableTotal: 0,
   isEditingTotal: false,
   paymentMethod: "Cash",
@@ -565,23 +569,33 @@ export default function BillingAndCart() {
     if (subtotal > 0) {
       const targetTaxableAmount = newTotal - tax.total
       const newDiscountAmount = subtotal - targetTaxableAmount
-      const newDiscountPercentage = Math.min(10, Math.max(0, (newDiscountAmount / subtotal) * 100))
+      const newDiscountPercentage = Math.min(100, Math.max(0, (newDiscountAmount / subtotal) * 100))
       updateBillingInstance(activeTab, {
         discount: Math.round(newDiscountPercentage * 100) / 100,
+        discountRequestId: null,
+        discountApprovalStatus: newDiscountPercentage > 10 ? "pending" : "not_required",
       })
     }
   }
 
   const handleDiscountChange = (newDiscount: number) => {
-    if (newDiscount > 10) {
-      newDiscount = 10
+    const normalizedDiscount = Math.min(100, Math.max(0, Number.isFinite(newDiscount) ? newDiscount : 0))
+    const wasWithinLimit = activeBillingInstance?.discount <= 10
+
+    if (normalizedDiscount > 10 && wasWithinLimit) {
       toast({
-        title: "Heads up!",
-        description: `The maximum discount allowed is 10%. We've automatically adjusted it for you.`,
+        title: "Approval Required",
+        description: "Discounts above 10% require approval before saving.",
         variant: "default",
       })
     }
-    updateBillingInstance(activeTab, { discount: newDiscount, isEditingTotal: false })
+
+    updateBillingInstance(activeTab, {
+      discount: normalizedDiscount,
+      isEditingTotal: false,
+      discountRequestId: null,
+      discountApprovalStatus: normalizedDiscount > 10 ? "pending" : "not_required",
+    })
   }
 
   const clearCart = () => {
@@ -597,7 +611,30 @@ export default function BillingAndCart() {
     return `INV-${Date.now().toString().slice(-6)}`
   }
 
-  const handlePreview = () => {
+  const requestDiscountApproval = async (discountPercentage: number, discountAmount: number) => {
+    const response = await apiClient("/api/discounts/request", {
+      method: "POST",
+      body: JSON.stringify({
+        discount_percentage: discountPercentage,
+        discount_amount: discountAmount,
+      }),
+    })
+
+    if (!response.ok) {
+      let errorMessage = "Failed to request discount approval"
+      try {
+        const errorData = await response.json()
+        errorMessage = errorData.message || errorData.error || errorMessage
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(errorMessage)
+    }
+
+    return response.json()
+  }
+
+  const handlePreview = async () => {
     if (!currentStore) {
       toast({
         title: "Error",
@@ -662,6 +699,41 @@ export default function BillingAndCart() {
       billedBy: currentUser?.name || "",  // ✅ ADDED: User name who created the bill
       items: activeBillingInstance.cartItems,
     };
+    if (invoice.discountPercentage > 10) {
+      try {
+        if (!activeBillingInstance.discountRequestId) {
+          const discountResponse = await requestDiscountApproval(
+            invoice.discountPercentage,
+            invoice.discountAmount
+          )
+          invoice.discountRequestId = discountResponse.discount_id
+          invoice.discountApprovalStatus = discountResponse.status || "pending"
+          updateBillingInstance(activeTab, {
+            discountRequestId: invoice.discountRequestId || null,
+            discountApprovalStatus: invoice.discountApprovalStatus || "pending",
+          })
+          toast({
+            title: "Approval Requested",
+            description: "Discount request sent for approval. Please wait.",
+            variant: "default",
+          })
+        } else {
+          invoice.discountRequestId = activeBillingInstance.discountRequestId || undefined
+          invoice.discountApprovalStatus = activeBillingInstance.discountApprovalStatus || "pending"
+        }
+      } catch (error: any) {
+        toast({
+          title: "Request Failed",
+          description: error?.message || "Failed to request discount approval.",
+          variant: "destructive",
+        })
+        return
+      }
+    } else {
+      invoice.discountApprovalStatus = "not_required"
+      invoice.discountRequestId = undefined
+    }
+
     setCurrentInvoice(invoice)
     setShowPreview(true)
   }
@@ -677,6 +749,15 @@ export default function BillingAndCart() {
     }
 
     try {
+      if (invoiceToSave.discountPercentage > 10 && invoiceToSave.discountApprovalStatus !== "approved") {
+        toast({
+          title: "Approval Required",
+          description: "Discount above 10% must be approved before saving.",
+          variant: "destructive",
+        })
+        return false
+      }
+
       console.log("💾 Saving invoice:", invoiceToSave);
 
       const billData = {
@@ -690,6 +771,7 @@ export default function BillingAndCart() {
         tax_amount: invoiceToSave.taxAmount,
         discount_percentage: invoiceToSave.discountPercentage,
         discount_amount: invoiceToSave.discountAmount,
+        discount_request_id: invoiceToSave.discountRequestId || undefined,
         total_amount: invoiceToSave.total,
         payment_method: invoiceToSave.paymentMethod,
         notes: invoiceToSave.notes || '',
@@ -1176,6 +1258,14 @@ export default function BillingAndCart() {
                             />
                           </div>
                         </div>
+
+                        {tab.discount > 10 && (
+                          <Alert>
+                            <AlertDescription>
+                              Discounts above 10% require approval. Click "Generate Invoice" to send a request.
+                            </AlertDescription>
+                          </Alert>
+                        )}
                       </CardContent>
                     </Card>
 
@@ -1244,6 +1334,14 @@ export default function BillingAndCart() {
                             Generate Invoice
                           </Button>
                         </div>
+
+                        {tab.discount > 10 && (
+                          <Alert>
+                            <AlertDescription>
+                              Discounts above 10% require approval. Click "Generate Invoice" to send a request.
+                            </AlertDescription>
+                          </Alert>
+                        )}
                       </CardContent>
                     </Card>
                   </>

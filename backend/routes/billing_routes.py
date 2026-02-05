@@ -113,7 +113,28 @@ def create_bill():
         
         # ✅ Use default Walk-in Customer ID if no customer provided
         customer_id = data.get('customer_id') or DEFAULT_WALKIN_CUSTOMER_ID
-        
+
+        supabase = get_supabase_client()
+
+        discount_percentage = data.get('discount_percentage', 0) or 0
+        discount_request_id = data.get('discount_request_id')
+
+        if discount_percentage > 10:
+            if not discount_request_id:
+                return jsonify({"message": "Discount approval required for discounts above 10%"}), 400
+
+            discount_response = supabase.table('discounts') \
+                .select('status') \
+                .eq('discount_id', discount_request_id) \
+                .limit(1) \
+                .execute()
+
+            if not discount_response.data:
+                return jsonify({"message": "Discount request not found"}), 400
+
+            if discount_response.data[0].get('status') != 'approved':
+                return jsonify({"message": "Discount request not approved"}), 400
+
         # ✅ Simplified bill_data - ONLY IDs (no denormalized data)
         bill_data = {
             'id': bill_id,
@@ -144,8 +165,19 @@ def create_bill():
             return jsonify({"message": "Failed to create bill", "error": "Database insert failed"}), 500
         
         created_bill = response.data[0]
-        app.logger.info(f"✅ Bill created: {bill_id}")
-        
+        app.logger.info(f"Bill created: {bill_id}")
+
+        if discount_request_id:
+            try:
+                supabase.table('discounts') \
+                    .update({"bill_id": bill_id, "updated_at": now}) \
+                    .eq('discount_id', discount_request_id) \
+                    .execute()
+            except Exception as update_error:
+                app.logger.warning(
+                    f"Failed to link discount request {discount_request_id} to bill {bill_id}: {update_error}"
+                )
+
         # Process each item and create bill items + update stock
         bill_items_created = []
         stock_update_errors = []

@@ -62,6 +62,20 @@ Table: Customers
   - createdAt (datetime) NULLABLE   
   - updatedAt (datetime) NULLABLE   
 
+Table: Discounts
+  - s_no (int(11)) NOT NULL  PRIMARY KEY AUTO_INCREMENT
+  - discount_id (varchar(255)) NOT NULL   
+  - user_id (varchar(255)) NULLABLE   
+  - discount (decimal(5,2)) NULLABLE   
+  - discount_amount (decimal(10,2)) NULLABLE   
+  - bill_id (varchar(255)) NULLABLE   
+  - status (varchar(50)) NULLABLE DEFAULT pending  
+  - created_at (datetime) NULLABLE DEFAULT current_timestamp()  
+  - updated_at (datetime) NULLABLE DEFAULT current_timestamp()  
+  Foreign Keys:
+    - Constraint: discounts_bill_fk, Column: bill_id, References: Bills(id)
+    - Constraint: discounts_user_fk, Column: user_id, References: Users(id)
+
 Table: Notifications
   - id (int(11)) NOT NULL  PRIMARY KEY AUTO_INCREMENT
   - type (varchar(50)) NOT NULL   

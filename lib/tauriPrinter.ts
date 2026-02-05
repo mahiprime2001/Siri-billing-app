@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { getPrinters, printHtml } from "tauri-plugin-printer-v2";
 
 export const isTauriApp = (): boolean => {
@@ -79,7 +80,7 @@ export async function silentPrintText(
   const printerName = options?.printerName;
   const copies = Math.max(
     1,
-    Number.isFinite(options?.copies) ? Number(options?.copies) : 1
+    Number.isFinite(options?.copies) ? Number(options?.copies) : 2 // Default to 2 copies
   );
   const paperWidthMm = getThermalWidthMm(options?.paperSize);
   debugLog(options?.debug, "Printing via plugin (text)...", {
@@ -104,6 +105,12 @@ export async function silentPrintText(
   debugLog(options?.debug, "Print job submitted (text).", result);
 }
 
+/**
+ * ✅ MAIN PRINT FUNCTION - Prints HTML with NO headers/footers
+ * - Defaults to 2 copies
+ * - Prints content-only (no blank space after)
+ * - Uses tauri-plugin-printer-v2 directly
+ */
 export async function printHtmlContent(
   html: string,
   options?: HtmlPrintOptions
@@ -111,28 +118,35 @@ export async function printHtmlContent(
   if (!isTauriApp()) {
     throw new Error("HTML printing is only available in the desktop app.");
   }
+  
   const printerName = options?.printerName;
   const copies = Math.max(
     1,
-    Number.isFinite(options?.copies) ? Number(options?.copies) : 1
+    Number.isFinite(options?.copies) ? Number(options?.copies) : 2 // ✅ DEFAULT 2 COPIES
   );
   const pageWidthMm = getThermalWidthMm(options?.paperSize);
   const pageSize = getPageSize(options?.paperSize);
+  
   debugLog(options?.debug, "Printing via plugin (HTML)...", {
     printer: printerName || "SYSTEM_DEFAULT",
     copies,
     paperSize: options?.paperSize,
     htmlLength: html.length,
   });
+  
+  // ✅ Clean HTML - remove any duplicate rendering
+  const cleanedHtml = html.replace(/<div class="print-copy">[\s\S]*?<\/div>/g, '');
+  
   const htmlPrintOptions = {
-    id: `html-${Date.now()}`,
-    html,
+    id: `invoice-${Date.now()}`,
+    html: cleanedHtml,
     printer: printerName || "",
     orientation: "portrait" as const,
-    copies,
+    copies, // ✅ 2 copies by default
     ...(pageWidthMm ? { page_width: pageWidthMm } : {}),
     ...(pageSize ? { page_size: pageSize } : {}),
   };
+  
   const result = await printHtml(htmlPrintOptions);
   debugLog(options?.debug, "Print job submitted (HTML).", result);
 }
