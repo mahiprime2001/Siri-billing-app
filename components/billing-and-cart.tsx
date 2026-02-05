@@ -146,6 +146,8 @@ export default function BillingAndCart() {
   }, [])
 
   const activeBillingInstance = billingTabs.find((tab) => tab.id === activeTab)
+  const getProductById = useCallback((productId: string) => products.find((p) => p.id === productId), [products])
+  const getAvailableStock = useCallback((productId: string) => getProductById(productId)?.stock ?? null, [getProductById])
 
   // ✅ Calculate base price from selling price (reverse calculation)
   const calculateBasePrice = (sellingPrice: number, taxPercentage: number): number => {
@@ -388,6 +390,43 @@ export default function BillingAndCart() {
     }
   }, [currentStore?.id])
 
+  useEffect(() => {
+    if (!activeBillingInstance) return
+
+    let changed = false
+    const reconciled = activeBillingInstance.cartItems.reduce<CartItem[]>((acc, item) => {
+      const stock = getAvailableStock(item.productId)
+
+      if (stock === null) {
+        acc.push(item)
+        return acc
+      }
+
+      if (stock <= 0) {
+        changed = true
+        return acc
+      }
+
+      const cappedQuantity = Math.min(item.quantity, stock)
+      if (cappedQuantity !== item.quantity) {
+        changed = true
+        acc.push({
+          ...item,
+          quantity: cappedQuantity,
+          total: Math.round(item.price * cappedQuantity * 100) / 100,
+        })
+        return acc
+      }
+
+      acc.push(item)
+      return acc
+    }, [])
+
+    if (changed) {
+      updateBillingInstance(activeTab, { cartItems: reconciled })
+    }
+  }, [activeBillingInstance?.cartItems, activeTab, getAvailableStock])
+
   const fetchSettings = async () => {
     try {
       console.log("⚙️ Fetching system settings...")
@@ -441,6 +480,14 @@ export default function BillingAndCart() {
     if (!activeBillingInstance) return
     const product = products.find((p) => p.id === productId)
     if (!product) return
+    if (product.stock <= 0) {
+      toast({
+        title: "Out of Stock",
+        description: `${product.name} is out of stock.`,
+        variant: "destructive",
+      })
+      return
+    }
 
     // ✅ Calculate base price (without tax)
     const basePrice = calculateBasePrice(product.selling_price, product.tax || 0)
@@ -454,16 +501,29 @@ export default function BillingAndCart() {
     })
 
     const existingItem = activeBillingInstance.cartItems.find((item) => item.productId === product.id)
+    const currentQty = existingItem?.quantity ?? 0
+    const maxAddable = product.stock - currentQty
+
+    if (maxAddable <= 0) {
+      toast({
+        title: "Stock Limit Reached",
+        description: `No more stock available for ${product.name}.`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    const finalQty = Math.min(qty, maxAddable)
 
     let updatedCartItems: CartItem[]
     if (existingItem) {
-      console.log("📦 Item exists, updating quantity:", existingItem.quantity, "→", existingItem.quantity + qty)
+      console.log("📦 Item exists, updating quantity:", existingItem.quantity, "→", existingItem.quantity + finalQty)
       updatedCartItems = activeBillingInstance.cartItems.map((item) =>
         item.productId === product.id
           ? { 
               ...item, 
-              quantity: item.quantity + qty, 
-              total: (item.quantity + qty) * item.price 
+              quantity: item.quantity + finalQty, 
+              total: (item.quantity + finalQty) * item.price 
             }
           : item,
       )
@@ -473,10 +533,10 @@ export default function BillingAndCart() {
         id: Date.now().toString(),
         productId: product.id,
         name: product.name,
-        quantity: qty,
+        quantity: finalQty,
         price: basePrice,  // Base price without tax
         sellingPrice: product.selling_price,  // Original selling price
-        total: basePrice * qty,
+        total: basePrice * finalQty,
         barcodes: product.barcodes?.split(',')[0] || '',
         taxPercentage: product.tax || 0,
       }
@@ -485,9 +545,10 @@ export default function BillingAndCart() {
 
     updateBillingInstance(activeTab, { cartItems: updatedCartItems })
     
+    const adjustedMsg = finalQty < qty ? ` (added ${finalQty} due to stock)` : ""
     toast({
       title: "Added to Cart",
-      description: `${product.name} x${qty}`,
+      description: `${product.name} x${finalQty}${adjustedMsg}`,
     })
   }
 
@@ -548,15 +609,41 @@ export default function BillingAndCart() {
 
   const updateQuantity = (id: string, newQuantity: number) => {
     if (!activeBillingInstance) return
-    if (newQuantity <= 0) {
+    const targetItem = activeBillingInstance.cartItems.find((item) => item.id === id)
+    if (!targetItem) return
+    const product = products.find((p) => p.id === targetItem.productId)
+
+    if (product && product.stock <= 0) {
+      removeFromCart(id)
+      toast({
+        title: "Out of Stock",
+        description: `${targetItem.name} is now out of stock and was removed from the cart.`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    const cappedQuantity = product ? Math.min(newQuantity, product.stock) : newQuantity
+
+    if (cappedQuantity <= 0) {
       removeFromCart(id)
       return
     }
 
     const updatedCartItems = activeBillingInstance.cartItems.map((item) =>
-      item.id === id ? { ...item, quantity: newQuantity, total: Math.round(item.price * newQuantity * 100) / 100 } : item,
+      item.id === id
+        ? { ...item, quantity: cappedQuantity, total: Math.round(item.price * cappedQuantity * 100) / 100 }
+        : item,
     )
     updateBillingInstance(activeTab, { cartItems: updatedCartItems })
+
+    if (product && cappedQuantity !== newQuantity) {
+      toast({
+        title: "Stock Limited",
+        description: `Only ${product.stock} left for ${product.name}.`,
+        variant: "default",
+      })
+    }
   }
 
   const handleTotalEdit = (newTotal: number) => {
@@ -1042,7 +1129,9 @@ export default function BillingAndCart() {
               </div>
 
               <div className="max-h-96 overflow-y-auto border rounded-md">
-                {(searchTerm.trim() ? filteredProducts : products).map((product) => (
+                {(searchTerm.trim() ? filteredProducts : products)
+                  .filter((product) => product.stock > 0)
+                  .map((product) => (
                   <div
                     key={product.id}
                     className="p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0 flex justify-between items-center"
