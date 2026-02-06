@@ -5,7 +5,8 @@ from supabase import Client
 from utils.connection_pool import get_supabase_client
 from config.config import (
     USERS_FILE, PRODUCTS_FILE, BILLS_FILE, CUSTOMERS_FILE,
-    SYSTEM_SETTINGS_FILE, STORES_FILE, RETURNS_FILE, USER_STORES_FILE
+    SYSTEM_SETTINGS_FILE, STORES_FILE, RETURNS_FILE, USER_STORES_FILE,
+    HSN_CODES_FILE
 )
 
 from helpers.utils import read_json_file, write_json_file
@@ -134,7 +135,14 @@ def update_product_stock_supabase(product_id: str, quantity_sold: int) -> bool:
             print(f"ERROR: Product {product_id} not found in Supabase")
             return False
         
-        current_stock = product['stock']
+        current_stock = product.get('stock')
+        if current_stock is None:
+            current_stock = 0
+        try:
+            current_stock = int(current_stock)
+        except (TypeError, ValueError):
+            current_stock = 0
+
         new_stock = current_stock - quantity_sold
         
         if new_stock < 0:
@@ -192,6 +200,17 @@ def save_products_data(products):
     # Sync each product
     for product in products:
         sync_to_supabase_immediately('products', product, "UPDATE")
+
+def get_hsn_codes_data():
+    """Load HSN codes from Supabase first, fallback to JSON"""
+    supabase_data = get_supabase_data('hsn_codes')
+    if supabase_data is not None:
+        return supabase_data
+    return read_json_file(HSN_CODES_FILE, [])
+
+def save_hsn_codes_data(hsn_codes):
+    """Save HSN codes to JSON only"""
+    write_json_file(HSN_CODES_FILE, hsn_codes)
 
 def get_users_data():
     """Load users from Supabase first, fallback to JSON (excluding admin and super_admin)"""
@@ -333,24 +352,29 @@ def update_store_inventory_stock(store_id: str, product_id: str, quantity_sold: 
 
 
 def update_both_inventory_and_product_stock(store_id: str, product_id: str, quantity_sold: int) -> bool:
-    """
-    Update stock in BOTH storeinventory (primary) AND products table (global)
-    Call this when a sale is made to keep both tables in sync
-    """
     print(f"📦 Updating stock for product {product_id}: storeinventory (store {store_id}) and products table")
     
-    # Update store-specific inventory first (PRIMARY)
     store_inventory_updated = update_store_inventory_stock(store_id, product_id, quantity_sold)
     
-    # Update global products table (SECONDARY)
     products_table_updated = update_product_stock_supabase(product_id, quantity_sold)
     
     if store_inventory_updated and products_table_updated:
         print(f"✅ Successfully updated BOTH storeinventory and products table for {product_id}")
         return True
-    elif store_inventory_updated:
-        print(f"⚠️ Store inventory updated but products table failed for {product_id}")
-        return True  # Store inventory is primary, so this is still a success
-    else:
-        print(f"❌ Failed to update stock for {product_id}")
+    
+    # ────────────────────────────────────────────────
+    #     CHANGED PART — be strict about global stock
+    # ────────────────────────────────────────────────
+    if not products_table_updated:
+        print(f"❌ CRITICAL: GLOBAL PRODUCTS STOCK DID NOT UPDATE for {product_id} !")
+    
+    if not store_inventory_updated:
+        print(f"❌ CRITICAL: STORE INVENTORY DID NOT UPDATE for {product_id} !")
         return False
+    
+    # If store worked but global failed → we now FAIL the whole operation
+    if not products_table_updated:
+        return False
+    
+    return True
+    # ────────────────────────────────────────────────

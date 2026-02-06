@@ -162,7 +162,45 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
   } catch (error) {
     console.error("❌ Failed to fetch billing history:", error)
   }
-}, [currentStore])
+  }, [currentStore])
+
+  const fetchBillItems = useCallback(async (billId: string) => {
+    try {
+      const response = await apiClient(`/api/bills/${billId}/items`, { method: "GET" })
+      if (!response.ok) {
+        console.error(`Failed to fetch bill items for ${billId}:`, response.status)
+        return []
+      }
+      const data = await response.json()
+      return (data || []).map((item: any) => {
+        const product = item.products || {}
+        const hsnFromProduct = Array.isArray(product.hsn_codes)
+          ? product.hsn_codes?.[0]?.hsn_code
+          : product.hsn_codes?.hsn_code
+        const hsnCode =
+          product.hsn_code ||
+          product.hsnCode ||
+          hsnFromProduct ||
+          item.hsn_code ||
+          item.hsnCode ||
+          ""
+        return {
+          id: item.id,
+          productId: item.productid || item.product_id,
+          name: product.name || item.name || "Unknown Item",
+          quantity: item.quantity || 0,
+          price: item.price || item.unit_price || 0,
+          total: item.total || item.item_total || 0,
+          barcodes: product.barcode || "",
+          taxPercentage: product.tax || item.taxPercentage || 0,
+          hsnCode,
+        }
+      })
+    } catch (error) {
+      console.error("Failed to fetch bill items:", error)
+      return []
+    }
+  }, [])
 
 
   useEffect(() => {
@@ -203,13 +241,15 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
     setFilteredInvoices(filtered)
   }, [searchTerm, invoices])
 
-  const handleViewInvoice = (invoice: Invoice) => {
-    setSelectedInvoice(invoice)
+  const handleViewInvoice = async (invoice: Invoice) => {
+    const items = await fetchBillItems(invoice.id)
+    setSelectedInvoice({ ...invoice, items })
     setShowPreview(true)
   }
 
-  const handlePrintInvoice = (invoice: Invoice) => {
-    setPrintInvoice(invoice)
+  const handlePrintInvoice = async (invoice: Invoice) => {
+    const items = await fetchBillItems(invoice.id)
+    setPrintInvoice({ ...invoice, items })
     setShowPrintDialog(true)
   }
 
@@ -342,6 +382,7 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
                 <span>${item.quantity} x ₹${item.price.toLocaleString()}</span>
                 <span>₹${item.total.toLocaleString()}</span>
               </div>
+              ${item.hsnCode ? `<div style="font-size: 11px;">HSN: ${item.hsnCode}</div>` : ""}
               ${
                 index < (invoice.items?.length || 0) - 1
                   ? '<div style="border-top: 1px dotted #000; margin: 2px 0;"></div>'
@@ -417,6 +458,7 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
             <thead>
               <tr style="background-color: #f5f5f5;">
                 <th style="border: 1px solid #000; padding: 8px; text-align: left;">Item</th>
+                <th style="border: 1px solid #000; padding: 8px; text-align: left;">HSN</th>
                 <th style="border: 1px solid #000; padding: 8px; text-align: right;">Price</th>
                 <th style="border: 1px solid #000; padding: 8px; text-align: right;">Qty</th>
                 <th style="border: 1px solid #000; padding: 8px; text-align: right;">Total</th>
@@ -429,6 +471,7 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
                     (item: any) => `
                 <tr>
                   <td style="border: 1px solid #000; padding: 8px;">${item.name || "Unknown Item"}</td>
+                  <td style="border: 1px solid #000; padding: 8px;">${item.hsnCode || "-"}</td>
                   <td style="border: 1px solid #000; padding: 8px; text-align: right;">₹${item.price.toLocaleString()}</td>
                   <td style="border: 1px solid #000; padding: 8px; text-align: right;">${item.quantity}</td>
                   <td style="border: 1px solid #000; padding: 8px; text-align: right;">₹${item.total.toLocaleString()}</td>

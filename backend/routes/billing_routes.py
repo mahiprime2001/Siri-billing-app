@@ -392,14 +392,29 @@ def get_bill_items(bill_id):
         
         # Get bill items with product details
         response = supabase.table('billitems') \
-            .select('*, products(name, barcode, price)') \
+            .select('*, products(name, barcode, price, selling_price, hsn_code_id, hsn_codes(hsn_code))') \
             .eq('billid', bill_id) \
             .execute()
         
         items = response.data if response.data else []
+        enriched_items = []
+        for item in items:
+            product = item.get('products') or {}
+            hsn_ref = product.get('hsn_codes')
+            if isinstance(hsn_ref, list):
+                hsn_ref = hsn_ref[0] if hsn_ref else None
+            hsn_code = None
+            if isinstance(hsn_ref, dict):
+                hsn_code = hsn_ref.get('hsn_code')
+            if not hsn_code:
+                hsn_code = product.get('hsn_code')
+            if hsn_code:
+                item['hsn_code'] = hsn_code
+                item['hsnCode'] = hsn_code
+            enriched_items.append(item)
         
-        app.logger.info(f"✅ Fetched {len(items)} items for bill {bill_id}")
-        return jsonify(items), 200
+        app.logger.info(f"✅ Fetched {len(enriched_items)} items for bill {bill_id}")
+        return jsonify(enriched_items), 200
         
     except Exception as e:
         app.logger.error(f"❌ Error fetching bill items: {str(e)}")

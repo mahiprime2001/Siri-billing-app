@@ -63,6 +63,8 @@ interface Product {
   updatedAt: string;
   barcodes?: string;
   tax: number;  // ✅ Tax percentage from products table
+  hsn_code?: string;
+  hsn_code_id?: number;
 }
 
 interface CartItem {
@@ -75,6 +77,8 @@ interface CartItem {
   total: number;  // quantity * base price
   barcodes?: string;
   taxPercentage: number;  // Tax % for this product
+  hsnCode?: string;
+  hsn_code_id?: number;
 }
 
 interface Settings {
@@ -539,6 +543,8 @@ export default function BillingAndCart() {
         total: basePrice * finalQty,
         barcodes: product.barcodes?.split(',')[0] || '',
         taxPercentage: product.tax || 0,
+        hsnCode: (product as any).hsnCode || product.hsn_code || "",
+        hsn_code_id: product.hsn_code_id,
       }
       updatedCartItems = [...activeBillingInstance.cartItems, newItem]
     }

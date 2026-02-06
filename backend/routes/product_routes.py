@@ -5,6 +5,14 @@ from utils.connection_pool import get_supabase_client
 
 product_bp = Blueprint('product', __name__)
 
+def _extract_hsn_code(product_info: dict):
+    hsn_ref = product_info.get('hsn_codes')
+    if isinstance(hsn_ref, list):
+        hsn_ref = hsn_ref[0] if hsn_ref else None
+    if isinstance(hsn_ref, dict):
+        return hsn_ref.get('hsn_code')
+    return None
+
 @product_bp.route('/products', methods=['GET'])
 @require_auth
 def get_products():
@@ -54,7 +62,7 @@ def get_products():
         
         # ✅ Step 4: Get product details INCLUDING tax field
         products_query = supabase.table('products') \
-            .select('id, name, barcode, selling_price, price, tax') \
+            .select('id, name, barcode, selling_price, price, tax, hsn_code_id, hsn_codes(hsn_code)') \
             .in_('id', product_ids)
         
         if search:
@@ -89,6 +97,8 @@ def get_products():
                 'selling_price': product_info.get('selling_price', 0),
                 'price': product_info.get('price', 0),
                 'tax': product_info.get('tax', 0),  # ✅ ADDED TAX FIELD
+                'hsn_code_id': product_info.get('hsn_code_id'),
+                'hsn_code': _extract_hsn_code(product_info),
                 'stock': inv_item.get('quantity', 0),
                 'quantity': inv_item.get('quantity', 0),
                 'store_quantity': inv_item.get('quantity', 0),
@@ -147,7 +157,7 @@ def get_product(product_id):
         
         # Get product details including tax
         product_response = supabase.table('products') \
-            .select('id, name, barcode, selling_price, price, tax') \
+            .select('id, name, barcode, selling_price, price, tax, hsn_code_id, hsn_codes(hsn_code)') \
             .eq('id', product_id) \
             .execute()
         
@@ -164,6 +174,8 @@ def get_product(product_id):
             'selling_price': product_info.get('selling_price', 0),
             'price': product_info.get('price', 0),
             'tax': product_info.get('tax', 0),  # ✅ ADDED TAX FIELD
+            'hsn_code_id': product_info.get('hsn_code_id'),
+            'hsn_code': _extract_hsn_code(product_info),
             'stock': inv_item.get('quantity', 0),
             'quantity': inv_item.get('quantity', 0),
             'minstocklevel': inv_item.get('minstocklevel', 0),

@@ -88,6 +88,13 @@ CREATE TABLE public.discounts (
   CONSTRAINT discounts_bill_fk FOREIGN KEY (bill_id) REFERENCES public.bills(id),
   CONSTRAINT discounts_user_fk FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
+CREATE TABLE public.hsn_codes (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  hsn_code character varying NOT NULL UNIQUE,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT hsn_codes_pkey PRIMARY KEY (id)
+);
 CREATE TABLE public.notifications (
   id bigint NOT NULL DEFAULT nextval('notifications_id_seq'::regclass),
   type character varying NOT NULL,
@@ -129,8 +136,10 @@ CREATE TABLE public.products (
   updatedat timestamp without time zone,
   barcode character varying,
   tax numeric DEFAULT 0,
+  hsn_code_id bigint,
   CONSTRAINT products_pkey PRIMARY KEY (id),
-  CONSTRAINT fk_products_batch FOREIGN KEY (batchid) REFERENCES public.batch(id)
+  CONSTRAINT fk_products_batch FOREIGN KEY (batchid) REFERENCES public.batch(id),
+  CONSTRAINT products_hsn_code_fk FOREIGN KEY (hsn_code_id) REFERENCES public.hsn_codes(id)
 );
 CREATE TABLE public.returns (
   s_no integer NOT NULL DEFAULT nextval('returns_s_no_seq'::regclass),

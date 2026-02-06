@@ -46,6 +46,8 @@ STORES_FILE = os.path.join(JSON_DIR, "stores.json")
 RETURNS_FILE = os.path.join(JSON_DIR, "returns.json")
 BILL_FORMATS_FILE = os.path.join(JSON_DIR, "bill_formats.json")
 USER_STORES_FILE = os.path.join(JSON_DIR, "userstores.json")
+HSF_CODE_FILE = os.path.join(JSON_DIR, "hsf_codes.json")
+HSN_CODES_FILE = os.path.join(JSON_DIR, "hsn_codes.json")
 
 # =========================================================
 # 📝 LOGGING
