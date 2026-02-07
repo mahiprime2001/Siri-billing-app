@@ -7,7 +7,7 @@
         "batchid": "d05f9ea1-7bf5-4cb4-ab9d-41550923d86a",
         "selling_price": 750.0,
         "createdat": "2026-02-02T14:22:36.836139",
-        "updatedat": "2026-02-06T22:45:36.069406",
+        "updatedat": "2026-02-07T15:48:25.60702",
         "barcode": "2026020220188",
         "tax": 7,
         "hsn_code_id": 2
@@ -413,7 +413,7 @@
         "updatedat": "2026-02-02T10:24:46.209179",
         "barcode": "2026020215728",
         "tax": null,
-        "hsn_code": null
+        "hsn_code_id": null
     },
     {
         "id": "60b39918-5ca3-4e7b-91c9-ca700ff8f4b3",
@@ -426,6 +426,6 @@
         "updatedat": "2026-01-29T12:43:16.225797",
         "barcode": "2026012992862",
         "tax": null,
-        "hsn_code": null
+        "hsn_code_id": null
     }
 ]

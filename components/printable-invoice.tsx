@@ -77,7 +77,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
           style={{
             width: pageWidth,
             margin: "0 auto",
-            padding: "0 2mm",
+            padding: "0 5mm",
             boxSizing: "border-box",
             background: "#fff",
           }}

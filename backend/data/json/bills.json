@@ -542,5 +542,37 @@
         "updated_at": "2026-02-05T03:30:05.608079",
         "discount_amount": 0.0,
         "discount_percentage": 0.0
+    },
+    {
+        "id": "BILL-9e5eadee95ed",
+        "storeid": "130dc0bd-e877-4d0b-9111-d1885ca7b850",
+        "customerid": "CUST-1754821420265",
+        "userid": "0497138a-918d-4859-9fda-56f413f1f97e",
+        "subtotal": 700.93,
+        "total": 675,
+        "paymentmethod": "Cash",
+        "timestamp": "2026-02-07T10:18:24.114047",
+        "status": "completed",
+        "createdby": "0497138a-918d-4859-9fda-56f413f1f97e",
+        "created_at": "2026-02-07T10:18:24.114047",
+        "updated_at": "2026-02-07T10:18:24.114047",
+        "discount_amount": 70.09,
+        "discount_percentage": 10.0
+    },
+    {
+        "id": "BILL-fc864ca60cb4",
+        "storeid": "130dc0bd-e877-4d0b-9111-d1885ca7b850",
+        "customerid": "CUST-1754821420265",
+        "userid": "0497138a-918d-4859-9fda-56f413f1f97e",
+        "subtotal": 700.93,
+        "total": 750,
+        "paymentmethod": "Cash",
+        "timestamp": "2026-02-06T17:15:35.264625",
+        "status": "completed",
+        "createdby": "0497138a-918d-4859-9fda-56f413f1f97e",
+        "created_at": "2026-02-06T17:15:35.264625",
+        "updated_at": "2026-02-06T17:15:35.264625",
+        "discount_amount": 0.0,
+        "discount_percentage": 0.0
     }
 ]
