@@ -51,21 +51,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       # --------------------------------------------------
-      # 4b. Cache Rust/Cargo
-      # --------------------------------------------------
-      - name: Cache Rust
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      # --------------------------------------------------
       # 5. Install Tauri CLI
       # --------------------------------------------------
       - name: Install Tauri CLI
