@@ -13,7 +13,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
       return Number(value).toLocaleString();
     };
 
-    const pageWidth = "72mm";
+    const pageWidth = "80mm";
 
     const safeInvoice = {
       ...invoice,
@@ -77,7 +77,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
           style={{
             width: pageWidth,
             margin: "0 auto",
-            padding: "0 5mm",
+            padding: "0 4mm",
             boxSizing: "border-box",
             background: "#fff",
           }}
@@ -170,7 +170,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 1.2fr 1fr 1fr 1fr 1fr",
+                  gridTemplateColumns: "0.8fr 1.2fr 1fr 1fr 0.8fr 1fr",
                   gap: 0,
                   fontWeight: "bold",
                   border: "1px solid #000",
@@ -188,7 +188,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
                   key={index}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 1.2fr 1fr 1fr 1fr 1fr",
+                    gridTemplateColumns: "0.8fr 1.2fr 1fr 1fr 0.8fr 1fr",
                     gap: 0,
                     borderLeft: "1px solid #000",
                     borderRight: "1px solid #000",
@@ -220,7 +220,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 1.2fr 1fr 1fr 1fr 1fr",
+                  gridTemplateColumns: "0.8fr 1.2fr 1fr 1fr 0.8fr 1fr",
                   gap: 0,
                   fontWeight: "bold",
                   borderLeft: "1px solid #000",
@@ -307,30 +307,44 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
           </div>
         </div>
 
-        {/* ✅ FIXED: Print styles - no headers/footers, auto height to fit content */}
+        {/* ✅ THERMAL PRINTER OPTIMIZED: No margins, internal padding only */}
         <style jsx global>{`
           @page {
-            size: 72mm auto;
-            margin: 0;
+            size: 80mm auto;
+            margin: 0 !important;
           }
           
           @media print {
-            html, body {
-              margin: 0 !important;
-              padding: 0 !important;
-              background: #fff !important;
+            * {
               -webkit-print-color-adjust: exact;
               print-color-adjust: exact;
             }
             
-            /* Remove browser print headers/footers */
-            @page {
-              margin: 0;
+            html {
+              margin: 0 !important;
+              padding: 0 !important;
+              width: 80mm !important;
             }
             
             body {
               margin: 0 !important;
               padding: 0 !important;
+              background: #fff !important;
+              width: 80mm !important;
+            }
+            
+            .invoice-wrapper {
+              margin: 0 !important;
+              width: 80mm !important;
+              padding: 0 4mm !important;
+              box-sizing: border-box !important;
+            }
+            
+            /* Aggressive margin removal for thermal printers */
+            @page {
+              margin: 0 !important;
+              padding: 0 !important;
+              size: 80mm auto !important;
             }
           }
         `}</style>
