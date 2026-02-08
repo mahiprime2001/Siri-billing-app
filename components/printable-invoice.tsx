@@ -13,7 +13,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
       return Number(value).toLocaleString();
     };
 
-    const pageWidth = "80mm";
+    const pageWidth = "72mm";
 
     const safeInvoice = {
       ...invoice,
@@ -176,12 +176,12 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
                   border: "1px solid #000",
                 }}
               >
-                <span style={{ padding: "2px 3px", borderRight: "1px solid #000", fontSize: 8 }}>GST%</span>
-                <span style={{ padding: "2px 3px", borderRight: "1px solid #000", fontSize: 8 }}>HSN</span>
-                <span style={{ padding: "2px 3px", borderRight: "1px solid #000", fontSize: 8 }}>SGST</span>
-                <span style={{ padding: "2px 3px", borderRight: "1px solid #000", fontSize: 8 }}>CGST</span>
-                <span style={{ padding: "2px 3px", borderRight: "1px solid #000", fontSize: 8 }}>IGST</span>
-                <span style={{ padding: "2px 3px", fontSize: 8 }}>Tax</span>
+                <span style={{ padding: "2px 1px", borderRight: "1px solid #000", fontSize: 7 }}>GST%</span>
+                <span style={{ padding: "2px 1px", borderRight: "1px solid #000", fontSize: 7 }}>HSN</span>
+                <span style={{ padding: "2px 1px", borderRight: "1px solid #000", fontSize: 7 }}>SGST</span>
+                <span style={{ padding: "2px 1px", borderRight: "1px solid #000", fontSize: 7 }}>CGST</span>
+                <span style={{ padding: "2px 1px", borderRight: "1px solid #000", fontSize: 7 }}>IGST</span>
+                <span style={{ padding: "2px 1px", fontSize: 7 }}>Tax</span>
               </div>
               {taxClassificationRows.map((row, index) => (
                 <div
@@ -195,22 +195,22 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
                     borderBottom: "1px solid #000",
                   }}
                 >
-                  <span style={{ padding: "2px 3px", borderRight: "1px solid #000", fontSize: 8 }}>
+                  <span style={{ padding: "2px 1px", borderRight: "1px solid #000", fontSize: 7 }}>
                     {row.gst}%
                   </span>
-                  <span style={{ padding: "2px 3px", borderRight: "1px solid #000", fontSize: 8 }}>
+                  <span style={{ padding: "2px 1px", borderRight: "1px solid #000", fontSize: 7 }}>
                     {row.hsnCode}
                   </span>
-                  <span style={{ padding: "2px 3px", borderRight: "1px solid #000", fontSize: 8 }}>
+                  <span style={{ padding: "2px 1px", borderRight: "1px solid #000", fontSize: 7 }}>
                     ₹{formatNumber(row.sgst)}
                   </span>
-                  <span style={{ padding: "2px 3px", borderRight: "1px solid #000", fontSize: 8 }}>
+                  <span style={{ padding: "2px 1px", borderRight: "1px solid #000", fontSize: 7 }}>
                     ₹{formatNumber(row.cgst)}
                   </span>
-                  <span style={{ padding: "2px 3px", borderRight: "1px solid #000", fontSize: 8 }}>
+                  <span style={{ padding: "2px 1px", borderRight: "1px solid #000", fontSize: 7 }}>
                     ₹{formatNumber(row.igst)}
                   </span>
-                  <span style={{ padding: "2px 3px", fontSize: 8 }}>
+                  <span style={{ padding: "2px 1px", fontSize: 7 }}>
                     ₹{formatNumber(row.totalTax)}
                   </span>
                 </div>
@@ -229,22 +229,22 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
                   backgroundColor: "#f0f0f0",
                 }}
               >
-                <span style={{ padding: "2px 3px", borderRight: "1px solid #000", fontSize: 8 }}>
+                <span style={{ padding: "2px 1px", borderRight: "1px solid #000", fontSize: 7 }}>
                   Total
                 </span>
-                <span style={{ padding: "2px 3px", borderRight: "1px solid #000", fontSize: 8 }}>
+                <span style={{ padding: "2px 1px", borderRight: "1px solid #000", fontSize: 7 }}>
                   -
                 </span>
-                <span style={{ padding: "2px 3px", borderRight: "1px solid #000", fontSize: 8 }}>
+                <span style={{ padding: "2px 1px", borderRight: "1px solid #000", fontSize: 7 }}>
                   ₹{formatNumber(totalSGST)}
                 </span>
-                <span style={{ padding: "2px 3px", borderRight: "1px solid #000", fontSize: 8 }}>
+                <span style={{ padding: "2px 1px", borderRight: "1px solid #000", fontSize: 7 }}>
                   ₹{formatNumber(totalCGST)}
                 </span>
-                <span style={{ padding: "2px 3px", borderRight: "1px solid #000", fontSize: 8 }}>
+                <span style={{ padding: "2px 1px", borderRight: "1px solid #000", fontSize: 7 }}>
                   ₹{formatNumber(0)}
                 </span>
-                <span style={{ padding: "2px 3px", fontSize: 8 }}>
+                <span style={{ padding: "2px 1px", fontSize: 7 }}>
                   ₹{formatNumber(totalTaxAmount)}
                 </span>
               </div>
@@ -310,7 +310,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
         {/* ✅ FIXED: Print styles - no headers/footers, auto height to fit content */}
         <style jsx global>{`
           @page {
-            size: 80mm auto;
+            size: 72mm auto;
             margin: 0;
           }
           
