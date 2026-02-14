@@ -93,6 +93,7 @@ CREATE TABLE public.hsn_codes (
   hsn_code character varying NOT NULL UNIQUE,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  tax numeric DEFAULT 0,
   CONSTRAINT hsn_codes_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.notifications (
@@ -135,7 +136,6 @@ CREATE TABLE public.products (
   createdat timestamp without time zone,
   updatedat timestamp without time zone,
   barcode character varying,
-  tax numeric DEFAULT 0,
   hsn_code_id bigint,
   CONSTRAINT products_pkey PRIMARY KEY (id),
   CONSTRAINT fk_products_batch FOREIGN KEY (batchid) REFERENCES public.batch(id),

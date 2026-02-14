@@ -22,7 +22,6 @@
         "createdat": "2026-01-29T18:21:27.978921",
         "updatedat": "2026-01-29T18:21:27.978921",
         "barcode": "2026012995802",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -35,7 +34,6 @@
         "createdat": "2026-01-29T18:20:47.609802",
         "updatedat": "2026-01-29T18:20:47.609802",
         "barcode": "2026012933697",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -48,7 +46,6 @@
         "createdat": "2026-01-29T18:19:00.393914",
         "updatedat": "2026-01-29T18:19:00.393914",
         "barcode": "2026012942522",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -61,7 +58,6 @@
         "createdat": "2026-01-29T18:17:59.4107",
         "updatedat": "2026-01-29T18:17:59.4107",
         "barcode": "2026012998686",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -74,7 +70,6 @@
         "createdat": "2026-01-29T16:39:56.43175",
         "updatedat": "2026-01-29T16:39:56.43175",
         "barcode": "2026012988760",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -87,7 +82,6 @@
         "createdat": "2026-01-29T16:38:03.735584",
         "updatedat": "2026-01-29T16:38:03.735584",
         "barcode": "2026012956457",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -100,7 +94,6 @@
         "createdat": "2026-01-29T16:35:33.016033",
         "updatedat": "2026-01-29T16:35:33.016033",
         "barcode": "2026012935022",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -113,7 +106,6 @@
         "createdat": "2026-01-29T16:31:59.529394",
         "updatedat": "2026-01-29T16:31:59.529394",
         "barcode": "2026012980204",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -126,7 +118,6 @@
         "createdat": "2026-01-29T14:54:08.179425",
         "updatedat": "2026-01-29T14:54:08.179425",
         "barcode": "2026012982163",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -139,7 +130,6 @@
         "createdat": "2026-01-29T13:47:07.965957",
         "updatedat": "2026-01-29T13:47:07.965957",
         "barcode": "2026012986987",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -152,7 +142,6 @@
         "createdat": "2026-01-29T13:46:24.117928",
         "updatedat": "2026-01-29T13:46:24.117928",
         "barcode": "2026012923680",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -165,7 +154,6 @@
         "createdat": "2026-01-29T12:56:35.560484",
         "updatedat": "2026-01-29T13:45:27.703861",
         "barcode": "2026012971677",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -178,7 +166,6 @@
         "createdat": "2026-01-29T13:20:55.686987",
         "updatedat": "2026-01-29T13:44:36.320122",
         "barcode": "2026012962626",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -191,7 +178,6 @@
         "createdat": "2026-01-29T12:18:23.332851",
         "updatedat": "2026-01-29T12:18:23.332851",
         "barcode": "2026012945616",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -204,7 +190,6 @@
         "createdat": "2026-01-29T11:13:38.893464",
         "updatedat": "2026-01-29T11:13:38.893464",
         "barcode": "2026012974855",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -217,7 +202,6 @@
         "createdat": "2026-01-29T10:45:34.166264",
         "updatedat": "2026-01-29T10:45:34.166264",
         "barcode": "2026012921221",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -230,7 +214,6 @@
         "createdat": "2026-01-28T19:29:37.633473",
         "updatedat": "2026-01-28T19:29:37.633473",
         "barcode": "2026012820727",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -243,7 +226,6 @@
         "createdat": "2026-01-28T19:27:28.737646",
         "updatedat": "2026-01-28T19:27:28.737646",
         "barcode": "2026012869765",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -256,7 +238,6 @@
         "createdat": "2026-01-28T18:51:10.796127",
         "updatedat": "2026-01-28T18:51:10.796127",
         "barcode": "2026012807866",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -269,7 +250,6 @@
         "createdat": "2026-01-28T18:11:27.048047",
         "updatedat": "2026-01-28T18:11:27.048047",
         "barcode": "2026012872757",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -282,7 +262,6 @@
         "createdat": "2026-01-28T18:09:48.729039",
         "updatedat": "2026-01-28T18:09:48.729039",
         "barcode": "2026012826326",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -295,7 +274,6 @@
         "createdat": "2026-01-28T17:12:55.478078",
         "updatedat": "2026-01-28T17:14:36.550009",
         "barcode": "2026012809890",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -308,7 +286,6 @@
         "createdat": "2026-01-28T17:07:11.654415",
         "updatedat": "2026-01-28T17:07:11.654415",
         "barcode": "2026012807165",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -321,7 +298,6 @@
         "createdat": "2026-01-28T12:37:29.633661",
         "updatedat": "2026-01-28T12:37:29.633661",
         "barcode": "1769584048869257",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -334,7 +310,6 @@
         "createdat": "2026-01-28T12:35:27.137839",
         "updatedat": "2026-01-28T12:35:27.137839",
         "barcode": "1769583926437340",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -347,7 +322,6 @@
         "createdat": "2026-01-28T12:05:15.804955",
         "updatedat": "2026-01-28T12:14:46.996208",
         "barcode": "1769582111232285",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -360,7 +334,6 @@
         "createdat": "2026-01-28T11:57:49.253692",
         "updatedat": "2026-01-28T12:14:39.677266",
         "barcode": "1769581668353656",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -373,7 +346,6 @@
         "createdat": "2026-01-28T12:12:29.276216",
         "updatedat": "2026-01-28T12:14:32.605291",
         "barcode": "1769582544095053",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -386,7 +358,6 @@
         "createdat": "2026-01-28T12:06:40.621774",
         "updatedat": "2026-01-28T12:14:24.309525",
         "barcode": "1769582199512971",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -399,7 +370,6 @@
         "createdat": "2026-01-28T11:43:22.927964",
         "updatedat": "2026-01-28T12:14:16.508573",
         "barcode": "1769580800562393",
-        "tax": 0,
         "hsn_code_id": null
     },
     {
@@ -427,5 +397,953 @@
         "barcode": "2026012992862",
         "tax": null,
         "hsn_code_id": null
+    },
+    {
+        "id": "eaf55b6b-c3c3-42e9-86e2-5d78c4be44b4",
+        "name": "testing",
+        "price": 500.0,
+        "stock": 50,
+        "batchid": "d05f9ea1-7bf5-4cb4-ab9d-41550923d86a",
+        "selling_price": 1050.0,
+        "createdat": "2026-02-14T18:30:59.420985",
+        "updatedat": "2026-02-14T18:30:59.420985",
+        "barcode": "2026021492854",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "13e867bc-5eaf-429b-a1e9-0030c75da605",
+        "name": "A KADA",
+        "price": 145.0,
+        "stock": 2,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 450.0,
+        "createdat": "2026-02-14T17:08:23.351284",
+        "updatedat": "2026-02-14T17:08:23.351284",
+        "barcode": "2026021411647",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "e79a8ca4-a8c8-4acc-a74e-636e0656b930",
+        "name": "A TIKA",
+        "price": 75.0,
+        "stock": 11,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 225.0,
+        "createdat": "2026-02-14T12:05:45.645221",
+        "updatedat": "2026-02-14T16:33:56.839894",
+        "barcode": "2026021453986",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "cbd5406d-29af-4dd5-a836-0eb89e350b46",
+        "name": "V HANGINGS",
+        "price": 75.0,
+        "stock": 32,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 225.0,
+        "createdat": "2026-02-14T11:54:46.759435",
+        "updatedat": "2026-02-14T16:33:23.2645",
+        "barcode": "2026021405862",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "074362a7-5dcb-4111-b6fa-516f22a98aa5",
+        "name": "S HANG",
+        "price": 180.0,
+        "stock": 1,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 560.0,
+        "createdat": "2026-02-14T16:32:27.358419",
+        "updatedat": "2026-02-14T16:32:27.358419",
+        "barcode": "2026021416261",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "ee0264de-e609-4235-8e45-393fb5367593",
+        "name": "A JUMKIES",
+        "price": 165.0,
+        "stock": 2,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 500.0,
+        "createdat": "2026-02-14T16:31:53.374528",
+        "updatedat": "2026-02-14T16:31:53.374528",
+        "barcode": "2026021417482",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "4b0863ac-b5e2-4809-af64-b07a9338f554",
+        "name": "S HANG",
+        "price": 145.0,
+        "stock": 4,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 450.0,
+        "createdat": "2026-02-14T16:31:18.646474",
+        "updatedat": "2026-02-14T16:31:18.646474",
+        "barcode": "2026021424965",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "55d0f818-5533-4bdb-b9ce-4a5d37ed256a",
+        "name": "S TOPS",
+        "price": 205.0,
+        "stock": 1,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 650.0,
+        "createdat": "2026-02-14T16:29:52.894483",
+        "updatedat": "2026-02-14T16:29:52.894483",
+        "barcode": "2026021486133",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "f30ff3a1-c37c-4f59-9493-61c82868df1d",
+        "name": "S TOPS",
+        "price": 90.0,
+        "stock": 2,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 300.0,
+        "createdat": "2026-02-14T16:28:56.382471",
+        "updatedat": "2026-02-14T16:28:56.382471",
+        "barcode": "2026021422872",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "cd3c21f0-9a35-4ccd-999c-43f09f19868d",
+        "name": "S HANG",
+        "price": 325.0,
+        "stock": 4,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 950.0,
+        "createdat": "2026-02-14T16:27:05.918835",
+        "updatedat": "2026-02-14T16:27:05.918835",
+        "barcode": "2026021496780",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "76a084e0-8871-4a54-96d3-ce698859952b",
+        "name": "S HANG",
+        "price": 175.0,
+        "stock": 2,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 550.0,
+        "createdat": "2026-02-14T16:26:11.950501",
+        "updatedat": "2026-02-14T16:26:11.950501",
+        "barcode": "2026021493752",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "57ef49b7-aa92-4434-b9f2-14c9795ffa16",
+        "name": "S JUMKIES",
+        "price": 155.0,
+        "stock": 3,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 470.0,
+        "createdat": "2026-02-14T16:25:04.910689",
+        "updatedat": "2026-02-14T16:25:04.910689",
+        "barcode": "2026021496939",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "613aa93f-884c-4cb9-8702-9d71c48a4d40",
+        "name": "S JUMKIES",
+        "price": 230.0,
+        "stock": 3,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 700.0,
+        "createdat": "2026-02-14T16:24:25.055086",
+        "updatedat": "2026-02-14T16:24:25.055086",
+        "barcode": "2026021405036",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "c718f6e0-fbac-41ef-9bd8-d16ad121b7da",
+        "name": "S JUMKIES",
+        "price": 190.0,
+        "stock": 5,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 600.0,
+        "createdat": "2026-02-14T16:23:21.702456",
+        "updatedat": "2026-02-14T16:23:21.702456",
+        "barcode": "2026021472791",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "631c57b1-9872-419f-9837-65263cda4cc6",
+        "name": "S JUMKIES",
+        "price": 195.0,
+        "stock": 4,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 600.0,
+        "createdat": "2026-02-14T16:22:40.870721",
+        "updatedat": "2026-02-14T16:22:40.870721",
+        "barcode": "2026021446302",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "fd78e142-302b-4dad-ad8c-8417657387e7",
+        "name": "A JUMKIES",
+        "price": 145.0,
+        "stock": 7,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 450.0,
+        "createdat": "2026-02-14T16:21:29.214405",
+        "updatedat": "2026-02-14T16:21:29.214405",
+        "barcode": "2026021403002",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "463d0155-4d27-4338-9bab-df91e07f8965",
+        "name": "A JUMKIES",
+        "price": 200.0,
+        "stock": 1,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 600.0,
+        "createdat": "2026-02-14T16:20:47.750395",
+        "updatedat": "2026-02-14T16:20:47.750395",
+        "barcode": "2026021411734",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "a8047952-2f77-4183-8b18-6429c154ef40",
+        "name": "S TOPS",
+        "price": 205.0,
+        "stock": 8,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 650.0,
+        "createdat": "2026-02-14T16:19:58.63866",
+        "updatedat": "2026-02-14T16:19:58.63866",
+        "barcode": "2026021402412",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "e9e44201-f22c-40e6-aac4-05953f1fb4a7",
+        "name": "V neckcles",
+        "price": 415.0,
+        "stock": 6,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 1250.0,
+        "createdat": "2026-02-14T16:18:39.911015",
+        "updatedat": "2026-02-14T16:18:39.911015",
+        "barcode": "2026021434414",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "3fe791d8-98eb-47ef-99ee-525c7c1d7d96",
+        "name": "A HARAM",
+        "price": 740.0,
+        "stock": 8,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 2250.0,
+        "createdat": "2026-02-14T16:16:36.606302",
+        "updatedat": "2026-02-14T16:16:36.606302",
+        "barcode": "2026021484757",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "7561b49a-a50c-4f3e-8a4b-7a7fa5257359",
+        "name": "A TIKA",
+        "price": 170.0,
+        "stock": 7,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 550.0,
+        "createdat": "2026-02-14T16:13:54.294451",
+        "updatedat": "2026-02-14T16:13:54.294451",
+        "barcode": "2026021452854",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "0e2e1e4b-2602-4159-bdfd-1a059c0adf3d",
+        "name": "A NACKCLES",
+        "price": 535.0,
+        "stock": 6,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 1750.0,
+        "createdat": "2026-02-14T16:13:06.81528",
+        "updatedat": "2026-02-14T16:13:06.81528",
+        "barcode": "2026021405221",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "475c39ea-a996-4bb0-b729-9715f74f0076",
+        "name": "A HARAM",
+        "price": 1550.0,
+        "stock": 2,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 4700.0,
+        "createdat": "2026-02-14T16:12:18.97456",
+        "updatedat": "2026-02-14T16:12:18.97456",
+        "barcode": "2026021476683",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "3c5a6e15-5979-4e13-812f-c7af953b9ec9",
+        "name": "A HARAM",
+        "price": 1615.0,
+        "stock": 2,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 4900.0,
+        "createdat": "2026-02-14T16:10:32.454213",
+        "updatedat": "2026-02-14T16:10:32.454213",
+        "barcode": "2026021440438",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "66176f53-65b6-4b15-ba54-fa4ec8df3b72",
+        "name": "A NACKCLES",
+        "price": 1260.0,
+        "stock": 3,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 3800.0,
+        "createdat": "2026-02-14T16:09:46.406942",
+        "updatedat": "2026-02-14T16:09:46.406942",
+        "barcode": "2026021459736",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "9426f82f-ee5f-418b-9440-1c0e2cbcee07",
+        "name": "A HARAM",
+        "price": 1610.0,
+        "stock": 2,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 4900.0,
+        "createdat": "2026-02-14T16:08:50.238951",
+        "updatedat": "2026-02-14T16:08:50.238951",
+        "barcode": "2026021481928",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "dd0c5356-6621-4b22-8a16-84ea25678a78",
+        "name": "A HARAM",
+        "price": 1620.0,
+        "stock": 1,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 4900.0,
+        "createdat": "2026-02-14T16:07:29.062343",
+        "updatedat": "2026-02-14T16:07:29.062343",
+        "barcode": "2026021455549",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "fa3dee27-5ce6-4573-be4a-b89117c3a433",
+        "name": "A NACKCLES",
+        "price": 385.0,
+        "stock": 8,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 1200.0,
+        "createdat": "2026-02-14T16:06:13.726461",
+        "updatedat": "2026-02-14T16:06:13.726461",
+        "barcode": "2026021428773",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "dade3f95-7e13-439a-b89a-70b8886e92db",
+        "name": "A HARAM SET",
+        "price": 2075.0,
+        "stock": 5,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 6250.0,
+        "createdat": "2026-02-14T15:56:28.814612",
+        "updatedat": "2026-02-14T15:56:28.814612",
+        "barcode": "2026021443317",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "fd53a8db-ea4e-456a-8d6f-13cbdb8c38c3",
+        "name": "A CHANBALI",
+        "price": 130.0,
+        "stock": 5,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 450.0,
+        "createdat": "2026-02-14T15:52:53.206251",
+        "updatedat": "2026-02-14T15:52:53.206251",
+        "barcode": "2026021420274",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "dd392f67-3376-47b3-b083-e5dfcea6bf57",
+        "name": "V JUMKI",
+        "price": 160.0,
+        "stock": 6,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 500.0,
+        "createdat": "2026-02-14T15:51:54.326292",
+        "updatedat": "2026-02-14T15:51:54.326292",
+        "barcode": "2026021424711",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "00df347d-9fd2-477d-b0e7-48adbe96cad8",
+        "name": "A JUMKIES",
+        "price": 125.0,
+        "stock": 11,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 380.0,
+        "createdat": "2026-02-14T15:51:14.526986",
+        "updatedat": "2026-02-14T15:51:14.526986",
+        "barcode": "2026021460677",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "2c85962e-b749-4bf8-b4e1-37d0a148417b",
+        "name": "V JUMKI",
+        "price": 110.0,
+        "stock": 4,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 350.0,
+        "createdat": "2026-02-14T15:50:23.990377",
+        "updatedat": "2026-02-14T15:50:23.990377",
+        "barcode": "2026021464414",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "4eaf95f4-56ae-4f8a-8da4-3dce9f33b6e7",
+        "name": "S NECKCLES",
+        "price": 400.0,
+        "stock": 1,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 1250.0,
+        "createdat": "2026-02-14T15:49:45.566293",
+        "updatedat": "2026-02-14T15:49:45.566293",
+        "barcode": "2026021403419",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "633bd943-956d-408c-b539-4844b0ca16a9",
+        "name": "V JUMKI",
+        "price": 160.0,
+        "stock": 4,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 500.0,
+        "createdat": "2026-02-14T15:48:50.814625",
+        "updatedat": "2026-02-14T15:48:50.814625",
+        "barcode": "2026021418497",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "016bd61d-86dd-49c3-b466-282dc22ee9f0",
+        "name": "A JUMKIES",
+        "price": 80.0,
+        "stock": 8,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 250.0,
+        "createdat": "2026-02-14T15:48:07.327337",
+        "updatedat": "2026-02-14T15:48:07.327337",
+        "barcode": "2026021473438",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "67a78761-e8e2-4bec-8df7-fa1997e3ab26",
+        "name": "A JUMKIES",
+        "price": 150.0,
+        "stock": 6,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 450.0,
+        "createdat": "2026-02-14T15:47:28.150266",
+        "updatedat": "2026-02-14T15:47:28.150266",
+        "barcode": "2026021425611",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "a6c98e8c-fb61-40d0-be03-6d8fc3edacff",
+        "name": "A JUMKIES",
+        "price": 175.0,
+        "stock": 11,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 515.0,
+        "createdat": "2026-02-14T15:46:47.590229",
+        "updatedat": "2026-02-14T15:46:47.590229",
+        "barcode": "2026021473423",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "081465f2-72a4-40c0-851d-8aca20cd6f09",
+        "name": "A JUMKIES",
+        "price": 155.0,
+        "stock": 2,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 470.0,
+        "createdat": "2026-02-14T15:44:25.062737",
+        "updatedat": "2026-02-14T15:44:25.062737",
+        "barcode": "2026021463147",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "e00ca0d2-5031-4797-a4ad-998fe5de20bf",
+        "name": "A JUMKIES",
+        "price": 100.0,
+        "stock": 2,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 300.0,
+        "createdat": "2026-02-14T15:43:43.622214",
+        "updatedat": "2026-02-14T15:43:43.622214",
+        "barcode": "2026021484912",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "45f0c4e5-45cc-4e9f-89bc-bd79680fbc11",
+        "name": "A JUMKIES",
+        "price": 110.0,
+        "stock": 1,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 350.0,
+        "createdat": "2026-02-14T15:42:50.171235",
+        "updatedat": "2026-02-14T15:42:50.171235",
+        "barcode": "2026021437462",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "8af4a8a8-a139-4444-b239-860d186f46ec",
+        "name": "A JUMKIES",
+        "price": 110.0,
+        "stock": 1,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 350.0,
+        "createdat": "2026-02-14T15:42:46.038272",
+        "updatedat": "2026-02-14T15:42:46.038272",
+        "barcode": "2026021437462",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "a8dfa177-fb33-4f1d-b13f-fb88e56599c1",
+        "name": "A CHANBALI",
+        "price": 130.0,
+        "stock": 1,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 450.0,
+        "createdat": "2026-02-14T15:41:56.566361",
+        "updatedat": "2026-02-14T15:41:56.566361",
+        "barcode": "2026021445451",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "b9d52c14-fd07-4966-8fbe-d1c1d77ec0bc",
+        "name": "A JUMKIES",
+        "price": 175.0,
+        "stock": 2,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 525.0,
+        "createdat": "2026-02-14T15:40:51.958146",
+        "updatedat": "2026-02-14T15:40:51.958146",
+        "barcode": "2026021481098",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "de8787af-4b2d-43f1-9c0c-b862d7e423f9",
+        "name": "A BANGLES 2/8",
+        "price": 490.0,
+        "stock": 12,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 1500.0,
+        "createdat": "2026-02-14T15:39:08.302381",
+        "updatedat": "2026-02-14T15:39:08.302381",
+        "barcode": "2026021445034",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "786d8d96-4406-4d1c-81d0-4f7eef68add0",
+        "name": "V VADDANAM",
+        "price": 620.0,
+        "stock": 3,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 1900.0,
+        "createdat": "2026-02-14T15:38:04.598272",
+        "updatedat": "2026-02-14T15:38:04.598272",
+        "barcode": "2026021473771",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "2e9c274e-5607-46f7-a380-ba0c4804d869",
+        "name": "V VADDANAM",
+        "price": 565.0,
+        "stock": 4,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 1700.0,
+        "createdat": "2026-02-14T15:37:21.470205",
+        "updatedat": "2026-02-14T15:37:21.470205",
+        "barcode": "2026021436040",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "8c314bf3-1a1d-41d4-8958-6e8bfc47e859",
+        "name": "V VADDANAM",
+        "price": 725.0,
+        "stock": 2,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 2200.0,
+        "createdat": "2026-02-14T15:36:19.207017",
+        "updatedat": "2026-02-14T15:36:19.207017",
+        "barcode": "2026021431400",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "89325f27-a93f-4aec-bb11-592afb660bd7",
+        "name": "V VADDANAM",
+        "price": 750.0,
+        "stock": 2,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 2250.0,
+        "createdat": "2026-02-14T15:35:02.358261",
+        "updatedat": "2026-02-14T15:35:02.358261",
+        "barcode": "2026021469229",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "a5c62fd4-a14c-4adf-9578-a52a883ef6f9",
+        "name": "V VADDANAM",
+        "price": 485.0,
+        "stock": 1,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 1500.0,
+        "createdat": "2026-02-14T15:32:51.695179",
+        "updatedat": "2026-02-14T15:32:51.695179",
+        "barcode": "2026021402463",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "81f07211-0dab-4bed-9b91-bd262c5ab7dd",
+        "name": "CZ HARAM",
+        "price": 1035.0,
+        "stock": 2,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 3000.0,
+        "createdat": "2026-02-14T15:31:12.727534",
+        "updatedat": "2026-02-14T15:31:12.727534",
+        "barcode": "2026021465101",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "f3798260-0afa-4bba-a449-c007f36d1559",
+        "name": "CZ TIKA",
+        "price": 135.0,
+        "stock": 30,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 395.0,
+        "createdat": "2026-02-14T12:50:05.67824",
+        "updatedat": "2026-02-14T12:51:48.231132",
+        "barcode": "2026021433223",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "3e140f85-f7ed-4ada-8448-02bd56721928",
+        "name": "S TIKA",
+        "price": 135.0,
+        "stock": 30,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 395.0,
+        "createdat": "2026-02-14T12:50:53.901762",
+        "updatedat": "2026-02-14T12:50:53.901762",
+        "barcode": "2026021462151",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "1322ef7b-ff7d-4f7f-9567-181618e743df",
+        "name": "A HARAM",
+        "price": 900.0,
+        "stock": 5,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 2700.0,
+        "createdat": "2026-02-14T12:46:58.678234",
+        "updatedat": "2026-02-14T12:46:58.678234",
+        "barcode": "2026021476694",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "cac14207-9e28-48d6-bad4-e4ce6d7e1a2d",
+        "name": "A NACKCLES",
+        "price": 465.0,
+        "stock": 6,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 1400.0,
+        "createdat": "2026-02-14T12:46:21.126495",
+        "updatedat": "2026-02-14T12:46:21.126495",
+        "barcode": "2026021470180",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "933b3d33-5cc3-4b72-99cf-168d23ccc78d",
+        "name": "A NACKCLES",
+        "price": 400.0,
+        "stock": 10,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 1200.0,
+        "createdat": "2026-02-14T12:45:29.165954",
+        "updatedat": "2026-02-14T12:45:29.165954",
+        "barcode": "2026021437961",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "5067c49c-0050-419a-93f6-97ce74be59f3",
+        "name": "V neckcles",
+        "price": 410.0,
+        "stock": 7,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 1250.0,
+        "createdat": "2026-02-14T12:44:39.157905",
+        "updatedat": "2026-02-14T12:44:39.157905",
+        "barcode": "2026021455170",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "da3d6081-5424-4154-a68c-97410a98683b",
+        "name": "A NACKCLES",
+        "price": 510.0,
+        "stock": 5,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 1530.0,
+        "createdat": "2026-02-14T12:43:45.885942",
+        "updatedat": "2026-02-14T12:43:45.885942",
+        "barcode": "2026021403636",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "5ea02304-e8f2-4a3c-a803-f5d52e017546",
+        "name": "AD NACKLES",
+        "price": 125.0,
+        "stock": 12,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 395.0,
+        "createdat": "2026-02-14T12:40:51.702364",
+        "updatedat": "2026-02-14T12:40:51.702364",
+        "barcode": "2026021487685",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "c1b5c848-279c-4f5a-bd51-f45fde928884",
+        "name": "AD NACKLES",
+        "price": 225.0,
+        "stock": 1,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 675.0,
+        "createdat": "2026-02-14T12:40:09.173906",
+        "updatedat": "2026-02-14T12:40:09.173906",
+        "barcode": "2026021440292",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "5d477ad9-95f5-4337-ae6a-e3dfa897330a",
+        "name": "AD NACKLES",
+        "price": 350.0,
+        "stock": 3,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 1050.0,
+        "createdat": "2026-02-14T12:39:29.278658",
+        "updatedat": "2026-02-14T12:39:29.278658",
+        "barcode": "2026021451195",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "124a4786-43ba-42d3-8de8-90defa07b27f",
+        "name": "AD NACKLES",
+        "price": 260.0,
+        "stock": 6,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 780.0,
+        "createdat": "2026-02-14T12:38:54.821897",
+        "updatedat": "2026-02-14T12:38:54.821897",
+        "barcode": "2026021468207",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "18368de3-869f-4d43-a45a-986e16e673d5",
+        "name": "AD NACKLES",
+        "price": 235.0,
+        "stock": 1,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 750.0,
+        "createdat": "2026-02-14T12:38:05.013817",
+        "updatedat": "2026-02-14T12:38:05.013817",
+        "barcode": "2026021437077",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "8ffa18ae-33ca-45d8-8a25-a6fd6ae02e13",
+        "name": "AD NACKLES",
+        "price": 245.0,
+        "stock": 3,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 750.0,
+        "createdat": "2026-02-14T12:37:28.175343",
+        "updatedat": "2026-02-14T12:37:28.175343",
+        "barcode": "2026021454848",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "aa92e2b4-d725-4b53-b285-1c23ff321c79",
+        "name": "A Bajubandh",
+        "price": 280.0,
+        "stock": 4,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 850.0,
+        "createdat": "2026-02-14T10:00:32.850082",
+        "updatedat": "2026-02-14T12:35:29.094453",
+        "barcode": "2026021428062",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "85ac8242-7b0f-4382-b55b-60984597c02f",
+        "name": "V JUMKI",
+        "price": 250.0,
+        "stock": 6,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 750.0,
+        "createdat": "2026-02-14T12:04:55.277767",
+        "updatedat": "2026-02-14T12:04:55.277767",
+        "barcode": "2026021469972",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "ca4b502a-40e8-4954-b278-8943c3044762",
+        "name": "V CHANDBALI",
+        "price": 75.0,
+        "stock": 6,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 225.0,
+        "createdat": "2026-02-14T12:04:16.77404",
+        "updatedat": "2026-02-14T12:04:16.77404",
+        "barcode": "2026021415140",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "b38db920-96f3-4f21-b602-aa21dcceb71c",
+        "name": "A JUMKI",
+        "price": 200.0,
+        "stock": 4,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 600.0,
+        "createdat": "2026-02-14T12:03:30.573474",
+        "updatedat": "2026-02-14T12:03:30.573474",
+        "barcode": "2026021463779",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "f2703a07-65cb-4ca0-a139-e86a632c9acc",
+        "name": "A JUMKI",
+        "price": 185.0,
+        "stock": 7,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 570.0,
+        "createdat": "2026-02-14T12:02:37.126205",
+        "updatedat": "2026-02-14T12:02:37.126205",
+        "barcode": "2026021431417",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "ab1b91ef-6c94-4de4-9415-d0874f843d83",
+        "name": "CZ JUMKIES",
+        "price": 170.0,
+        "stock": 2,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 510.0,
+        "createdat": "2026-02-14T12:00:48.565407",
+        "updatedat": "2026-02-14T12:00:48.565407",
+        "barcode": "2026021459114",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "7a7cf099-05cb-44c0-8e44-cffe606d29ab",
+        "name": "CZ JUMKIES",
+        "price": 285.0,
+        "stock": 4,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 900.0,
+        "createdat": "2026-02-14T12:00:07.262451",
+        "updatedat": "2026-02-14T12:00:07.262451",
+        "barcode": "2026021430288",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "e27535d7-e643-4018-9a9c-2c9e9db757a6",
+        "name": "V KADA",
+        "price": 140.0,
+        "stock": 6,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 450.0,
+        "createdat": "2026-02-14T11:58:09.103261",
+        "updatedat": "2026-02-14T11:58:09.103261",
+        "barcode": "2026021402594",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "583ada6a-51fb-4391-b1be-3254083c19ee",
+        "name": "V CHANDBALI",
+        "price": 290.0,
+        "stock": 7,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 900.0,
+        "createdat": "2026-02-14T11:57:08.806108",
+        "updatedat": "2026-02-14T11:57:08.806108",
+        "barcode": "2026021427456",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "51f5c196-c8cd-4703-8dec-a647dc9afc97",
+        "name": "A Bajubandh",
+        "price": 220.0,
+        "stock": 4,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 660.0,
+        "createdat": "2026-02-14T10:01:58.690529",
+        "updatedat": "2026-02-14T10:01:58.690529",
+        "barcode": "2026021407472",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "9ce49d11-3329-41a5-9475-fb89d4e6ca01",
+        "name": "V neckcles",
+        "price": 435.0,
+        "stock": 7,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 1350.0,
+        "createdat": "2026-02-14T09:59:33.506215",
+        "updatedat": "2026-02-14T09:59:33.506215",
+        "barcode": "2026021441242",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "8fd997fb-ba2e-475d-9d08-8d102f4a4e85",
+        "name": "A Bajubandh",
+        "price": 260.0,
+        "stock": 4,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 800.0,
+        "createdat": "2026-02-14T09:59:01.841999",
+        "updatedat": "2026-02-14T09:59:01.841999",
+        "barcode": "2026021407954",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "c4be3e73-5673-4472-b4f0-cfa23a65d00b",
+        "name": "A necklace",
+        "price": 560.0,
+        "stock": 3,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 1680.0,
+        "createdat": "2026-02-14T09:57:57.185997",
+        "updatedat": "2026-02-14T09:57:57.185997",
+        "barcode": "2026021464848",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "18d911d8-de50-4bae-83fe-530c24caefb8",
+        "name": "V neckcles",
+        "price": 405.0,
+        "stock": 2,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 1250.0,
+        "createdat": "2026-02-14T09:56:46.579309",
+        "updatedat": "2026-02-14T09:56:46.579309",
+        "barcode": "2026021494075",
+        "hsn_code_id": 2
+    },
+    {
+        "id": "31c2cbb8-0868-42a2-a25d-a2e61e893363",
+        "name": "AD NACKLES",
+        "price": 125.0,
+        "stock": 48,
+        "batchid": "5dbc2c30-0e0b-4c65-b53b-24bbf2336199",
+        "selling_price": 395.0,
+        "createdat": "2026-02-14T09:45:40.618006",
+        "updatedat": "2026-02-14T09:45:40.618006",
+        "barcode": "2026021499441",
+        "hsn_code_id": 2
     }
 ]

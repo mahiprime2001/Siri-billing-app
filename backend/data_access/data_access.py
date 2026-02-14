@@ -199,6 +199,8 @@ def save_products_data(products):
     write_json_file(PRODUCTS_FILE, products)
     # Sync each product
     for product in products:
+        # products table no longer has tax column; strip before sync
+        product.pop('tax', None)
         sync_to_supabase_immediately('products', product, "UPDATE")
 
 def get_hsn_codes_data():
