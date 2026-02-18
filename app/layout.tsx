@@ -25,29 +25,59 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const OFFLINE_TOAST_ID = "system-offline-status"
   const online = useOnlineStatus()
   const router = useRouter()
   const pathname = usePathname()
   const [authChecked, setAuthChecked] = useState(false)
   const isCheckingAuth = useRef(false)
   const [showUpdaterDebug, setShowUpdaterDebug] = useState(false)
+  const offlineToastIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Online status handler
+  // Keep a persistent offline notification visible until connection is restored
   useEffect(() => {
-    if (!online) {
-      toast("You are offline", {
-        description: "Please check your internet connection.",
+    const showOfflineToast = () => {
+      toast.error("System is offline", {
+        id: OFFLINE_TOAST_ID,
+        description: "This will stay visible until internet connection is back.",
         duration: Infinity,
       })
     }
 
+    if (!online) {
+      showOfflineToast()
+      if (!offlineToastIntervalRef.current) {
+        offlineToastIntervalRef.current = setInterval(() => {
+          if (!navigator.onLine) {
+            showOfflineToast()
+          }
+        }, 2000)
+      }
+    } else {
+      toast.dismiss(OFFLINE_TOAST_ID)
+      if (offlineToastIntervalRef.current) {
+        clearInterval(offlineToastIntervalRef.current)
+        offlineToastIntervalRef.current = null
+      }
+    }
+  }, [online])
+
+  useEffect(() => {
     if (typeof window !== 'undefined') {
       window.isLoggingOut = false
       if ((window as any).__TAURI__) {
         setShowUpdaterDebug(true)
       }
     }
-  }, [online])
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (offlineToastIntervalRef.current) {
+        clearInterval(offlineToastIntervalRef.current)
+      }
+    }
+  }, [])
 
   // 🔥 INTERCEPT router.push to prevent unwanted redirects
   useEffect(() => {

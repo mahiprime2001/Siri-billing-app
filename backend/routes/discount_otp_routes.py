@@ -4,8 +4,8 @@ from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
 from utils.connection_pool import get_supabase_client
 from utils.twofa import verify_twofa
+from utils.discount_approval_cache import set_discount_approval
 from datetime import datetime, timezone
-import uuid
 import traceback
 
 discount_otp_bp = Blueprint('discount_otp', __name__)
@@ -30,6 +30,7 @@ def verify_discount_otp():
         payload = request.get_json() or {}
         discount_id = payload.get('discount_id') or payload.get('discount_request_id')
         bill_id = payload.get('bill_id')
+        defer_persist = bool(payload.get('defer_persist'))
         otp = payload.get('otp')
         discount_percentage = payload.get('discount_percentage')
         discount_amount = payload.get('discount_amount')
@@ -38,7 +39,7 @@ def verify_discount_otp():
         if not otp:
             return jsonify({"message": "otp is required"}), 400
 
-        if not discount_id and not bill_id:
+        if not defer_persist and not discount_id and not bill_id:
             return jsonify({"message": "discount_id or bill_id is required"}), 400
 
         # First, try to verify OTP against the caller's own secret
@@ -76,6 +77,15 @@ def verify_discount_otp():
                 return jsonify({"message": "Invalid or expired code for all configured approvers"}), 400
 
             approver_user_id = matched_id
+
+        if defer_persist:
+            set_discount_approval(user_id, approver_user_id)
+            return jsonify({
+                "message": "OTP verified. Discount will be persisted when bill is saved.",
+                "status": "approved",
+                "approved_by": approver_user_id,
+                "deferred": True
+            }), 200
 
         supabase = get_supabase_client()
         now = datetime.now(timezone.utc).isoformat()

@@ -35,10 +35,18 @@ def initialize_supabase_client():
 
         try:
             supabase_url = os.getenv("SUPABASE_URL")
-            supabase_key = os.getenv("SUPABASE_KEY")
+            supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
             
             if not supabase_url or not supabase_key:
-                raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in environment variables.")
+                raise ValueError(
+                    "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_KEY) must be set."
+                )
+
+            if not os.getenv("SUPABASE_SERVICE_ROLE_KEY"):
+                logger.warning(
+                    "⚠️ [CONNECTION-POOL] SUPABASE_SERVICE_ROLE_KEY not set; "
+                    "falling back to SUPABASE_KEY. RLS may block some inserts (e.g., billitems)."
+                )
             
             logger.info(f"🔄 [CONNECTION-POOL] Creating new Supabase client...")
             logger.info(f"📍 [CONNECTION-POOL] URL: {supabase_url}")

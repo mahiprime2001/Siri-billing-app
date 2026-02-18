@@ -704,30 +704,6 @@ export default function BillingAndCart() {
     return `INV-${Date.now().toString().slice(-6)}`
   }
 
-const requestDiscountApproval = async (discountPercentage: number, discountAmount: number, billId: string) => {
-  const response = await apiClient("/api/discounts/request", {
-    method: "POST",
-    body: JSON.stringify({
-      discount_percentage: discountPercentage,
-      discount_amount: discountAmount,
-      bill_id: billId,
-    }),
-  })
-
-    if (!response.ok) {
-      let errorMessage = "Failed to request discount approval"
-      try {
-        const errorData = await response.json()
-        errorMessage = errorData.message || errorData.error || errorMessage
-      } catch {
-        // ignore parse errors
-      }
-      throw new Error(errorMessage)
-    }
-
-    return response.json()
-  }
-
   const handlePreview = async () => {
     if (!currentStore) {
       toast({
@@ -794,36 +770,8 @@ const requestDiscountApproval = async (discountPercentage: number, discountAmoun
       items: activeBillingInstance.cartItems,
     };
     if (invoice.discountPercentage > 10) {
-      try {
-        if (!activeBillingInstance.discountRequestId) {
-          const discountResponse = await requestDiscountApproval(
-            invoice.discountPercentage,
-            invoice.discountAmount,
-            invoice.id
-          )
-          invoice.discountRequestId = discountResponse.discount_id
-          invoice.discountApprovalStatus = discountResponse.status || "pending"
-          updateBillingInstance(activeTab, {
-            discountRequestId: invoice.discountRequestId || null,
-            discountApprovalStatus: invoice.discountApprovalStatus || "pending",
-          })
-          toast({
-            title: "Approval Requested",
-            description: "Discount request sent for approval. Please wait.",
-            variant: "default",
-          })
-        } else {
-          invoice.discountRequestId = activeBillingInstance.discountRequestId || undefined
-          invoice.discountApprovalStatus = activeBillingInstance.discountApprovalStatus || "pending"
-        }
-      } catch (error: any) {
-        toast({
-          title: "Request Failed",
-          description: error?.message || "Failed to request discount approval.",
-          variant: "destructive",
-        })
-        return
-      }
+      invoice.discountRequestId = undefined
+      invoice.discountApprovalStatus = activeBillingInstance.discountApprovalStatus || "pending"
     } else {
       invoice.discountApprovalStatus = "not_required"
       invoice.discountRequestId = undefined
@@ -834,15 +782,6 @@ const requestDiscountApproval = async (discountPercentage: number, discountAmoun
   }
 
   const handleSaveInvoice = async (invoiceToSave: Invoice, isReplay = false) => {
-    if (!isOnline) {
-      toast({
-        title: "Error",
-        description: "Cannot save invoice while offline. Please connect to the internet.",
-        variant: "destructive",
-      });
-      return false;
-    }
-
     try {
       if (invoiceToSave.discountPercentage > 10 && invoiceToSave.discountApprovalStatus !== "approved") {
         toast({
@@ -890,10 +829,13 @@ const requestDiscountApproval = async (discountPercentage: number, discountAmoun
       if (response.ok) {
         const result = await response.json();
         console.log("✅ Bill saved successfully:", result);
+        const wasQueued = response.status === 202 || result?.queued;
 
         toast({
-          title: "Success",
-          description: `Invoice ${isReplay ? "synced" : "saved"} successfully!`,
+          title: wasQueued ? "Queued" : "Success",
+          description: wasQueued
+            ? "Internet is offline. Invoice is saved locally and will auto-sync when online."
+            : `Invoice ${isReplay ? "synced" : "saved"} successfully!`,
           variant: "default",
         });
 
@@ -906,8 +848,12 @@ const requestDiscountApproval = async (discountPercentage: number, discountAmoun
           setActiveTab(newId);
         }
 
-        // Refresh products to update stock immediately
-        await fetchProducts();
+        // Refresh products when possible; offline queueing should not fail the save flow.
+        try {
+          await fetchProducts();
+        } catch (refreshError) {
+          console.warn("Product refresh skipped:", refreshError);
+        }
 
         setShowPreview(false);
         return true;
@@ -1349,7 +1295,7 @@ const requestDiscountApproval = async (discountPercentage: number, discountAmoun
                               min="0"
                               max="100"
                               step="0.01"
-                              value={isNaN(tab.discount) ? "" : tab.discount}
+                              value={isNaN(tab.discount) || tab.discount === 0 ? "" : tab.discount}
                               onChange={(e) => handleDiscountChange(Number.parseFloat(e.target.value) || 0)}
                             />
                           </div>

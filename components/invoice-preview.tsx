@@ -11,13 +11,13 @@ interface Customer {
 }
 
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Save, Printer, AlertCircle, User, CreditCard } from "lucide-react"
 import PrintableInvoice from "./printable-invoice"
@@ -261,15 +261,6 @@ export default function InvoicePreview({
       return
     }
 
-    if (!discountRequestId) {
-      toast({
-        title: "Waiting for request",
-        description: "Please wait until the discount request is created before verifying.",
-        variant: "destructive",
-      })
-      return
-    }
-
     if (!otpValue.trim()) {
       toast({
         title: "OTP Required",
@@ -284,11 +275,10 @@ export default function InvoicePreview({
       const response = await apiClient("/api/discounts/verify-otp", {
         method: "POST",
         body: JSON.stringify({
-          bill_id: invoice.id,
-          discount_id: discountRequestId,
           otp: otpValue.trim(),
           discount_percentage: invoice.discountPercentage,
           discount_amount: invoice.discountAmount,
+          defer_persist: true,
         }),
       })
 
@@ -452,7 +442,6 @@ export default function InvoicePreview({
   const isDiscountPending = requiresDiscountApproval && discountApprovalStatus === "pending"
   const isDiscountDenied = requiresDiscountApproval && discountApprovalStatus === "denied"
   const isDiscountBlocked = requiresDiscountApproval && discountApprovalStatus !== "approved"
-  const isWaitingForRequest = requiresDiscountApproval && !discountRequestId
   const discountStatusLabel =
     discountApprovalStatus === "approved"
       ? "Approved"
@@ -467,14 +456,18 @@ export default function InvoicePreview({
       : "border-amber-200 bg-amber-50 text-amber-800"
 
   return (
-    <Dialog open={isOpen} modal={false} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent showOverlay={false} className="max-w-7xl max-h-[95vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-2xl font-bold">Invoice Preview</DialogTitle>
-          <DialogDescription>
+    <Sheet open={isOpen} modal={false} onOpenChange={(open) => !open && handleClose()}>
+      <SheetContent
+        side="left"
+        showOverlay={false}
+        className="!w-[98vw] sm:!w-[96vw] lg:!w-[52vw] !max-w-none sm:!max-w-none overflow-y-auto p-4 sm:p-6"
+      >
+        <SheetHeader>
+          <SheetTitle className="text-2xl font-bold">Invoice Preview</SheetTitle>
+          <SheetDescription>
             Review and customize your invoice before printing or saving
-          </DialogDescription>
-        </DialogHeader>
+          </SheetDescription>
+        </SheetHeader>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 py-4">
           {/* Left Column: Edit Options */}
@@ -599,22 +592,6 @@ export default function InvoicePreview({
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-xs uppercase tracking-wide">Waiting for the request</Label>
-                  <Input
-                    readOnly
-                    value={
-                      isWaitingForRequest
-                        ? "Creating discount approval request..."
-                        : discountRequestId || "Request created"
-                    }
-                    className="text-sm"
-                  />
-                  <p className="text-[11px] text-gray-700">
-                    The request must exist before OTP verification can succeed.
-                  </p>
-                </div>
-
-                <div className="space-y-1">
                   <Label htmlFor="discount-otp" className="text-xs uppercase tracking-wide">
                     OTP
                   </Label>
@@ -626,13 +603,12 @@ export default function InvoicePreview({
                       placeholder="Enter 2FA code"
                       className="text-sm"
                     />
-                    <Button type="button" onClick={handleVerifyOtp} disabled={isVerifyingOtp || isWaitingForRequest}>
+                    <Button type="button" onClick={handleVerifyOtp} disabled={isVerifyingOtp}>
                       {isVerifyingOtp ? "Verifying..." : "Verify"}
                     </Button>
                   </div>
                   <p className="text-[11px] text-gray-700">
-                    Enter the 2FA code sent to approve this discount. Verified codes instantly mark the request as
-                    approved.
+                    Enter the 2FA code to approve this discount. The discount is saved only when the bill is saved.
                   </p>
                 </div>
 
@@ -702,7 +678,7 @@ export default function InvoicePreview({
         </div>
 
         {/* Action Buttons */}
-        <DialogFooter className="flex justify-center sm:justify-center space-x-4 mt-4">
+        <SheetFooter className="flex justify-center sm:justify-center space-x-4 mt-4">
           <Button
             onClick={handlePrintAndSave}
             className="bg-blue-600 hover:bg-blue-700"
@@ -732,9 +708,9 @@ export default function InvoicePreview({
               </div>
             </div>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   )
 }
 

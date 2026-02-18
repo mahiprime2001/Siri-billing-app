@@ -9,6 +9,7 @@ from config.config import (
 
 from helpers.utils import write_json_file, read_json_file
 from utils.sync_controller import SyncController  # Global instance is fine as it manages client pool
+from utils.offline_bill_queue import process_offline_bill_queue
 
 # Map table names to their corresponding file paths
 TABLE_FILE_MAP = {
@@ -190,3 +191,23 @@ def start_background_tasks(app: Flask):
     )
     json_push_scheduler_thread.start()
     app.logger.info("Background JSON to Supabase push sync scheduler (JSON -> Supabase) started.")
+
+    # Replay queued offline bill operations
+    offline_bill_queue_thread = threading.Thread(
+        target=background_offline_bill_queue_scheduler, daemon=True, args=(app, 1,)
+    )
+    offline_bill_queue_thread.start()
+    app.logger.info("Background offline bill queue scheduler started.")
+
+
+def background_offline_bill_queue_scheduler(app: Flask, interval_minutes=1):
+    """Periodically retry offline bill operations saved to local queue."""
+    with app.app_context():
+        app.logger.info("Starting offline bill queue scheduler.")
+        while True:
+            try:
+                process_offline_bill_queue(app_logger=app.logger, max_items=25)
+            except Exception as e:
+                app.logger.error(f"Error while processing offline bill queue: {e}")
+
+            time.sleep(interval_minutes * 60)

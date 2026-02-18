@@ -31,18 +31,34 @@ def request_discount():
         discount_id = f"DISC-{uuid.uuid4().hex[:12]}"
         now = datetime.now(timezone.utc).isoformat()
 
+        supabase = get_supabase_client()
+
+        # bill_id in discounts is a FK to bills.id. The UI can send a temporary
+        # invoice id (e.g. INV-123456) before the actual bill is created.
+        safe_bill_id = None
+        if bill_id:
+            try:
+                bill_lookup = supabase.table('bills').select('id').eq('id', bill_id).limit(1).execute()
+                if bill_lookup.data:
+                    safe_bill_id = bill_id
+                else:
+                    app.logger.warning(
+                        f"Skipping discount bill linkage for non-existent bill_id={bill_id}"
+                    )
+            except Exception:
+                app.logger.warning(f"Skipping discount bill lookup for bill_id={bill_id}")
+
         discount_data = {
             "discount_id": discount_id,
             "user_id": current_user_id,
             "discount": discount_percentage,
             "discount_amount": discount_amount,
-            "bill_id": bill_id,
+            "bill_id": safe_bill_id,
             "status": "pending",
             "created_at": now,
             "updated_at": now,
         }
 
-        supabase = get_supabase_client()
         response = supabase.table('discounts').insert(discount_data).execute()
 
         if not response.data:

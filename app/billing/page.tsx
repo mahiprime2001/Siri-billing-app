@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
 import {
-  LogOut, RefreshCw, CloudOff, Cloud, Download, Menu, Bell, BellRing
+  LogOut, Download, Menu, Bell, BellRing
 } from 'lucide-react'
 import {BillingHistory} from '@/components/billing-history'
 import BillingAndCart from '@/components/billing-and-cart'
@@ -51,9 +51,6 @@ interface Notification {
 
 export default function BillingPage() {
   const [user, setUser] = useState<User | null>(null)
-  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null)
-  const [isOnline, setIsOnline] = useState(true)
-  const [isSyncing, setIsSyncing] = useState(false)
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
   const [pendingReturnsCount, setPendingReturnsCount] = useState(0)
   const [currentStore, setCurrentStore] = useState<{ id: string; name: string } | null>(null)
@@ -160,24 +157,6 @@ export default function BillingPage() {
     }
   }, [toast])
 
-  const fetchSyncStatus = useCallback(async () => {
-    try {
-      const response = await apiClient('/api/sync/status')
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
-      
-      const statusData = await response.json()
-      setIsOnline(statusData.database_connected)
-      
-      if (statusData.last_sync) {
-        setLastSyncTime(new Date(statusData.last_sync).toLocaleString())
-      }
-    } catch (error) {
-      console.error('Error fetching sync status:', error)
-      setIsOnline(false)
-      setLastSyncTime('N/A - Offline')
-    }
-  }, [])
-
   const fetchPendingReturnsCount = useCallback(async () => {
     try {
       const response = await apiClient('/api/returns/pending/count')
@@ -241,20 +220,17 @@ export default function BillingPage() {
   useEffect(() => {
     fetchUserData()
     fetchCurrentStore()
-    fetchSyncStatus()
     fetchPendingReturnsCount()
     fetchNotifications()
 
-    const statusInterval = setInterval(fetchSyncStatus, 60 * 1000)
     const returnsInterval = setInterval(fetchPendingReturnsCount, 30 * 1000)
     const notificationsInterval = setInterval(fetchNotifications, 30 * 1000)
 
     return () => {
-      clearInterval(statusInterval)
       clearInterval(returnsInterval)
       clearInterval(notificationsInterval)
     }
-  }, [fetchUserData, fetchCurrentStore, fetchSyncStatus, fetchPendingReturnsCount, fetchNotifications])
+  }, [fetchUserData, fetchCurrentStore, fetchPendingReturnsCount, fetchNotifications])
 
   // ✅ UPDATED: Logout with localStorage cleanup
   const handleLogout = async () => {
@@ -340,36 +316,6 @@ export default function BillingPage() {
     }
   }
 
-  const handleSyncNow = async () => {
-    if (isSyncing) return
-    setIsSyncing(true)
-    toast({
-      title: 'Syncing Data',
-      description: 'Pulling data from database and saving to JSON files...',
-    })
-
-    try {
-      const response = await apiClient('/api/sync/pull', { method: 'POST' })
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
-      
-      toast({
-        title: 'Sync Complete',
-        description: 'Successfully synced data to JSON files.',
-      })
-      await fetchSyncStatus()
-      await fetchPendingReturnsCount()
-    } catch (error) {
-      console.error('Sync failed:', error)
-      toast({
-        title: 'Sync Failed',
-        description: 'Failed to sync data. Please check your connection and try again.',
-        variant: 'destructive',
-      })
-    } finally {
-      setIsSyncing(false)
-    }
-  }
-
   if (!user) {
     return <div className="flex items-center justify-center h-screen">Loading...</div>
   }
@@ -392,29 +338,6 @@ export default function BillingPage() {
           </div>
 
           <div className="flex items-center space-x-2">
-            {/* Sync Status */}
-            <div className="flex items-center space-x-2 text-sm">
-              {isOnline ? (
-                <Cloud className="h-4 w-4 text-green-500" />
-              ) : (
-                <CloudOff className="h-4 w-4 text-red-500" />
-              )}
-              <span className="text-muted-foreground">
-                {isOnline ? 'Online' : 'Offline'}
-              </span>
-            </div>
-
-            {/* Sync Button */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSyncNow}
-              disabled={isSyncing || !isOnline}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? 'Syncing...' : 'Sync'}
-            </Button>
-
             {/* ✅ Notifications Bell */}
             <Popover>
               <PopoverTrigger asChild>

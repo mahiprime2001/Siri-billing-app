@@ -48,6 +48,7 @@ BILL_FORMATS_FILE = os.path.join(JSON_DIR, "bill_formats.json")
 USER_STORES_FILE = os.path.join(JSON_DIR, "userstores.json")
 HSF_CODE_FILE = os.path.join(JSON_DIR, "hsf_codes.json")
 HSN_CODES_FILE = os.path.join(JSON_DIR, "hsn_codes.json")
+OFFLINE_BILL_QUEUE_FILE = os.path.join(JSON_DIR, "offline_bill_queue.json")
 
 # =========================================================
 # 📝 LOGGING
