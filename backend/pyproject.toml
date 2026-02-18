@@ -16,4 +16,5 @@ dependencies = [
     "flask-jwt-extended>=4.7.1",
     "bcrypt>=5.0.0",
     "pyinstaller>=6.18.0",
+    "pyotp>=2.9.0",
 ]

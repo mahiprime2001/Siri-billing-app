@@ -44,6 +44,7 @@ from routes.notification_routes import notification_bp
 from routes.stock_stream_routes import stock_stream_bp
 from routes.discount_routes import discount_bp
 from routes.hsn_codes_routes import hsn_codes_bp
+from routes.discount_otp_routes import discount_otp_bp
 
 if sys.platform == 'win32':
     import codecs
@@ -276,6 +277,7 @@ app.register_blueprint(health_bp, url_prefix='/api')
 app.register_blueprint(notification_bp, url_prefix='/api')
 app.register_blueprint(stock_stream_bp, url_prefix='/api')
 app.register_blueprint(discount_bp, url_prefix='/api')
+app.register_blueprint(discount_otp_bp, url_prefix='/api')
 app.register_blueprint(hsn_codes_bp, url_prefix='/api')
 
 # ==================== Main ====================

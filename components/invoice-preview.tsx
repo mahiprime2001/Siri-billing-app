@@ -35,6 +35,7 @@ interface InvoicePreviewProps {
   onClose: () => void
   onSave?: (updatedInvoice: Invoice) => void
   onPrintAndSave?: (updatedInvoice: Invoice) => void
+  onUpdateInvoice?: (updatedInvoice: Invoice) => void
   initialPaperSize?: string
   initialCustomerName?: string
   initialCustomerPhone?: string
@@ -47,6 +48,7 @@ export default function InvoicePreview({
   onClose,
   onSave,
   onPrintAndSave,
+  onUpdateInvoice,
   initialPaperSize = "Thermal 80mm",
   initialCustomerName = "Walk-in Customer",
   initialCustomerPhone = "",
@@ -63,6 +65,8 @@ export default function InvoicePreview({
     invoice.discountApprovalStatus || "not_required"
   )
   const [discountRequestId, setDiscountRequestId] = useState<string | undefined>(invoice.discountRequestId)
+  const [otpValue, setOtpValue] = useState("")
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false)
 
   // Editable states
   const [customerName, setCustomerName] = useState(initialCustomerName)
@@ -87,6 +91,7 @@ export default function InvoicePreview({
   useEffect(() => {
     setDiscountApprovalStatus(invoice.discountApprovalStatus || "not_required")
     setDiscountRequestId(invoice.discountRequestId)
+    setOtpValue("")
   }, [invoice.discountApprovalStatus, invoice.discountRequestId])
 
   // Simplified fetch - just get customers directly
@@ -137,6 +142,7 @@ export default function InvoicePreview({
 
         if (!cancelled && nextStatus && nextStatus !== discountApprovalStatus) {
           setDiscountApprovalStatus(nextStatus)
+          onUpdateInvoice?.({ ...invoice, discountApprovalStatus: nextStatus })
 
           if (nextStatus === "approved") {
             toast({
@@ -245,6 +251,78 @@ export default function InvoicePreview({
     total: invoice.total,
     taxAmount: invoice.taxAmount,
   })
+
+  const handleVerifyOtp = async () => {
+    if (!requiresDiscountApproval) {
+      toast({
+        title: "No Approval Needed",
+        description: "OTP verification is only required for discounts above 10%.",
+      })
+      return
+    }
+
+    if (!discountRequestId) {
+      toast({
+        title: "Waiting for request",
+        description: "Please wait until the discount request is created before verifying.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!otpValue.trim()) {
+      toast({
+        title: "OTP Required",
+        description: "Enter the 2FA code to verify the discount.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setIsVerifyingOtp(true)
+      const response = await apiClient("/api/discounts/verify-otp", {
+        method: "POST",
+        body: JSON.stringify({
+          bill_id: invoice.id,
+          discount_id: discountRequestId,
+          otp: otpValue.trim(),
+          discount_percentage: invoice.discountPercentage,
+          discount_amount: invoice.discountAmount,
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        toast({
+          title: "OTP Failed",
+          description: payload?.message || "Could not verify the OTP.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      setDiscountApprovalStatus("approved")
+      setOtpValue("")
+      const updated = { ...getUpdatedInvoice(), discountApprovalStatus: "approved" as const }
+      onUpdateInvoice?.(updated)
+
+      toast({
+        title: "Discount Approved",
+        description: "OTP verified. You can now save or print the invoice.",
+        variant: "default",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Verification Error",
+        description: error?.message || "Unable to verify OTP right now.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsVerifyingOtp(false)
+    }
+  }
 
   const handleSaveClick = () => {
     if (isDiscountBlocked) {
@@ -374,6 +452,7 @@ export default function InvoicePreview({
   const isDiscountPending = requiresDiscountApproval && discountApprovalStatus === "pending"
   const isDiscountDenied = requiresDiscountApproval && discountApprovalStatus === "denied"
   const isDiscountBlocked = requiresDiscountApproval && discountApprovalStatus !== "approved"
+  const isWaitingForRequest = requiresDiscountApproval && !discountRequestId
   const discountStatusLabel =
     discountApprovalStatus === "approved"
       ? "Approved"
@@ -513,9 +592,50 @@ export default function InvoicePreview({
             </div>
 
             {requiresDiscountApproval && (
-              <div className={`rounded-md border px-4 py-3 ${discountStatusClass}`}>
-                <div className="text-sm font-semibold">Discount Approval</div>
-                <div className="text-sm">Status: {discountStatusLabel}</div>
+              <div className={`rounded-md border px-4 py-3 space-y-3 ${discountStatusClass}`}>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold">Discount Approval</div>
+                  <div className="text-xs font-medium px-2 py-1 rounded-full border">{discountStatusLabel}</div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs uppercase tracking-wide">Waiting for the request</Label>
+                  <Input
+                    readOnly
+                    value={
+                      isWaitingForRequest
+                        ? "Creating discount approval request..."
+                        : discountRequestId || "Request created"
+                    }
+                    className="text-sm"
+                  />
+                  <p className="text-[11px] text-gray-700">
+                    The request must exist before OTP verification can succeed.
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor="discount-otp" className="text-xs uppercase tracking-wide">
+                    OTP
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="discount-otp"
+                      value={otpValue}
+                      onChange={(e) => setOtpValue(e.target.value)}
+                      placeholder="Enter 2FA code"
+                      className="text-sm"
+                    />
+                    <Button type="button" onClick={handleVerifyOtp} disabled={isVerifyingOtp || isWaitingForRequest}>
+                      {isVerifyingOtp ? "Verifying..." : "Verify"}
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-gray-700">
+                    Enter the 2FA code sent to approve this discount. Verified codes instantly mark the request as
+                    approved.
+                  </p>
+                </div>
+
                 {isDiscountPending && (
                   <div className="text-xs mt-1">Waiting for approval. You can keep working in other tabs.</div>
                 )}

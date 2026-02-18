@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, current_app as app
 from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
 from utils.connection_pool import get_supabase_client
+from utils.twofa import verify_twofa
 from datetime import datetime, timezone
 import uuid
 import traceback

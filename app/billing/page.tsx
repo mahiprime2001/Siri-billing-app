@@ -37,6 +37,7 @@ interface User {
   name: string
   role: string
   email: string
+  has2fa?: boolean
 }
 
 interface Notification {

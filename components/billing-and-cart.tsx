@@ -704,14 +704,15 @@ export default function BillingAndCart() {
     return `INV-${Date.now().toString().slice(-6)}`
   }
 
-  const requestDiscountApproval = async (discountPercentage: number, discountAmount: number) => {
-    const response = await apiClient("/api/discounts/request", {
-      method: "POST",
-      body: JSON.stringify({
-        discount_percentage: discountPercentage,
-        discount_amount: discountAmount,
-      }),
-    })
+const requestDiscountApproval = async (discountPercentage: number, discountAmount: number, billId: string) => {
+  const response = await apiClient("/api/discounts/request", {
+    method: "POST",
+    body: JSON.stringify({
+      discount_percentage: discountPercentage,
+      discount_amount: discountAmount,
+      bill_id: billId,
+    }),
+  })
 
     if (!response.ok) {
       let errorMessage = "Failed to request discount approval"
@@ -797,7 +798,8 @@ export default function BillingAndCart() {
         if (!activeBillingInstance.discountRequestId) {
           const discountResponse = await requestDiscountApproval(
             invoice.discountPercentage,
-            invoice.discountAmount
+            invoice.discountAmount,
+            invoice.id
           )
           invoice.discountRequestId = discountResponse.discount_id
           invoice.discountApprovalStatus = discountResponse.status || "pending"
@@ -963,6 +965,16 @@ export default function BillingAndCart() {
     const saved = await handleSaveInvoice(invoiceToPrintAndSave)
     if (saved) {
       // Printing functionality is handled by InvoicePreview component
+    }
+  }
+
+  const handlePreviewInvoiceUpdate = (updatedInvoice: Invoice) => {
+    setCurrentInvoice(updatedInvoice)
+    if (activeBillingInstance) {
+      updateBillingInstance(activeTab, {
+        discountApprovalStatus: updatedInvoice.discountApprovalStatus || activeBillingInstance.discountApprovalStatus,
+        discountRequestId: updatedInvoice.discountRequestId || activeBillingInstance.discountRequestId,
+      })
     }
   }
 
@@ -1454,6 +1466,7 @@ export default function BillingAndCart() {
           onClose={() => setShowPreview(false)}
           onSave={handleSaveInvoice ? (updatedInvoice) => handleSaveInvoice(updatedInvoice) : undefined}
           onPrintAndSave={handlePrintAndSave ? (updatedInvoice) => handlePrintAndSave(updatedInvoice) : undefined}
+          onUpdateInvoice={handlePreviewInvoiceUpdate}
           initialPaperSize={"Thermal 80mm"}
           initialCustomerName={activeBillingInstance.customerName}
           initialCustomerPhone={activeBillingInstance.customerPhone}
