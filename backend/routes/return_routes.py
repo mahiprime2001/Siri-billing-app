@@ -42,12 +42,20 @@ def get_returns():
         for ret in returns:
             product_data = ret.get('products') or {}  # ✅ Handle None
             customer_data = ret.get('customers') or {}  # ✅ Handle None
+            return_amount = float(ret.get('return_amount', 0) or 0)
+            original_qty = int(ret.get('original_quantity', 0) or 0)
+            return_qty = int(ret.get('return_quantity', 0) or 0)
             
             transformed_returns.append({
                 **ret,
                 'product_name': product_data.get('name', 'Unknown Product'),
                 'customer_name': customer_data.get('name', 'Walk-in Customer'),
-                'customer_phone': customer_data.get('phone', '')
+                # Normalized phone key expected by frontend
+                'customer_phone_number': customer_data.get('phone', '') or customer_data.get('phone_number', ''),
+                'customer_phone': customer_data.get('phone', ''),
+                'return_amount': return_amount,
+                'original_quantity': original_qty,
+                'return_quantity': return_qty,
             })
         
         app.logger.info(f"✅ Fetched {len(transformed_returns)} returns")
@@ -70,8 +78,9 @@ def search_bills():
         
         query = data.get('query', '').strip()
         search_type = data.get('searchType', 'customer')
+        store_id = data.get('storeId') or data.get('store_id')
         
-        app.logger.info(f"🔍 User {current_user_id} searching bills: {query} ({search_type})")
+        app.logger.info(f"🔍 User {current_user_id} searching bills: {query} ({search_type}) store={store_id}")
         
         if not query:
             return jsonify([]), 200
@@ -85,7 +94,10 @@ def search_bills():
                 customer_ids = [c['id'] for c in customer_response.data]
                 response = supabase.table('bills').select(
                     '*, customers(id, name, phone)'
-                ).in_('customerid', customer_ids).execute()
+                ).in_('customerid', customer_ids)
+                if store_id:
+                    response = response.eq('storeid', store_id)
+                response = response.execute()
             else:
                 return jsonify([]), 200
                 
@@ -95,14 +107,20 @@ def search_bills():
                 customer_ids = [c['id'] for c in customer_response.data]
                 response = supabase.table('bills').select(
                     '*, customers(id, name, phone)'
-                ).in_('customerid', customer_ids).execute()
+                ).in_('customerid', customer_ids)
+                if store_id:
+                    response = response.eq('storeid', store_id)
+                response = response.execute()
             else:
                 return jsonify([]), 200
                 
         elif search_type == 'invoice':
             response = supabase.table('bills').select(
                 '*, customers(id, name, phone)'
-            ).ilike('id', f'%{query}%').execute()
+            ).ilike('id', f'%{query}%')
+            if store_id:
+                response = response.eq('storeid', store_id)
+            response = response.execute()
         else:
             return jsonify({"message": "Invalid search type"}), 400
         
@@ -114,7 +132,7 @@ def search_bills():
             # Get bill items with product details via JOIN
             bill_items_response = supabase.table('billitems').select(
                 '*, products(id, name, selling_price)'
-            ).eq('billid', bill['id']).execute()
+            ).eq('billid', bill['id']).order('id').execute()
             
             bill_items = bill_items_response.data if bill_items_response.data else []
             
@@ -126,6 +144,7 @@ def search_bills():
                 'customerName': customer_data.get('name', 'Walk-in Customer'),
                 'customerPhone': customer_data.get('phone', ''),
                 'paymentMethod': bill.get('paymentmethod', 'cash'),
+                'storeId': bill.get('storeid', None),
                 'total': float(bill.get('total', 0)),
                 'timestamp': bill.get('timestamp', bill.get('created_at', '')),
                 'items': [{
@@ -158,7 +177,6 @@ def submit_return():
         selected_items = data.get('selectedItems', [])
         return_reason = data.get('returnReason', '')
         refund_method = data.get('refundMethod', 'cash')
-        search_results = data.get('searchResults', [])
         created_by = data.get('createdBy', 'Unknown')
         
         app.logger.info(f"📦 User {current_user_id} submitting return with {len(selected_items)} items")
@@ -168,6 +186,24 @@ def submit_return():
         
         supabase = get_supabase_client()
         created_returns = []
+        bill_cache = {}
+
+        def get_bill_with_items(bill_id: str):
+            """Fetch bill and items once and cache for reuse."""
+            if bill_id in bill_cache:
+                return bill_cache[bill_id]
+
+            bill_response = supabase.table('bills').select('id, storeid, customerid').eq('id', bill_id).limit(1).execute()
+            bill_data = bill_response.data[0] if bill_response.data else None
+            if not bill_data:
+                return None
+
+            items_response = supabase.table('billitems').select('productid, quantity, price, total').eq('billid', bill_id).order('id').execute()
+            bill_cache[bill_id] = {
+                **bill_data,
+                'items': items_response.data or []
+            }
+            return bill_cache[bill_id]
         
         # Create return for each selected item
         for selected_item in selected_items:
@@ -177,19 +213,28 @@ def submit_return():
             bill_id = item_id[:last_hyphen]
             item_index = int(item_id[last_hyphen + 1:])
             
-            # Find the bill and item
-            bill = next((b for b in search_results if b['id'] == bill_id), None)
+            # Find the bill and item from cached Supabase data
+            bill = get_bill_with_items(bill_id)
             
             if not bill or item_index >= len(bill['items']):
                 app.logger.warning(f"⚠️ Bill or item not found: {bill_id}, index {item_index}")
-                continue
+                return jsonify({"message": "Bill or item not found", "bill_id": bill_id, "item_index": item_index}), 404
             
             item = bill['items'][item_index]
-            return_quantity = selected_item.get('quantity', 1)
-            original_quantity = item['quantity']
-            unit_price = item['price']
-            product_id = item['productId']
-            customer_id = bill.get('customerId', None)
+            return_quantity = int(selected_item.get('quantity', 1))
+            original_quantity = int(item.get('quantity', 0))
+            unit_price = float(item.get('price', 0))
+            product_id = item.get('productid') or item.get('productId')
+            customer_id = bill.get('customerid', None)
+            store_id = bill.get('storeid', None)
+
+            if return_quantity < 1 or return_quantity > max(original_quantity, 0):
+                return jsonify({
+                    "message": "Invalid return quantity",
+                    "bill_id": bill_id,
+                    "product_id": product_id,
+                    "allowed_max": original_quantity
+                }), 400
             
             return_id = f"RET-{uuid.uuid4().hex[:12].upper()}"
             
@@ -198,6 +243,7 @@ def submit_return():
                 'return_id': return_id,
                 'product_id': product_id,
                 'customer_id': customer_id,
+                'store_id': store_id,
                 'message': return_reason,
                 'refund_method': refund_method,
                 'bill_id': bill_id,
@@ -339,13 +385,17 @@ def get_pending_returns_count():
     """Get count of pending returns"""
     try:
         current_user_id = get_jwt_identity()
+        store_id = request.args.get('store_id')
         
         supabase = get_supabase_client()
-        response = supabase.table('returns').select('return_id', count='exact').eq('status', 'pending').execute()
+        query = supabase.table('returns').select('return_id', count='exact').eq('status', 'pending')
+        if store_id:
+            query = query.eq('store_id', store_id)
+        response = query.execute()
         
         count = response.count if hasattr(response, 'count') else len(response.data or [])
         
-        app.logger.debug(f"📊 User {current_user_id} fetched pending returns count: {count}")
+        app.logger.debug(f"📊 User {current_user_id} fetched pending returns count: {count} store={store_id}")
         
         return jsonify({"count": count}), 200
         

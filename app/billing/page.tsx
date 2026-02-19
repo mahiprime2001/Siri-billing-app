@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
 import {
-  LogOut, Download, Menu, Bell, BellRing
+  LogOut, RefreshCw, CloudOff, Cloud, Download, Menu, Bell, BellRing
 } from 'lucide-react'
 import {BillingHistory} from '@/components/billing-history'
 import BillingAndCart from '@/components/billing-and-cart'
@@ -51,6 +51,9 @@ interface Notification {
 
 export default function BillingPage() {
   const [user, setUser] = useState<User | null>(null)
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null)
+  const [isOnline, setIsOnline] = useState(true)
+  const [isSyncing, setIsSyncing] = useState(false)
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
   const [pendingReturnsCount, setPendingReturnsCount] = useState(0)
   const [currentStore, setCurrentStore] = useState<{ id: string; name: string } | null>(null)
@@ -157,9 +160,28 @@ export default function BillingPage() {
     }
   }, [toast])
 
-  const fetchPendingReturnsCount = useCallback(async () => {
+  const fetchSyncStatus = useCallback(async () => {
     try {
-      const response = await apiClient('/api/returns/pending/count')
+      const response = await apiClient('/api/sync/status')
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+      
+      const statusData = await response.json()
+      setIsOnline(statusData.database_connected)
+      
+      if (statusData.last_sync) {
+        setLastSyncTime(new Date(statusData.last_sync).toLocaleString())
+      }
+    } catch (error) {
+      console.error('Error fetching sync status:', error)
+      setIsOnline(false)
+      setLastSyncTime('N/A - Offline')
+    }
+  }, [])
+
+  const fetchPendingReturnsCount = useCallback(async (storeId?: string) => {
+    try {
+      const url = storeId ? `/api/returns/pending/count?store_id=${storeId}` : '/api/returns/pending/count'
+      const response = await apiClient(url)
       if (response.ok) {
         const data = await response.json()
         setPendingReturnsCount(data.count)
@@ -220,17 +242,20 @@ export default function BillingPage() {
   useEffect(() => {
     fetchUserData()
     fetchCurrentStore()
-    fetchPendingReturnsCount()
+    fetchSyncStatus()
+    fetchPendingReturnsCount(currentStore?.id)
     fetchNotifications()
 
-    const returnsInterval = setInterval(fetchPendingReturnsCount, 30 * 1000)
+    const statusInterval = setInterval(fetchSyncStatus, 60 * 1000)
+    const returnsInterval = setInterval(() => fetchPendingReturnsCount(currentStore?.id), 30 * 1000)
     const notificationsInterval = setInterval(fetchNotifications, 30 * 1000)
 
     return () => {
+      clearInterval(statusInterval)
       clearInterval(returnsInterval)
       clearInterval(notificationsInterval)
     }
-  }, [fetchUserData, fetchCurrentStore, fetchPendingReturnsCount, fetchNotifications])
+  }, [fetchUserData, fetchCurrentStore, fetchSyncStatus, fetchPendingReturnsCount, fetchNotifications, currentStore])
 
   // ✅ UPDATED: Logout with localStorage cleanup
   const handleLogout = async () => {
@@ -316,6 +341,36 @@ export default function BillingPage() {
     }
   }
 
+  const handleSyncNow = async () => {
+    if (isSyncing) return
+    setIsSyncing(true)
+    toast({
+      title: 'Syncing Data',
+      description: 'Pulling data from database and saving to JSON files...',
+    })
+
+    try {
+      const response = await apiClient('/api/sync/pull', { method: 'POST' })
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+      
+      toast({
+        title: 'Sync Complete',
+        description: 'Successfully synced data to JSON files.',
+      })
+      await fetchSyncStatus()
+      await fetchPendingReturnsCount(currentStore?.id)
+    } catch (error) {
+      console.error('Sync failed:', error)
+      toast({
+        title: 'Sync Failed',
+        description: 'Failed to sync data. Please check your connection and try again.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
   if (!user) {
     return <div className="flex items-center justify-center h-screen">Loading...</div>
   }
@@ -338,6 +393,29 @@ export default function BillingPage() {
           </div>
 
           <div className="flex items-center space-x-2">
+            {/* Sync Status */}
+            <div className="flex items-center space-x-2 text-sm">
+              {isOnline ? (
+                <Cloud className="h-4 w-4 text-green-500" />
+              ) : (
+                <CloudOff className="h-4 w-4 text-red-500" />
+              )}
+              <span className="text-muted-foreground">
+                {isOnline ? 'Online' : 'Offline'}
+              </span>
+            </div>
+
+            {/* Sync Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSyncNow}
+              disabled={isSyncing || !isOnline}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'Syncing...' : 'Sync'}
+            </Button>
+
             {/* ✅ Notifications Bell */}
             <Popover>
               <PopoverTrigger asChild>
@@ -449,7 +527,11 @@ export default function BillingPage() {
         </TabsContent>
 
         <TabsContent value="returns" className="flex-1 overflow-auto p-4">
-          <ReturnsManagement user={user} onCountChange={fetchPendingReturnsCount}  />
+          <ReturnsManagement
+            user={user}
+            storeId={currentStore?.id || null}
+            onCountChange={() => fetchPendingReturnsCount(currentStore?.id)}
+          />
         </TabsContent>
       </Tabs>
     </div>

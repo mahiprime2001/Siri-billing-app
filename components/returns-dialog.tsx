@@ -45,9 +45,10 @@ interface ReturnsDialogProps {
   isOpen: boolean
   onClose: () => void
   user: { name: string } | null
+  storeId?: string | null
 }
 
-export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogProps) {
+export default function ReturnsDialog({ isOpen, onClose, user, storeId }: ReturnsDialogProps) {
   const [returnRequest, setReturnRequest] = useState<ReturnRequest>({
     searchQuery: '',
     searchType: 'customer',
@@ -77,7 +78,8 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
         method: 'POST',
         body: JSON.stringify({
           query: returnRequest.searchQuery,
-          searchType: returnRequest.searchType
+          searchType: returnRequest.searchType,
+          storeId: storeId || undefined,
         }),
       });
 
@@ -186,7 +188,7 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
           selectedItems: returnRequest.selectedItems,
           returnReason: returnRequest.returnReason,
           refundMethod: returnRequest.refundMethod,
-          searchResults: searchResults,
+          storeId: storeId || undefined,
           createdBy: user?.name || "Unknown"
         }),
       });

@@ -136,9 +136,16 @@ CREATE TABLE public.returns (
   original_quantity integer,
   return_quantity integer,
   customer_id character varying,
+  store_id character varying,
+  approved_by character varying,
+  approved_at timestamp without time zone,
+  denied_by character varying,
+  denied_at timestamp without time zone,
+  denial_reason text,
   CONSTRAINT returns_pkey PRIMARY KEY (s_no),
   CONSTRAINT returns_ibfk_2 FOREIGN KEY (product_id) REFERENCES public.products(id),
-  CONSTRAINT returns_customer_fk FOREIGN KEY (customer_id) REFERENCES public.customers(id)
+  CONSTRAINT returns_customer_fk FOREIGN KEY (customer_id) REFERENCES public.customers(id),
+  CONSTRAINT returns_store_fk FOREIGN KEY (store_id) REFERENCES public.stores(id)
 );
 CREATE TABLE public.storeinventory (
   id character varying NOT NULL,
