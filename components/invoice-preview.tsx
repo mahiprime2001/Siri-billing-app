@@ -276,6 +276,7 @@ export default function InvoicePreview({
         method: "POST",
         body: JSON.stringify({
           otp: otpValue.trim(),
+          discount_request_id: discountRequestId,
           discount_percentage: invoice.discountPercentage,
           discount_amount: invoice.discountAmount,
           defer_persist: true,
@@ -442,6 +443,7 @@ export default function InvoicePreview({
   const isDiscountPending = requiresDiscountApproval && discountApprovalStatus === "pending"
   const isDiscountDenied = requiresDiscountApproval && discountApprovalStatus === "denied"
   const isDiscountBlocked = requiresDiscountApproval && discountApprovalStatus !== "approved"
+  const showOtpFields = requiresDiscountApproval && discountApprovalStatus !== "approved"
   const discountStatusLabel =
     discountApprovalStatus === "approved"
       ? "Approved"
@@ -591,26 +593,28 @@ export default function InvoicePreview({
                   <div className="text-xs font-medium px-2 py-1 rounded-full border">{discountStatusLabel}</div>
                 </div>
 
-                <div className="space-y-1">
-                  <Label htmlFor="discount-otp" className="text-xs uppercase tracking-wide">
-                    OTP
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="discount-otp"
-                      value={otpValue}
-                      onChange={(e) => setOtpValue(e.target.value)}
-                      placeholder="Enter 2FA code"
-                      className="text-sm"
-                    />
-                    <Button type="button" onClick={handleVerifyOtp} disabled={isVerifyingOtp}>
-                      {isVerifyingOtp ? "Verifying..." : "Verify"}
-                    </Button>
+                {showOtpFields && (
+                  <div className="space-y-1">
+                    <Label htmlFor="discount-otp" className="text-xs uppercase tracking-wide">
+                      OTP
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="discount-otp"
+                        value={otpValue}
+                        onChange={(e) => setOtpValue(e.target.value)}
+                        placeholder="Enter 2FA code"
+                        className="text-sm"
+                      />
+                      <Button type="button" onClick={handleVerifyOtp} disabled={isVerifyingOtp}>
+                        {isVerifyingOtp ? "Verifying..." : "Verify"}
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-gray-700">
+                      Enter the 2FA code to approve this discount. The discount is saved only when the bill is saved.
+                    </p>
                   </div>
-                  <p className="text-[11px] text-gray-700">
-                    Enter the 2FA code to approve this discount. The discount is saved only when the bill is saved.
-                  </p>
-                </div>
+                )}
 
                 {isDiscountPending && (
                   <div className="text-xs mt-1">Waiting for approval. You can keep working in other tabs.</div>

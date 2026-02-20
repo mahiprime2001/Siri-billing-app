@@ -671,6 +671,45 @@ export default function BillingAndCart() {
     }
   }
 
+  const ensureDiscountRequest = async (): Promise<string | null> => {
+    if (!activeBillingInstance) return null
+    if (activeBillingInstance.discount <= 10) return null
+    if (activeBillingInstance.discountRequestId) return activeBillingInstance.discountRequestId
+
+    try {
+      const response = await apiClient("/api/discounts/request", {
+        method: "POST",
+        body: JSON.stringify({
+          discount_percentage: Math.round(activeBillingInstance.discount * 100) / 100,
+          discount_amount: calculateDiscountAmount(),
+        }),
+      })
+
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok || !data?.discount_id) {
+        throw new Error(data?.message || "Failed to create discount request")
+      }
+
+      const discountId = data.discount_id as string
+
+      updateBillingInstance(activeTab, {
+        discountRequestId: discountId,
+        discountApprovalStatus: "pending",
+      })
+
+      return discountId
+    } catch (error: any) {
+      console.error("❌ Failed to ensure discount request:", error)
+      toast({
+        title: "Discount Request Failed",
+        description: error?.message || "Could not create discount approval request.",
+        variant: "destructive",
+      })
+      return null
+    }
+  }
+
   const handleDiscountChange = (newDiscount: number) => {
     const normalizedDiscount = Math.min(100, Math.max(0, Number.isFinite(newDiscount) ? newDiscount : 0))
     const wasWithinLimit = (activeBillingInstance?.discount ?? 0) <= 10
@@ -732,6 +771,24 @@ export default function BillingAndCart() {
       return
     }
 
+    let discountRequestId = activeBillingInstance.discountRequestId || undefined
+    let discountApprovalStatus: Invoice["discountApprovalStatus"] =
+      activeBillingInstance.discountApprovalStatus || "not_required"
+
+    if (activeBillingInstance.discount > 10) {
+      const ensuredId = await ensureDiscountRequest()
+      if (!ensuredId) {
+        return
+      }
+      discountRequestId = ensuredId
+      if (discountApprovalStatus === "not_required") {
+        discountApprovalStatus = "pending"
+      }
+    } else {
+      discountRequestId = undefined
+      discountApprovalStatus = "not_required"
+    }
+
     const tax = calculateTotalTax()
 
     const invoice: Invoice = {
@@ -769,13 +826,8 @@ export default function BillingAndCart() {
       billedBy: currentUser?.name || "",  // ✅ ADDED: User name who created the bill
       items: activeBillingInstance.cartItems,
     };
-    if (invoice.discountPercentage > 10) {
-      invoice.discountRequestId = undefined
-      invoice.discountApprovalStatus = activeBillingInstance.discountApprovalStatus || "pending"
-    } else {
-      invoice.discountApprovalStatus = "not_required"
-      invoice.discountRequestId = undefined
-    }
+    invoice.discountRequestId = discountRequestId
+    invoice.discountApprovalStatus = discountApprovalStatus
 
     setCurrentInvoice(invoice)
     setShowPreview(true)
