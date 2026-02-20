@@ -40,6 +40,7 @@ interface InvoicePreviewProps {
   initialCustomerName?: string
   initialCustomerPhone?: string
   initialPaymentMethod?: string
+  autoPrint?: boolean
 }
 
 export default function InvoicePreview({
@@ -53,6 +54,7 @@ export default function InvoicePreview({
   initialCustomerName = "Walk-in Customer",
   initialCustomerPhone = "",
   initialPaymentMethod = "Cash",
+  autoPrint = false,
 }: InvoicePreviewProps) {
   const printRef = useRef<HTMLDivElement>(null)
   const nameInputRef = useRef<HTMLDivElement>(null)
@@ -67,6 +69,7 @@ export default function InvoicePreview({
   const [discountRequestId, setDiscountRequestId] = useState<string | undefined>(invoice.discountRequestId)
   const [otpValue, setOtpValue] = useState("")
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false)
+  const [hasAutoPrinted, setHasAutoPrinted] = useState(false)
 
   // Editable states
   const [customerName, setCustomerName] = useState(initialCustomerName)
@@ -92,7 +95,18 @@ export default function InvoicePreview({
     setDiscountApprovalStatus(invoice.discountApprovalStatus || "not_required")
     setDiscountRequestId(invoice.discountRequestId)
     setOtpValue("")
-  }, [invoice.discountApprovalStatus, invoice.discountRequestId])
+    setHasAutoPrinted(false)
+  }, [invoice.discountApprovalStatus, invoice.discountRequestId, invoice.id])
+
+  // Auto-print when opened specifically for printing (e.g., from billing history)
+  useEffect(() => {
+    if (!isOpen || !autoPrint || hasAutoPrinted) return
+    const timer = setTimeout(() => {
+      handlePrintAndSave()
+      setHasAutoPrinted(true)
+    }, 200) // allow DOM to render before printing
+    return () => clearTimeout(timer)
+  }, [isOpen, autoPrint, hasAutoPrinted])
 
   // Simplified fetch - just get customers directly
   useEffect(() => {

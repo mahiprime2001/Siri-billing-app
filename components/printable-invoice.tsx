@@ -77,8 +77,8 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
               width: "100%",
               padding: "0 3mm",
               boxSizing: "border-box",
-              fontSize: 11,
-              lineHeight: 1.4,
+              fontSize: 13,
+              lineHeight: 1.45,
               fontWeight: "bold",
               fontFamily: "Courier New, monospace",
               color: "#000",
@@ -86,23 +86,27 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
           >
             {/* Header */}
             <div style={{ textAlign: "center", marginBottom: 5 }}>
-              <div style={{ fontWeight: "bold", fontSize: 15 }}>
-                {safeInvoice.companyName}
+              <div style={{ fontWeight: "bold", fontSize: 17 }}>
+                {safeInvoice.companyName || safeInvoice.storeName || "N/A"}
               </div>
-              <div style={{ fontSize: 9 }}>
-                {safeInvoice.storeAddress || safeInvoice.companyAddress}
+              <div style={{ fontSize: 11 }}>
+                {safeInvoice.storeAddress || "Address not set"}
               </div>
-              <div style={{ fontSize: 9 }}>Ph: {safeInvoice.companyPhone}</div>
-              <div style={{ fontSize: 9 }}>Email: {safeInvoice.companyEmail}</div>
+              <div style={{ fontSize: 11 }}>
+                Ph: {safeInvoice.companyPhone || "N/A"}
+              </div>
+              <div style={{ fontSize: 11 }}>
+                Email: {safeInvoice.companyEmail || "N/A"}
+              </div>
               {safeInvoice.gstin && (
-                <div style={{ fontSize: 9 }}>GSTIN: {safeInvoice.gstin}</div>
+                <div style={{ fontSize: 11 }}>GSTIN: {safeInvoice.gstin}</div>
               )}
             </div>
 
             <div style={{ borderTop: "1px dashed #000", margin: "5px 0" }} />
 
             {/* Invoice & Customer */}
-            <div style={{ fontSize: 9, marginBottom: 5 }}>
+            <div style={{ fontSize: 11, marginBottom: 5 }}>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>Invoice #{safeInvoice.id}</span>
                 <span>
@@ -125,7 +129,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
             <div style={{ borderTop: "1px dashed #000", margin: "5px 0" }} />
 
             {/* Items */}
-            <div style={{ fontSize: 9, marginBottom: 5 }}>
+            <div style={{ fontSize: 11, marginBottom: 5 }}>
               {safeInvoice.items.map((item, i) => (
                 <div
                   key={i}
@@ -149,7 +153,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
             <div style={{ borderTop: "1px dashed #000", margin: "5px 0" }} />
 
             {/* Subtotal */}
-            <div style={{ fontSize: 9 }}>
+            <div style={{ fontSize: 11 }}>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>Subtotal</span>
                 <span>₹{formatNumber(safeInvoice.subtotal)}</span>
@@ -157,8 +161,8 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
             </div>
 
             {/* Tax Classification - NO BORDERS, using spacing and dashed lines */}
-            <div style={{ fontSize: 8, marginTop: 6, marginBottom: 6 }}>
-              <div style={{ fontWeight: "bold", marginBottom: 3, fontSize: 9 }}>
+            <div style={{ fontSize: 10, marginTop: 6, marginBottom: 6 }}>
+              <div style={{ fontWeight: "bold", marginBottom: 3, fontSize: 11 }}>
                 Tax Classification
               </div>
               
@@ -170,12 +174,12 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
                 paddingBottom: 2,
                 marginBottom: 2
               }}>
-                <span style={{ width: "12%", fontSize: 7 }}>GST%</span>
-                <span style={{ width: "20%", fontSize: 7 }}>HSN</span>
-                <span style={{ width: "17%", fontSize: 7, textAlign: "right" }}>SGST</span>
-                <span style={{ width: "17%", fontSize: 7, textAlign: "right" }}>CGST</span>
-                <span style={{ width: "15%", fontSize: 7, textAlign: "right" }}>IGST</span>
-                <span style={{ width: "19%", fontSize: 7, textAlign: "right" }}>Tax</span>
+                <span style={{ width: "12%", fontSize: 9 }}>GST%</span>
+                <span style={{ width: "20%", fontSize: 9 }}>HSN</span>
+                <span style={{ width: "17%", fontSize: 9, textAlign: "right" }}>SGST</span>
+                <span style={{ width: "17%", fontSize: 9, textAlign: "right" }}>CGST</span>
+                <span style={{ width: "15%", fontSize: 9, textAlign: "right" }}>IGST</span>
+                <span style={{ width: "19%", fontSize: 9, textAlign: "right" }}>Tax</span>
               </div>
               
               {/* Data Rows */}
@@ -188,12 +192,12 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
                     marginBottom: 2
                   }}
                 >
-                  <span style={{ width: "12%", fontSize: 7 }}>{row.gst}%</span>
-                  <span style={{ width: "20%", fontSize: 7 }}>{row.hsnCode}</span>
-                  <span style={{ width: "17%", fontSize: 7, textAlign: "right" }}>₹{formatNumber(row.sgst)}</span>
-                  <span style={{ width: "17%", fontSize: 7, textAlign: "right" }}>₹{formatNumber(row.cgst)}</span>
-                  <span style={{ width: "15%", fontSize: 7, textAlign: "right" }}>₹{formatNumber(row.igst)}</span>
-                  <span style={{ width: "19%", fontSize: 7, textAlign: "right" }}>₹{formatNumber(row.totalTax)}</span>
+                  <span style={{ width: "12%", fontSize: 9 }}>{row.gst}%</span>
+                  <span style={{ width: "20%", fontSize: 9 }}>{row.hsnCode}</span>
+                  <span style={{ width: "17%", fontSize: 9, textAlign: "right" }}>₹{formatNumber(row.sgst)}</span>
+                  <span style={{ width: "17%", fontSize: 9, textAlign: "right" }}>₹{formatNumber(row.cgst)}</span>
+                  <span style={{ width: "15%", fontSize: 9, textAlign: "right" }}>₹{formatNumber(row.igst)}</span>
+                  <span style={{ width: "19%", fontSize: 9, textAlign: "right" }}>₹{formatNumber(row.totalTax)}</span>
                 </div>
               ))}
               
@@ -204,19 +208,20 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
                 borderTop: "1px dashed #000",
                 paddingTop: 2,
                 marginTop: 2,
-                fontWeight: "bold"
+                fontWeight: "bold",
+                fontSize: 9
               }}>
-                <span style={{ width: "12%", fontSize: 7 }}>Total</span>
-                <span style={{ width: "20%", fontSize: 7 }}>-</span>
-                <span style={{ width: "17%", fontSize: 7, textAlign: "right" }}>₹{formatNumber(totalSGST)}</span>
-                <span style={{ width: "17%", fontSize: 7, textAlign: "right" }}>₹{formatNumber(totalCGST)}</span>
-                <span style={{ width: "15%", fontSize: 7, textAlign: "right" }}>₹{formatNumber(0)}</span>
-                <span style={{ width: "19%", fontSize: 7, textAlign: "right" }}>₹{formatNumber(totalTaxAmount)}</span>
+                <span style={{ width: "12%", fontSize: 9 }}>Total</span>
+                <span style={{ width: "20%", fontSize: 9 }}>-</span>
+                <span style={{ width: "17%", fontSize: 9, textAlign: "right" }}>₹{formatNumber(totalSGST)}</span>
+                <span style={{ width: "17%", fontSize: 9, textAlign: "right" }}>₹{formatNumber(totalCGST)}</span>
+                <span style={{ width: "15%", fontSize: 9, textAlign: "right" }}>₹{formatNumber(0)}</span>
+                <span style={{ width: "19%", fontSize: 9, textAlign: "right" }}>₹{formatNumber(totalTaxAmount)}</span>
               </div>
             </div>
 
             {/* Summary */}
-            <div style={{ fontSize: 9, marginTop: 5 }}>
+            <div style={{ fontSize: 11, marginTop: 5 }}>
               {safeInvoice.discountPercentage > 0 && (
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span>Discount ({safeInvoice.discountPercentage}%)</span>
@@ -237,7 +242,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
                   justifyContent: "space-between",
                   fontWeight: "bold",
                   marginTop: 5,
-                  fontSize: 13,
+                  fontSize: 15,
                 }}
               >
                 <span>TOTAL</span>
@@ -248,7 +253,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
             <div style={{ borderTop: "1px dashed #000", margin: "5px 0" }} />
 
             {/* Footer */}
-            <div style={{ textAlign: "center", fontSize: 9, marginTop: 5 }}>
+            <div style={{ textAlign: "center", fontSize: 11, marginTop: 5 }}>
               <div>This is a computer-generated invoice</div>
               
               {safeInvoice.discountPercentage > 0 && safeInvoice.discountAmount > 0 && (
@@ -262,7 +267,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
                 <div>Please visit us again</div>
               </div>
               
-              <div style={{ marginTop: 3, fontSize: 8 }}>
+              <div style={{ marginTop: 3, fontSize: 10 }}>
                 {new Date().toLocaleString()}
               </div>
             </div>
