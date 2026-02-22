@@ -26,7 +26,6 @@ import {
   Receipt,
   CreditCard,
   Store as StoreIcon,
-  UploadCloud,
 } from "lucide-react"
 import InvoicePreview from "./invoice-preview"
 import { useRouter } from "next/navigation"
@@ -145,9 +144,55 @@ export default function BillingAndCart() {
   const [currentInvoice, setCurrentInvoice] = useState<Invoice | null>(null)
 
   const barcodeInputRef = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    barcodeInputRef.current?.focus()
+  const idleFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const IDLE_FOCUS_DELAY_MS = 5000
+
+  const focusBarcodeInput = useCallback(() => {
+    const input = barcodeInputRef.current
+    if (!input) return
+
+    const activeElement = document.activeElement as HTMLElement | null
+    const isEditableFieldFocused =
+      !!activeElement &&
+      (activeElement.tagName === "INPUT" ||
+        activeElement.tagName === "TEXTAREA" ||
+        activeElement.tagName === "SELECT" ||
+        activeElement.isContentEditable)
+
+    // Don't steal focus while user is in another form field.
+    if (isEditableFieldFocused && activeElement !== input) return
+
+    if (document.activeElement !== input) {
+      input.focus()
+    }
   }, [])
+
+  useEffect(() => {
+    focusBarcodeInput()
+  }, [focusBarcodeInput])
+
+  const resetIdleFocusTimer = useCallback(() => {
+    if (idleFocusTimerRef.current) {
+      clearTimeout(idleFocusTimerRef.current)
+    }
+
+    idleFocusTimerRef.current = setTimeout(() => {
+      focusBarcodeInput()
+    }, IDLE_FOCUS_DELAY_MS)
+  }, [focusBarcodeInput, IDLE_FOCUS_DELAY_MS])
+
+  useEffect(() => {
+    const events = ["keydown", "mousedown", "touchstart", "click", "focusin"]
+    events.forEach((eventName) => window.addEventListener(eventName, resetIdleFocusTimer))
+    resetIdleFocusTimer()
+
+    return () => {
+      events.forEach((eventName) => window.removeEventListener(eventName, resetIdleFocusTimer))
+      if (idleFocusTimerRef.current) {
+        clearTimeout(idleFocusTimerRef.current)
+      }
+    }
+  }, [resetIdleFocusTimer])
 
   const activeBillingInstance = billingTabs.find((tab) => tab.id === activeTab)
   const getProductById = useCallback((productId: string) => products.find((p) => p.id === productId), [products])
@@ -182,27 +227,25 @@ export default function BillingAndCart() {
 
   const calculateTotalTax = useCallback(() => {
     if (!activeBillingInstance) return { cgst: 0, sgst: 0, total: 0 }
-    
-    const taxableAmount = calculateTaxableAmount()
-    
-    // Calculate weighted average tax from all items
+
+    // Tax is computed on original pre-discount base amount.
+    // Discount affects only the amount-before-tax, not CGST/SGST.
     let totalTaxAmount = 0
-    
+
     activeBillingInstance.cartItems.forEach(item => {
-      const itemTaxableAmount = item.total - (item.total * activeBillingInstance.discount / 100)
-      const itemTaxAmount = (itemTaxableAmount * item.taxPercentage) / 100
+      const itemTaxAmount = (item.total * item.taxPercentage) / 100
       totalTaxAmount += itemTaxAmount
     })
-    
+
     const cgst = totalTaxAmount / 2
     const sgst = totalTaxAmount / 2
-    
+
     return {
       cgst: Math.round(cgst * 100) / 100,
       sgst: Math.round(sgst * 100) / 100,
       total: Math.round(totalTaxAmount * 100) / 100
     }
-  }, [activeBillingInstance, calculateTaxableAmount])
+  }, [activeBillingInstance])
 
   const calculateFinalTotal = useCallback(() => {
     const taxableAmount = calculateTaxableAmount()
@@ -322,18 +365,22 @@ export default function BillingAndCart() {
     }
   };
 
+  const sortProductsByName = useCallback((items: Product[]) => {
+    return [...items].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
+  }, [])
+
   useEffect(() => {
     if (searchTerm.trim() === "") {
       setFilteredProducts(showAllProducts ? products : [])
     } else {
-      const filtered = products.filter(
+      const filtered = sortProductsByName(products.filter(
         (product) =>
           product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           (product.barcodes && product.barcodes.includes(searchTerm)),
-      )
+      ))
       setFilteredProducts(filtered)
     }
-  }, [searchTerm, products, showAllProducts])
+  }, [searchTerm, products, showAllProducts, sortProductsByName])
 
   const updateBillingInstance = (tabId: string, updates: Partial<BillingInstance>) => {
     setBillingTabs((prevTabs) =>
@@ -354,7 +401,7 @@ export default function BillingAndCart() {
       console.log("✅ Fetched store inventory products:", data.length, "items");
       console.log("📦 Sample product with tax:", data[0]);
       
-      setProducts(data);
+      setProducts(sortProductsByName(data));
       setFilteredProducts([]);
     } catch (error) {
       console.error("❌ Error fetching store inventory products:", error);
@@ -663,55 +710,17 @@ export default function BillingAndCart() {
       const targetTaxableAmount = newTotal - tax.total
       const newDiscountAmount = subtotal - targetTaxableAmount
       const newDiscountPercentage = Math.min(100, Math.max(0, (newDiscountAmount / subtotal) * 100))
+      const integerDiscount = Math.round(newDiscountPercentage)
       updateBillingInstance(activeTab, {
-        discount: Math.round(newDiscountPercentage * 100) / 100,
+        discount: integerDiscount,
         discountRequestId: null,
-        discountApprovalStatus: newDiscountPercentage > 10 ? "pending" : "not_required",
+        discountApprovalStatus: integerDiscount > 10 ? "pending" : "not_required",
       })
-    }
-  }
-
-  const ensureDiscountRequest = async (): Promise<string | null> => {
-    if (!activeBillingInstance) return null
-    if (activeBillingInstance.discount <= 10) return null
-    if (activeBillingInstance.discountRequestId) return activeBillingInstance.discountRequestId
-
-    try {
-      const response = await apiClient("/api/discounts/request", {
-        method: "POST",
-        body: JSON.stringify({
-          discount_percentage: Math.round(activeBillingInstance.discount * 100) / 100,
-          discount_amount: calculateDiscountAmount(),
-        }),
-      })
-
-      const data = await response.json().catch(() => ({}))
-
-      if (!response.ok || !data?.discount_id) {
-        throw new Error(data?.message || "Failed to create discount request")
-      }
-
-      const discountId = data.discount_id as string
-
-      updateBillingInstance(activeTab, {
-        discountRequestId: discountId,
-        discountApprovalStatus: "pending",
-      })
-
-      return discountId
-    } catch (error: any) {
-      console.error("❌ Failed to ensure discount request:", error)
-      toast({
-        title: "Discount Request Failed",
-        description: error?.message || "Could not create discount approval request.",
-        variant: "destructive",
-      })
-      return null
     }
   }
 
   const handleDiscountChange = (newDiscount: number) => {
-    const normalizedDiscount = Math.min(100, Math.max(0, Number.isFinite(newDiscount) ? newDiscount : 0))
+    const normalizedDiscount = Math.min(100, Math.max(0, Number.isFinite(newDiscount) ? Math.trunc(newDiscount) : 0))
     const wasWithinLimit = (activeBillingInstance?.discount ?? 0) <= 10
 
     if (normalizedDiscount > 10 && wasWithinLimit) {
@@ -771,24 +780,6 @@ export default function BillingAndCart() {
       return
     }
 
-    let discountRequestId = activeBillingInstance.discountRequestId || undefined
-    let discountApprovalStatus: Invoice["discountApprovalStatus"] =
-      activeBillingInstance.discountApprovalStatus || "not_required"
-
-    if (activeBillingInstance.discount > 10) {
-      const ensuredId = await ensureDiscountRequest()
-      if (!ensuredId) {
-        return
-      }
-      discountRequestId = ensuredId
-      if (discountApprovalStatus === "not_required") {
-        discountApprovalStatus = "pending"
-      }
-    } else {
-      discountRequestId = undefined
-      discountApprovalStatus = "not_required"
-    }
-
     const tax = calculateTotalTax()
 
     const invoice: Invoice = {
@@ -826,8 +817,13 @@ export default function BillingAndCart() {
       billedBy: currentUser?.name || "",  // ✅ ADDED: User name who created the bill
       items: activeBillingInstance.cartItems,
     };
-    invoice.discountRequestId = discountRequestId
-    invoice.discountApprovalStatus = discountApprovalStatus
+    if (invoice.discountPercentage > 10) {
+      invoice.discountRequestId = undefined
+      invoice.discountApprovalStatus = activeBillingInstance.discountApprovalStatus || "pending"
+    } else {
+      invoice.discountApprovalStatus = "not_required"
+      invoice.discountRequestId = undefined
+    }
 
     setCurrentInvoice(invoice)
     setShowPreview(true)
@@ -1011,61 +1007,6 @@ export default function BillingAndCart() {
     return <div>Loading...</div>
   }
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      toast({
-        title: "Error",
-        description: "No file selected.",
-        variant: "destructive",
-      })
-      return;
-    }
-
-    if (file.type !== "application/json") {
-      toast({
-        title: "Error",
-        description: "Please upload a JSON file.",
-        variant: "destructive",
-      })
-      return;
-    }
-
-    try {
-      const fileContent = await file.text();
-      const jsonData = JSON.parse(fileContent);
-
-      const response = await apiClient("/api/products/upload", {
-        method: "POST",
-        body: JSON.stringify(jsonData),
-      });
-
-      if (response.ok) {
-        toast({
-          title: "Success",
-          description: "Products uploaded successfully!",
-          variant: "default",
-        })
-        fetchProducts();
-      } else {
-        const errorData = await response.json();
-        toast({
-          title: "Error",
-          description: `Failed to upload products: ${errorData.error}`,
-          variant: "destructive",
-        })
-      }
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: `Error processing file: ${error.message}`,
-        variant: "destructive",
-      })
-    } finally {
-      event.target.value = "";
-    }
-  };
-
   const tax = calculateTotalTax()
 
   return (
@@ -1124,24 +1065,6 @@ export default function BillingAndCart() {
                   onBlur={handleSearchBlur}
                   className="pl-10"
                 />
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Input
-                  id="json-upload"
-                  type="file"
-                  accept=".json"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-                <Label htmlFor="json-upload" className="w-full">
-                  <Button asChild className="w-full">
-                    <span>
-                      <UploadCloud className="h-4 w-4 mr-2" />
-                      Upload Products (JSON)
-                    </span>
-                  </Button>
-                </Label>
               </div>
 
               <div className="max-h-96 overflow-y-auto border rounded-md">
@@ -1346,9 +1269,10 @@ export default function BillingAndCart() {
                               type="number"
                               min="0"
                               max="100"
-                              step="0.01"
+                              step="1"
+                              inputMode="numeric"
                               value={isNaN(tab.discount) || tab.discount === 0 ? "" : tab.discount}
-                              onChange={(e) => handleDiscountChange(Number.parseFloat(e.target.value) || 0)}
+                              onChange={(e) => handleDiscountChange(Number.parseInt(e.target.value, 10) || 0)}
                             />
                           </div>
                           <div className="space-y-2">
@@ -1390,7 +1314,7 @@ export default function BillingAndCart() {
                           </div>
                           {tab.discount > 0 && (
                             <div className="flex justify-between text-lg">
-                              <span>Discount ({tab.discount.toFixed(2)}%):</span>
+                              <span>Discount ({Math.round(tab.discount)}%):</span>
                               <span className="text-green-600">-₹{calculateDiscountAmount().toLocaleString()}</span>
                             </div>
                           )}

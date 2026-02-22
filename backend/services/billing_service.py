@@ -47,41 +47,10 @@ def create_bill_transaction(
                 .limit(1)
                 .execute()
             )
-
             if not discount_response.data:
                 raise ValueError("Discount request not found")
-
-            status = discount_response.data[0].get("status")
-            if status != "approved":
-                # Check for a deferred approval cached during OTP verification
-                if not deferred_discount_approval:
-                    deferred_discount_approval = pop_discount_approval(current_user_id)
-
-                if deferred_discount_approval:
-                    try:
-                        supabase.table("discounts").update(
-                            {
-                                "status": "approved",
-                                "approved_by": deferred_discount_approval.get("approved_by"),
-                                "updated_at": now,
-                            }
-                        ).eq("discount_id", discount_request_id).execute()
-                    except Exception:
-                        # Best-effort; fallback to strict check below if update fails
-                        pass
-
-                    # Re-fetch to confirm status
-                    discount_response = (
-                        supabase.table("discounts")
-                        .select("status")
-                        .eq("discount_id", discount_request_id)
-                        .limit(1)
-                        .execute()
-                    )
-                    status = discount_response.data[0].get("status") if discount_response.data else status
-
-                if status != "approved":
-                    raise ValueError("Discount request not approved")
+            if discount_response.data[0].get("status") != "approved":
+                raise ValueError("Discount request not approved")
         else:
             if not deferred_discount_approval:
                 deferred_discount_approval = pop_discount_approval(current_user_id)
@@ -113,18 +82,9 @@ def create_bill_transaction(
 
     if discount_request_id:
         try:
-            update_payload = {"bill_id": bill_id, "updated_at": now}
-            if deferred_discount_approval:
-                update_payload.update(
-                    {
-                        "status": "approved",
-                        "approved_by": deferred_discount_approval.get("approved_by"),
-                    }
-                )
-
             (
                 supabase.table("discounts")
-                .update(update_payload)
+                .update({"bill_id": bill_id, "updated_at": now})
                 .eq("discount_id", discount_request_id)
                 .execute()
             )

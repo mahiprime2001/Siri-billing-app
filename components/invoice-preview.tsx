@@ -40,7 +40,6 @@ interface InvoicePreviewProps {
   initialCustomerName?: string
   initialCustomerPhone?: string
   initialPaymentMethod?: string
-  autoPrint?: boolean
 }
 
 export default function InvoicePreview({
@@ -54,7 +53,6 @@ export default function InvoicePreview({
   initialCustomerName = "Walk-in Customer",
   initialCustomerPhone = "",
   initialPaymentMethod = "Cash",
-  autoPrint = false,
 }: InvoicePreviewProps) {
   const printRef = useRef<HTMLDivElement>(null)
   const nameInputRef = useRef<HTMLDivElement>(null)
@@ -69,7 +67,6 @@ export default function InvoicePreview({
   const [discountRequestId, setDiscountRequestId] = useState<string | undefined>(invoice.discountRequestId)
   const [otpValue, setOtpValue] = useState("")
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false)
-  const [hasAutoPrinted, setHasAutoPrinted] = useState(false)
 
   // Editable states
   const [customerName, setCustomerName] = useState(initialCustomerName)
@@ -95,18 +92,7 @@ export default function InvoicePreview({
     setDiscountApprovalStatus(invoice.discountApprovalStatus || "not_required")
     setDiscountRequestId(invoice.discountRequestId)
     setOtpValue("")
-    setHasAutoPrinted(false)
-  }, [invoice.discountApprovalStatus, invoice.discountRequestId, invoice.id])
-
-  // Auto-print when opened specifically for printing (e.g., from billing history)
-  useEffect(() => {
-    if (!isOpen || !autoPrint || hasAutoPrinted) return
-    const timer = setTimeout(() => {
-      handlePrintAndSave()
-      setHasAutoPrinted(true)
-    }, 200) // allow DOM to render before printing
-    return () => clearTimeout(timer)
-  }, [isOpen, autoPrint, hasAutoPrinted])
+  }, [invoice.discountApprovalStatus, invoice.discountRequestId])
 
   // Simplified fetch - just get customers directly
   useEffect(() => {
@@ -290,7 +276,6 @@ export default function InvoicePreview({
         method: "POST",
         body: JSON.stringify({
           otp: otpValue.trim(),
-          discount_request_id: discountRequestId,
           discount_percentage: invoice.discountPercentage,
           discount_amount: invoice.discountAmount,
           defer_persist: true,
@@ -454,10 +439,10 @@ export default function InvoicePreview({
   const isA4 = paperSize === "A4"
   const isLetter = paperSize === "Letter"
   const requiresDiscountApproval = invoice.discountPercentage > 10
+  const isDiscountApproved = requiresDiscountApproval && discountApprovalStatus === "approved"
   const isDiscountPending = requiresDiscountApproval && discountApprovalStatus === "pending"
   const isDiscountDenied = requiresDiscountApproval && discountApprovalStatus === "denied"
   const isDiscountBlocked = requiresDiscountApproval && discountApprovalStatus !== "approved"
-  const showOtpFields = requiresDiscountApproval && discountApprovalStatus !== "approved"
   const discountStatusLabel =
     discountApprovalStatus === "approved"
       ? "Approved"
@@ -607,7 +592,9 @@ export default function InvoicePreview({
                   <div className="text-xs font-medium px-2 py-1 rounded-full border">{discountStatusLabel}</div>
                 </div>
 
-                {showOtpFields && (
+                {isDiscountApproved ? (
+                  <div className="text-sm font-medium">Discount is approved.</div>
+                ) : (
                   <div className="space-y-1">
                     <Label htmlFor="discount-otp" className="text-xs uppercase tracking-wide">
                       OTP
@@ -619,6 +606,11 @@ export default function InvoicePreview({
                         onChange={(e) => setOtpValue(e.target.value)}
                         placeholder="Enter 2FA code"
                         className="text-sm"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
                       />
                       <Button type="button" onClick={handleVerifyOtp} disabled={isVerifyingOtp}>
                         {isVerifyingOtp ? "Verifying..." : "Verify"}

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -37,30 +37,23 @@ interface ReturnItem {
 interface ReturnsManagementProps {
   onCountChange?: () => void
   user?: { name: string; id: string; email: string; role: string } | null
-  storeId?: string | null
 }
 
-export default function ReturnsManagement({ onCountChange, user, storeId }: ReturnsManagementProps = {}) {
+export default function ReturnsManagement({ onCountChange, user }: ReturnsManagementProps = {}) {
   const [returns, setReturns] = useState<ReturnItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isReturnsDialogOpen, setIsReturnsDialogOpen] = useState(false)
   const { toast } = useToast()
 
-  const fetchReturns = useCallback(async () => {
+  const fetchReturns = async () => {
     setIsLoading(true)
     try {
-      const query = storeId ? `/api/returns?store_id=${storeId}` : '/api/returns'
-      const response = await apiClient(query)
+      const response = await apiClient('/api/returns')
       if (!response.ok) {
         throw new Error('Failed to fetch returns')
       }
       const data = await response.json()
-      // Normalize phone key from backend
-      const normalized = (data || []).map((ret: any) => ({
-        ...ret,
-        customer_phone_number: ret.customer_phone_number || ret.customer_phone || ''
-      }))
-      setReturns(normalized)
+      setReturns(data)
     } catch (error) {
       console.error("Error fetching returns:", error)
       toast({
@@ -71,11 +64,11 @@ export default function ReturnsManagement({ onCountChange, user, storeId }: Retu
     } finally {
       setIsLoading(false)
     }
-  }, [storeId, toast])
+  }
 
   useEffect(() => {
     fetchReturns()
-  }, [storeId, fetchReturns])
+  }, [])
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -345,7 +338,6 @@ export default function ReturnsManagement({ onCountChange, user, storeId }: Retu
           isOpen={isReturnsDialogOpen}
           onClose={handleReturnDialogClose}
           user={user}
-          storeId={storeId}
         />
       )}
     </div>

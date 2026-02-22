@@ -4,9 +4,9 @@ import { useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -45,10 +45,9 @@ interface ReturnsDialogProps {
   isOpen: boolean
   onClose: () => void
   user: { name: string } | null
-  storeId?: string | null
 }
 
-export default function ReturnsDialog({ isOpen, onClose, user, storeId }: ReturnsDialogProps) {
+export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogProps) {
   const [returnRequest, setReturnRequest] = useState<ReturnRequest>({
     searchQuery: '',
     searchType: 'customer',
@@ -78,8 +77,7 @@ export default function ReturnsDialog({ isOpen, onClose, user, storeId }: Return
         method: 'POST',
         body: JSON.stringify({
           query: returnRequest.searchQuery,
-          searchType: returnRequest.searchType,
-          storeId: storeId || undefined,
+          searchType: returnRequest.searchType
         }),
       });
 
@@ -188,7 +186,7 @@ export default function ReturnsDialog({ isOpen, onClose, user, storeId }: Return
           selectedItems: returnRequest.selectedItems,
           returnReason: returnRequest.returnReason,
           refundMethod: returnRequest.refundMethod,
-          storeId: storeId || undefined,
+          searchResults: searchResults,
           createdBy: user?.name || "Unknown"
         }),
       });
@@ -451,13 +449,20 @@ export default function ReturnsDialog({ isOpen, onClose, user, storeId }: Return
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="returnReason">Return Reason *</Label>
-                  <Textarea
-                    id="returnReason"
-                    placeholder="Explain why these items are being returned..."
+                  <Select
                     value={returnRequest.returnReason}
-                    onChange={(e) => setReturnRequest(prev => ({ ...prev, returnReason: e.target.value }))}
-                    rows={4}
-                  />
+                    onValueChange={(value) => setReturnRequest(prev => ({ ...prev, returnReason: value }))}
+                  >
+                    <SelectTrigger id="returnReason">
+                      <SelectValue placeholder="Select return reason" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Product is damaged">Product is damaged</SelectItem>
+                      <SelectItem value="Product size is inadequate">Product size is inadequate</SelectItem>
+                      <SelectItem value="Doesn't like the product">Doesn't like the product</SelectItem>
+                      <SelectItem value="Other reasons">Other reasons</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-2">
