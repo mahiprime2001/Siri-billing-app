@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
 import {
-  LogOut, Download, Menu, Bell, BellRing
+  LogOut, Download, Menu, Bell, BellRing, Package
 } from 'lucide-react'
 import {BillingHistory} from '@/components/billing-history'
 import BillingAndCart from '@/components/billing-and-cart'
@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import TransferVerificationDialog from "@/components/transfer-verification-dialog"
 
 interface User {
   id: string
@@ -57,6 +58,7 @@ export default function BillingPage() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [activeTab, setActiveTab] = useState('billing')
+  const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false)
   const isMobile = useIsMobile()
   const router = useRouter()
   const { toast } = useToast()
@@ -409,6 +411,10 @@ export default function BillingPage() {
                   <Download className="h-4 w-4 mr-2" />
                   {isCheckingUpdate ? 'Checking...' : 'Check for Updates'}
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setIsTransferDialogOpen(true)}>
+                  <Package className="h-4 w-4 mr-2" />
+                  Receive Assigned Products
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleLogout}>
                   <LogOut className="h-4 w-4 mr-2" />
                   Logout
@@ -452,6 +458,7 @@ export default function BillingPage() {
           <ReturnsManagement user={user} onCountChange={fetchPendingReturnsCount}  />
         </TabsContent>
       </Tabs>
+      <TransferVerificationDialog open={isTransferDialogOpen} onOpenChange={setIsTransferDialogOpen} />
     </div>
   )
 }

@@ -263,3 +263,26 @@ def get_bill_items(bill_id):
         app.logger.error(f"❌ Error fetching bill items: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({"message": "An error occurred", "error": str(e)}), 500
+
+
+@billing_bp.route('/bills/<bill_id>/replacements', methods=['GET'])
+@require_auth
+def get_bill_replacements(bill_id):
+    """Get replacement rows for a specific bill"""
+    try:
+        current_user_id = get_jwt_identity()
+        app.logger.info(f"User {current_user_id} fetching replacements for bill {bill_id}")
+
+        supabase = get_supabase_client()
+        response = supabase.table('replacements') \
+            .select('*') \
+            .eq('bill_id', bill_id) \
+            .execute()
+
+        replacements = response.data if response.data else []
+        app.logger.info(f"✅ Fetched {len(replacements)} replacements for bill {bill_id}")
+        return jsonify(replacements), 200
+    except Exception as e:
+        app.logger.error(f"❌ Error fetching bill replacements: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"message": "An error occurred", "error": str(e)}), 500

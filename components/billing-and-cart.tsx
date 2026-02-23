@@ -78,6 +78,35 @@ interface CartItem {
   taxPercentage: number;  // Tax % for this product
   hsnCode?: string;
   hsn_code_id?: number;
+  lineType?: "sale" | "replacement_credit";
+  replacementLinkId?: string;
+  replacementMeta?: {
+    originalEntryId: string;
+    originalBillId: string;
+    originalProductId: string;
+    originalProductName: string;
+    originalQuantity: number;
+    originalUnitPrice: number;
+  } | null;
+}
+
+interface ReplacementSessionEntry {
+  id: string;
+  billId: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  reason?: string;
+}
+
+interface ReplacementSession {
+  sessionId: string;
+  createdAt: string;
+  originalBillId: string;
+  customerName?: string;
+  customerPhone?: string;
+  entries: ReplacementSessionEntry[];
 }
 
 interface Settings {
@@ -142,10 +171,13 @@ export default function BillingAndCart() {
 
   const [showPreview, setShowPreview] = useState(false)
   const [currentInvoice, setCurrentInvoice] = useState<Invoice | null>(null)
+  const [replacementSession, setReplacementSession] = useState<ReplacementSession | null>(null)
 
   const barcodeInputRef = useRef<HTMLInputElement>(null)
   const idleFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const IDLE_FOCUS_DELAY_MS = 5000
+
+  const generateCartItemId = useCallback(() => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`, [])
 
   const focusBarcodeInput = useCallback(() => {
     const input = barcodeInputRef.current
@@ -197,6 +229,103 @@ export default function BillingAndCart() {
   const activeBillingInstance = billingTabs.find((tab) => tab.id === activeTab)
   const getProductById = useCallback((productId: string) => products.find((p) => p.id === productId), [products])
   const getAvailableStock = useCallback((productId: string) => getProductById(productId)?.stock ?? null, [getProductById])
+  const isCreditLine = useCallback((item: CartItem) => item.lineType === "replacement_credit", [])
+  const isSaleLine = useCallback((item: CartItem) => item.lineType !== "replacement_credit", [])
+
+  const getMappedQuantityForItem = useCallback((item: CartItem) => {
+    if (!item.replacementMeta || isCreditLine(item)) return 0
+    return Math.max(0, Math.min(item.quantity, item.replacementMeta.originalQuantity))
+  }, [isCreditLine])
+
+  const getMappedAmountForItem = useCallback((item: CartItem) => {
+    if (!item.replacementMeta || isCreditLine(item)) return 0
+    const mappedQty = getMappedQuantityForItem(item)
+    return Math.round((mappedQty * item.price) * 100) / 100
+  }, [getMappedQuantityForItem, isCreditLine])
+
+  const getUsageByReplacementEntry = useCallback((items: CartItem[]) => {
+    const usage = new Map<string, string>()
+    items.forEach((cartItem) => {
+      if (!cartItem.replacementMeta || isCreditLine(cartItem)) return
+      usage.set(cartItem.replacementMeta.originalEntryId, cartItem.id)
+    })
+    return usage
+  }, [isCreditLine])
+
+  const applyReplacementSessionToActiveCart = useCallback((session: ReplacementSession) => {
+    if (!session.entries || session.entries.length === 0) return
+
+    setBillingTabs((prevTabs) =>
+      prevTabs.map((tab) => {
+        if (tab.id !== activeTab) return tab
+
+        const currentCart = tab.cartItems
+        const existingCredits = new Set(
+          currentCart
+            .filter((item) => isCreditLine(item) && item.replacementLinkId)
+            .map((item) => item.replacementLinkId as string),
+        )
+
+        const newCreditLines: CartItem[] = session.entries
+          .filter((entry) => entry.quantity > 0 && !existingCredits.has(entry.id))
+          .map((entry) => ({
+            id: generateCartItemId(),
+            productId: entry.productId,
+            name: `${entry.productName} (Replacement Credit)`,
+            quantity: entry.quantity,
+            price: -Math.abs(entry.unitPrice || 0),
+            sellingPrice: -Math.abs(entry.unitPrice || 0),
+            total: -Math.abs((entry.unitPrice || 0) * entry.quantity),
+            barcodes: "",
+            taxPercentage: 0,
+            hsnCode: "",
+            hsn_code_id: undefined,
+            lineType: "replacement_credit",
+            replacementLinkId: entry.id,
+            replacementMeta: {
+              originalEntryId: entry.id,
+              originalBillId: entry.billId,
+              originalProductId: entry.productId,
+              originalProductName: entry.productName,
+              originalQuantity: entry.quantity,
+              originalUnitPrice: entry.unitPrice,
+            },
+          }))
+
+        const nextCartItems = [...currentCart, ...newCreditLines]
+
+        return {
+          ...tab,
+          cartItems: nextCartItems,
+          customerName: session.customerName || tab.customerName,
+          customerPhone: session.customerPhone || tab.customerPhone,
+        }
+      }),
+    )
+  }, [activeTab, generateCartItemId, isCreditLine])
+
+  useEffect(() => {
+    const hydrateReplacementSession = () => {
+      if (typeof window === "undefined") return
+      const raw = window.sessionStorage.getItem("replacement-session")
+      if (!raw) return
+
+      try {
+        const parsed: ReplacementSession = JSON.parse(raw)
+        if (!parsed?.entries?.length) return
+        setReplacementSession(parsed)
+        applyReplacementSessionToActiveCart(parsed)
+      } catch (error) {
+        console.error("Failed to parse replacement session:", error)
+      }
+    }
+
+    hydrateReplacementSession()
+    window.addEventListener("start-replacement-session", hydrateReplacementSession as EventListener)
+    return () => {
+      window.removeEventListener("start-replacement-session", hydrateReplacementSession as EventListener)
+    }
+  }, [applyReplacementSessionToActiveCart])
 
   // ✅ Calculate base price from selling price (reverse calculation)
   const calculateBasePrice = (sellingPrice: number, taxPercentage: number): number => {
@@ -446,6 +575,11 @@ export default function BillingAndCart() {
 
     let changed = false
     const reconciled = activeBillingInstance.cartItems.reduce<CartItem[]>((acc, item) => {
+      if (isCreditLine(item)) {
+        acc.push(item)
+        return acc
+      }
+
       const stock = getAvailableStock(item.productId)
 
       if (stock === null) {
@@ -476,7 +610,7 @@ export default function BillingAndCart() {
     if (changed) {
       updateBillingInstance(activeTab, { cartItems: reconciled })
     }
-  }, [activeBillingInstance?.cartItems, activeTab, getAvailableStock])
+  }, [activeBillingInstance?.cartItems, activeTab, getAvailableStock, isCreditLine])
 
   const fetchSettings = async () => {
     try {
@@ -551,7 +685,9 @@ export default function BillingAndCart() {
       quantity: qty
     })
 
-    const existingItem = activeBillingInstance.cartItems.find((item) => item.productId === product.id)
+    const existingItem = activeBillingInstance.cartItems.find(
+      (item) => item.productId === product.id && item.lineType !== "replacement_credit",
+    )
     const currentQty = existingItem?.quantity ?? 0
     const maxAddable = product.stock - currentQty
 
@@ -592,6 +728,9 @@ export default function BillingAndCart() {
         taxPercentage: product.tax || 0,
         hsnCode: (product as any).hsnCode || product.hsn_code || "",
         hsn_code_id: product.hsn_code_id,
+        lineType: "sale",
+        replacementLinkId: undefined,
+        replacementMeta: null,
       }
       updatedCartItems = [...activeBillingInstance.cartItems, newItem]
     }
@@ -657,6 +796,61 @@ export default function BillingAndCart() {
   const removeFromCart = (id: string) => {
     if (!activeBillingInstance) return
     const updatedCartItems = activeBillingInstance.cartItems.filter((item) => item.id !== id)
+    updateBillingInstance(activeTab, { cartItems: updatedCartItems })
+  }
+
+  const toggleReplacementForLine = (itemId: string, enabled: boolean) => {
+    if (!activeBillingInstance || !replacementSession) return
+
+    const targetItem = activeBillingInstance.cartItems.find((item) => item.id === itemId)
+    if (!targetItem || isCreditLine(targetItem)) return
+
+    if (!enabled) {
+      const updatedCartItems = activeBillingInstance.cartItems.map((item) =>
+        item.id === itemId ? { ...item, replacementMeta: null } : item,
+      )
+      updateBillingInstance(activeTab, { cartItems: updatedCartItems })
+      return
+    }
+
+    const usage = getUsageByReplacementEntry(
+      activeBillingInstance.cartItems.filter((item) => item.id !== itemId),
+    )
+
+    const availableEntries = replacementSession.entries
+      .filter((entry) => entry.quantity > 0 && !usage.has(entry.id))
+      .map((entry) => ({
+        entry,
+        score: Math.abs((entry.unitPrice || 0) - targetItem.price),
+      }))
+      .sort((a, b) => a.score - b.score)
+
+    if (availableEntries.length === 0) {
+      toast({
+        title: "No Replacement Slot",
+        description: "All selected return products are already mapped to new lines.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const selectedEntry = availableEntries[0].entry
+    const updatedCartItems = activeBillingInstance.cartItems.map((item) =>
+      item.id === itemId
+        ? {
+            ...item,
+            replacementMeta: {
+              originalEntryId: selectedEntry.id,
+              originalBillId: selectedEntry.billId,
+              originalProductId: selectedEntry.productId,
+              originalProductName: selectedEntry.productName,
+              originalQuantity: selectedEntry.quantity,
+              originalUnitPrice: selectedEntry.unitPrice,
+            },
+          }
+        : item,
+    )
+
     updateBillingInstance(activeTab, { cartItems: updatedCartItems })
   }
 
@@ -815,8 +1009,15 @@ export default function BillingAndCart() {
       billFormat: "Thermal 80mm",
       createdBy: currentUser?.id || "",
       billedBy: currentUser?.name || "",  // ✅ ADDED: User name who created the bill
-      items: activeBillingInstance.cartItems,
+      items: activeBillingInstance.cartItems.map((item) => ({
+        ...item,
+        replacementTag: item.replacementMeta ? `Replaced Qty: ${getMappedQuantityForItem(item)}` : "",
+        replacementMappedQty: item.replacementMeta ? getMappedQuantityForItem(item) : 0,
+      })),
     };
+    ;(invoice as any).isReplacementBill = !!activeBillingInstance.cartItems.some(
+      (item) => item.lineType === "replacement_credit" || !!item.replacementMeta,
+    )
     if (invoice.discountPercentage > 10) {
       invoice.discountRequestId = undefined
       invoice.discountApprovalStatus = activeBillingInstance.discountApprovalStatus || "pending"
@@ -842,6 +1043,36 @@ export default function BillingAndCart() {
 
       console.log("💾 Saving invoice:", invoiceToSave);
 
+      const allItems = (invoiceToSave.items || []) as CartItem[]
+      const saleItems = allItems.filter((item) => item.lineType !== "replacement_credit")
+      const replacementItemsPayload = saleItems
+        .filter((item) => item.replacementMeta)
+        .map((item) => {
+          const mappedQty = getMappedQuantityForItem(item)
+          if (mappedQty <= 0 || !item.replacementMeta) return null
+          const oldUnitPrice = Number(item.replacementMeta.originalUnitPrice || 0)
+          const newUnitPrice = Number(item.price || 0)
+          const finalAmount = Math.round((newUnitPrice - oldUnitPrice) * mappedQty * 100) / 100
+          return {
+            original_bill_id: item.replacementMeta.originalBillId,
+            replaced_product_id: item.replacementMeta.originalProductId,
+            new_product_id: item.productId,
+            quantity: mappedQty,
+            price: newUnitPrice,
+            final_amount: finalAmount,
+          }
+        })
+        .filter(Boolean)
+
+      if (saleItems.length === 0) {
+        toast({
+          title: "No Sale Item",
+          description: "Add at least one product in cart to complete billing.",
+          variant: "destructive",
+        })
+        return false
+      }
+
       const billData = {
         store_id: invoiceToSave.storeId,
         customer_name: invoiceToSave.customerName || 'Walk-in Customer',
@@ -857,7 +1088,9 @@ export default function BillingAndCart() {
         total_amount: invoiceToSave.total,
         payment_method: invoiceToSave.paymentMethod,
         notes: invoiceToSave.notes || '',
-        items: invoiceToSave.items.map((item: any) => ({
+        original_bill_id: replacementSession?.originalBillId || undefined,
+        replacements: replacementItemsPayload,
+        items: saleItems.map((item: any) => ({
           product_id: item.productId,
           quantity: item.quantity,
           unit_price: item.price,
@@ -902,6 +1135,11 @@ export default function BillingAndCart() {
         } catch (refreshError) {
           console.warn("Product refresh skipped:", refreshError);
         }
+
+        if (typeof window !== "undefined") {
+          window.sessionStorage.removeItem("replacement-session")
+        }
+        setReplacementSession(null)
 
         setShowPreview(false);
         return true;
@@ -1008,6 +1246,23 @@ export default function BillingAndCart() {
   }
 
   const tax = calculateTotalTax()
+  const usageMap = getUsageByReplacementEntry(activeBillingInstance.cartItems)
+  const replacementStatus = replacementSession?.entries.map((entry) => {
+    const mappedItemId = usageMap.get(entry.id)
+    const mappedItem = mappedItemId
+      ? activeBillingInstance.cartItems.find((item) => item.id === mappedItemId)
+      : null
+    const mappedQty = mappedItem ? getMappedQuantityForItem(mappedItem) : 0
+    const pendingQty = Math.max(0, entry.quantity - mappedQty)
+    return {
+      ...entry,
+      mappedItemName: mappedItem?.name || null,
+      mappedQty,
+      pendingQty,
+    }
+  }) || []
+  const mappedReplacementStatus = replacementStatus.filter((entry) => entry.mappedQty > 0)
+  const pendingReplacementStatus = replacementStatus.filter((entry) => entry.pendingQty > 0)
 
   return (
     <>
@@ -1096,6 +1351,47 @@ export default function BillingAndCart() {
 
         {/* Right Column - Customer Info, Cart & Billing */}
         <div className="space-y-6">
+          {replacementSession && (
+            <Card className="border-orange-300 bg-orange-50/50">
+              <CardHeader>
+                <CardTitle className="text-base">Replacement Mapping</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="text-sm">
+                  Original Bill: <span className="font-semibold">{replacementSession.originalBillId}</span>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-green-700 mb-1">Selected & Mapped</p>
+                  {mappedReplacementStatus.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No mappings selected yet.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {mappedReplacementStatus.map((entry) => (
+                        <p key={entry.id} className="text-sm">
+                          {entry.productName} (Qty {entry.quantity}){" -> "}{entry.mappedItemName} (Replaced Qty {entry.mappedQty})
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-amber-700 mb-1">Not Yet Mapped</p>
+                  {pendingReplacementStatus.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">All selected return items are mapped.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {pendingReplacementStatus.map((entry) => (
+                        <p key={entry.id} className="text-sm">
+                          {entry.productName} pending qty {entry.pendingQty}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="flex items-center">
               <TabsList className={isMobile ? "w-full grid grid-cols-3" : ""}>
@@ -1184,6 +1480,33 @@ export default function BillingAndCart() {
                                         (Tax: {item.taxPercentage}%)
                                       </span>
                                     )}
+                                    {item.lineType === "replacement_credit" && (
+                                      <span className="text-xs text-red-600 block">
+                                        Replacement credit line
+                                      </span>
+                                    )}
+                                    {item.lineType !== "replacement_credit" && replacementSession && (
+                                      <div className="mt-2 space-y-1">
+                                        <label className="text-xs text-gray-600 flex items-center gap-2">
+                                          <input
+                                            type="checkbox"
+                                            checked={!!item.replacementMeta}
+                                            onChange={(e) => toggleReplacementForLine(item.id, e.target.checked)}
+                                          />
+                                          Replace this product
+                                        </label>
+                                        {item.replacementMeta && (
+                                          <>
+                                            <span className="text-xs text-green-700 block">
+                                              Linked to: {item.replacementMeta.originalProductName} (max {item.replacementMeta.originalQuantity})
+                                            </span>
+                                            <span className="text-xs text-gray-600 block">
+                                              Replaced qty: {getMappedQuantityForItem(item)} | Normal qty: {Math.max(0, item.quantity - getMappedQuantityForItem(item))}
+                                            </span>
+                                          </>
+                                        )}
+                                      </div>
+                                    )}
                                   </TableCell>
                                   <TableCell>₹{item.price.toLocaleString()}</TableCell>
                                   <TableCell>
@@ -1192,6 +1515,7 @@ export default function BillingAndCart() {
                                         variant="outline"
                                         size="sm"
                                         onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                                        disabled={item.lineType === "replacement_credit"}
                                       >
                                         -
                                       </Button>
@@ -1200,6 +1524,7 @@ export default function BillingAndCart() {
                                         variant="outline"
                                         size="sm"
                                         onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                                        disabled={item.lineType === "replacement_credit"}
                                       >
                                         +
                                       </Button>

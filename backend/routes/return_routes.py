@@ -69,7 +69,7 @@ def search_bills():
         data = request.get_json()
         
         query = data.get('query', '').strip()
-        search_type = data.get('searchType', 'customer')
+        search_type = data.get('searchType', 'all')
         
         app.logger.info(f"🔍 User {current_user_id} searching bills: {query} ({search_type})")
         
@@ -78,35 +78,42 @@ def search_bills():
         
         supabase = get_supabase_client()
         
-        # ✅ Search bills with JOIN to get customer data
-        if search_type == 'customer':
+        bills_map = {}
+
+        def add_bills(rows):
+            for row in (rows or []):
+                if row and row.get('id'):
+                    bills_map[row['id']] = row
+
+        # Backward compatibility for explicit searchType values.
+        if search_type in ('customer', 'all'):
             customer_response = supabase.table('customers').select('id').ilike('name', f'%{query}%').execute()
-            if customer_response.data:
-                customer_ids = [c['id'] for c in customer_response.data]
-                response = supabase.table('bills').select(
+            customer_ids = [c['id'] for c in (customer_response.data or []) if c.get('id')]
+            if customer_ids:
+                customer_bills = supabase.table('bills').select(
                     '*, customers(id, name, phone)'
                 ).in_('customerid', customer_ids).execute()
-            else:
-                return jsonify([]), 200
-                
-        elif search_type == 'phone':
-            customer_response = supabase.table('customers').select('id').ilike('phone', f'%{query}%').execute()
-            if customer_response.data:
-                customer_ids = [c['id'] for c in customer_response.data]
-                response = supabase.table('bills').select(
+                add_bills(customer_bills.data)
+
+        if search_type in ('phone', 'all'):
+            phone_response = supabase.table('customers').select('id').ilike('phone', f'%{query}%').execute()
+            customer_ids = [c['id'] for c in (phone_response.data or []) if c.get('id')]
+            if customer_ids:
+                phone_bills = supabase.table('bills').select(
                     '*, customers(id, name, phone)'
                 ).in_('customerid', customer_ids).execute()
-            else:
-                return jsonify([]), 200
-                
-        elif search_type == 'invoice':
-            response = supabase.table('bills').select(
+                add_bills(phone_bills.data)
+
+        if search_type in ('invoice', 'all'):
+            invoice_bills = supabase.table('bills').select(
                 '*, customers(id, name, phone)'
             ).ilike('id', f'%{query}%').execute()
-        else:
+            add_bills(invoice_bills.data)
+
+        if search_type not in ('customer', 'phone', 'invoice', 'all'):
             return jsonify({"message": "Invalid search type"}), 400
-        
-        bills = response.data if response.data else []
+
+        bills = list(bills_map.values())
         
         # ✅ Transform bills to include items with product names via JOIN
         transformed_bills = []
@@ -122,6 +129,7 @@ def search_bills():
             
             transformed_bills.append({
                 'id': bill['id'],
+                'storeId': bill.get('storeid') or bill.get('storeId') or '',
                 'customerId': bill.get('customerid', ''),
                 'customerName': customer_data.get('name', 'Walk-in Customer'),
                 'customerPhone': customer_data.get('phone', ''),
@@ -190,6 +198,12 @@ def submit_return():
             unit_price = item['price']
             product_id = item['productId']
             customer_id = bill.get('customerId', None)
+            store_id = bill.get('storeId') or None
+            selected_reason = selected_item.get('reason') or return_reason
+            is_damaged = bool(selected_item.get('isDamaged')) or ("damaged" in (selected_reason or "").lower())
+            damaged_qty = int(selected_item.get('damagedQuantity') or 0)
+            if is_damaged and damaged_qty <= 0:
+                damaged_qty = return_quantity
             
             return_id = f"RET-{uuid.uuid4().hex[:12].upper()}"
             
@@ -201,10 +215,14 @@ def submit_return():
                 'message': return_reason,
                 'refund_method': refund_method,
                 'bill_id': bill_id,
+                'store_id': store_id,
                 'original_quantity': original_quantity,
                 'return_quantity': return_quantity,
                 'return_amount': unit_price * return_quantity,
                 'status': 'pending',
+                'is_damaged': is_damaged,
+                'damaged_qty': damaged_qty if is_damaged else 0,
+                'damage_reason': selected_reason if is_damaged else None,
                 'created_by': created_by,
                 'created_at': datetime.now(timezone.utc).isoformat(),
                 'updated_at': datetime.now(timezone.utc).isoformat()
@@ -220,6 +238,26 @@ def submit_return():
             if response.data:
                 created_returns.append(response.data[0])
                 app.logger.info(f"✅ Created return: {return_id}")
+                if is_damaged and damaged_qty > 0:
+                    try:
+                        now_iso = datetime.now(timezone.utc).isoformat()
+                        supabase.table('damaged_inventory_events').insert(
+                            {
+                                "id": f"DMG-{uuid.uuid4().hex[:12].upper()}",
+                                "store_id": store_id,
+                                "product_id": product_id,
+                                "quantity": damaged_qty,
+                                "source_type": "return",
+                                "source_id": return_id,
+                                "reason": selected_reason or "Product is damaged",
+                                "status": "reported",
+                                "reported_by": current_user_id,
+                                "created_at": now_iso,
+                                "updated_at": now_iso,
+                            }
+                        ).execute()
+                    except Exception as damaged_error:
+                        app.logger.warning(f"⚠️ Failed to insert damaged event for return {return_id}: {damaged_error}")
             else:
                 app.logger.error(f"❌ Failed to create return for item {item_id}")
         

@@ -19,6 +19,17 @@ interface RawInvoice {
   [key: string]: any
 }
 
+interface BillReplacement {
+  id?: string
+  bill_id: string
+  original_bill_id?: string
+  replaced_product_id: string
+  new_product_id: string
+  quantity: number
+  price?: number
+  final_amount?: number
+}
+
 interface BillingHistoryProps {
   currentStore: { id: string; name: string } | null
 }
@@ -202,6 +213,37 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
     }
   }, [])
 
+  const fetchBillReplacements = useCallback(async (billId: string) => {
+    try {
+      const response = await apiClient(`/api/bills/${billId}/replacements`, { method: "GET" })
+      if (!response.ok) return []
+      const data = await response.json()
+      return (data || []) as BillReplacement[]
+    } catch (error) {
+      console.error("Failed to fetch bill replacements:", error)
+      return []
+    }
+  }, [])
+
+  const enrichItemsWithReplacementMeta = useCallback((items: any[], replacements: BillReplacement[]) => {
+    if (!replacements.length) return items
+
+    const qtyByNewProductId = new Map<string, number>()
+    replacements.forEach((replacement) => {
+      const existing = qtyByNewProductId.get(replacement.new_product_id) || 0
+      qtyByNewProductId.set(replacement.new_product_id, existing + Number(replacement.quantity || 0))
+    })
+
+    return items.map((item: any) => {
+      const replacementQty = qtyByNewProductId.get(item.productId) || 0
+      if (!replacementQty) return item
+      return {
+        ...item,
+        replacementTag: `Replaced Qty: ${Math.max(0, Math.min(item.quantity || 0, replacementQty))}`,
+      }
+    })
+  }, [])
+
 
   useEffect(() => {
     fetchBillingHistory()
@@ -242,14 +284,22 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
   }, [searchTerm, invoices])
 
   const handleViewInvoice = async (invoice: Invoice) => {
-    const items = await fetchBillItems(invoice.id)
-    setSelectedInvoice({ ...invoice, items })
+    const [items, replacements] = await Promise.all([
+      fetchBillItems(invoice.id),
+      fetchBillReplacements(invoice.id),
+    ])
+    const enrichedItems = enrichItemsWithReplacementMeta(items, replacements)
+    setSelectedInvoice({ ...invoice, items: enrichedItems, isReplacementBill: replacements.length > 0 } as Invoice)
     setShowPreview(true)
   }
 
   const handlePrintInvoice = async (invoice: Invoice) => {
-    const items = await fetchBillItems(invoice.id)
-    setPrintInvoice({ ...invoice, items })
+    const [items, replacements] = await Promise.all([
+      fetchBillItems(invoice.id),
+      fetchBillReplacements(invoice.id),
+    ])
+    const enrichedItems = enrichItemsWithReplacementMeta(items, replacements)
+    setPrintInvoice({ ...invoice, items: enrichedItems, isReplacementBill: replacements.length > 0 } as Invoice)
     setShowPrintDialog(true)
   }
 
@@ -382,6 +432,7 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
                 <span>${item.quantity} x ₹${item.price.toLocaleString()}</span>
                 <span>₹${item.total.toLocaleString()}</span>
               </div>
+              ${item.replacementTag ? `<div style="font-size: 11px; font-weight: bold;">${item.replacementTag}</div>` : ""}
               ${item.hsnCode ? `<div style="font-size: 11px;">HSN: ${item.hsnCode}</div>` : ""}
               ${
                 index < (invoice.items?.length || 0) - 1
@@ -424,6 +475,7 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
         </div>
 
         <div style="text-align: center; font-size: 12px; margin-top: 8px;">
+          ${(invoice as any).isReplacementBill ? '<div style="font-weight: bold; margin-bottom: 4px;">THIS IS A BILL FOR REPLACEMENT</div>' : ""}
           <div>Thank you for your business!</div>
           <div>This is a computer generated invoice</div>
         </div>
@@ -476,6 +528,7 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
                   <td style="border: 1px solid #000; padding: 8px; text-align: right;">${item.quantity}</td>
                   <td style="border: 1px solid #000; padding: 8px; text-align: right;">₹${item.total.toLocaleString()}</td>
                 </tr>
+                ${item.replacementTag ? `<tr><td colspan="5" style="border: 1px solid #000; padding: 6px; font-weight: bold;">${item.replacementTag}</td></tr>` : ""}
               `
                   )
                   .join("") || ""
@@ -512,6 +565,7 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
         </div>
 
         <div style="text-align: center; font-size: 14px; border-top: 1px solid #ccc; padding-top: 16px;">
+          ${(invoice as any).isReplacementBill ? '<p style="margin: 2px 0; font-weight: bold;">THIS IS A BILL FOR REPLACEMENT</p>' : ""}
           <p style="margin: 2px 0;">Thank you for your business!</p>
           <p style="margin: 2px 0;">This is a computer generated tax invoice</p>
           <p style="margin: 2px 0;">For any queries, please contact us at ${storeEmail}</p>

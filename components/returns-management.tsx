@@ -36,10 +36,11 @@ interface ReturnItem {
 
 interface ReturnsManagementProps {
   onCountChange?: () => void
+  onStartReplacement?: () => void
   user?: { name: string; id: string; email: string; role: string } | null
 }
 
-export default function ReturnsManagement({ onCountChange, user }: ReturnsManagementProps = {}) {
+export default function ReturnsManagement({ onCountChange, onStartReplacement, user }: ReturnsManagementProps = {}) {
   const [returns, setReturns] = useState<ReturnItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isReturnsDialogOpen, setIsReturnsDialogOpen] = useState(false)
@@ -130,10 +131,9 @@ export default function ReturnsManagement({ onCountChange, user }: ReturnsManage
       {/* Info Alert */}
       <Alert>
         <Info className="h-4 w-4" />
-        <AlertTitle>Return Request Process</AlertTitle>
+        <AlertTitle>Replacement Billing Flow</AlertTitle>
         <AlertDescription>
-          Return requests created here will be reviewed and approved by the admin team. 
-          You'll receive a notification once your request is processed.
+          Select invoice items and quantity, then continue to Billing & Cart to complete replacement mapping and final billing.
         </AlertDescription>
       </Alert>
 
@@ -338,6 +338,7 @@ export default function ReturnsManagement({ onCountChange, user }: ReturnsManage
           isOpen={isReturnsDialogOpen}
           onClose={handleReturnDialogClose}
           user={user}
+          onStartReplacement={onStartReplacement}
         />
       )}
     </div>

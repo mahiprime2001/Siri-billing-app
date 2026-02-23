@@ -242,7 +242,10 @@ class SyncController:
         # Default tables to sync - UPDATED TO INCLUDE UserStores
         if tables is None:
             tables = ['Products', 'Customers', 'Users', 'Stores', 'SystemSettings',
-                      'BillFormats', 'Returns', 'Notifications', 'Bills', 'UserStores']
+                      'BillFormats', 'Returns', 'Notifications', 'Bills', 'UserStores',
+                      'Inventory_Transfer_Orders', 'Inventory_Transfer_Items',
+                      'Inventory_Transfer_Scans', 'Inventory_Transfer_Verifications',
+                      'Damaged_Inventory_Events']
 
         try:
             supabase = get_supabase_client()
@@ -265,9 +268,13 @@ class SyncController:
                             filter_conditions.append(f"createdat.gte.{last_sync}")
                         # Tables with snake_case 'updated_at' and 'created_at'
                         elif table_name in ['App_Config', 'BillItems', 'Bills', 'Notifications', 'Password_Change_Log',
-                                           'Password_Reset_Tokens', 'Returns', 'Sync_Table', 'SystemSettings', 'UserStores']:
+                                           'Password_Reset_Tokens', 'Returns', 'Sync_Table', 'SystemSettings', 'UserStores',
+                                           'Inventory_Transfer_Orders', 'Inventory_Transfer_Items',
+                                           'Inventory_Transfer_Scans', 'Damaged_Inventory_Events']:
                             filter_conditions.append(f"updated_at.gte.{last_sync}")
                             filter_conditions.append(f"created_at.gte.{last_sync}")
+                        elif table_name in ['Inventory_Transfer_Verifications']:
+                            filter_conditions.append(f"submitted_at.gte.{last_sync}")
 
                         if filter_conditions:
                             query = query.or_(",".join(filter_conditions))
@@ -278,8 +285,12 @@ class SyncController:
                         order_column = "updatedat"
                     # Tables with snake_case 'updated_at'
                     elif table_name in ['App_Config', 'BillItems', 'Bills', 'Notifications', 'Password_Change_Log',
-                                       'Password_Reset_Tokens', 'Returns', 'Sync_Table', 'SystemSettings', 'UserStores']:
+                                       'Password_Reset_Tokens', 'Returns', 'Sync_Table', 'SystemSettings', 'UserStores',
+                                       'Inventory_Transfer_Orders', 'Inventory_Transfer_Items',
+                                       'Inventory_Transfer_Scans', 'Damaged_Inventory_Events']:
                         order_column = "updated_at"
+                    elif table_name in ['Inventory_Transfer_Verifications']:
+                        order_column = "submitted_at"
 
                     # BillFormats does not have a timestamp column for ordering
                     if order_column:

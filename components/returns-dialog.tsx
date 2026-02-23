@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
 import { Search, ArrowLeft, Package, User, Phone, CreditCard, Clock, IndianRupee } from "lucide-react"
 import { apiClient } from "@/lib/api-client"
@@ -35,7 +36,6 @@ interface Bill {
 
 interface ReturnRequest {
   searchQuery: string
-  searchType: 'customer' | 'phone' | 'invoice'
   selectedItems: { id: string; quantity: number }[] // Modified to include quantity
   returnReason: string
   refundMethod: 'cash' | 'upi'
@@ -45,12 +45,12 @@ interface ReturnsDialogProps {
   isOpen: boolean
   onClose: () => void
   user: { name: string } | null
+  onStartReplacement?: () => void
 }
 
-export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogProps) {
+export default function ReturnsDialog({ isOpen, onClose, user, onStartReplacement }: ReturnsDialogProps) {
   const [returnRequest, setReturnRequest] = useState<ReturnRequest>({
     searchQuery: '',
-    searchType: 'customer',
     selectedItems: [],
     returnReason: '',
     refundMethod: 'cash'
@@ -59,7 +59,45 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
   const [isSearching, setIsSearching] = useState(false)
   const [showReturnForm, setShowReturnForm] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [flowMode, setFlowMode] = useState<"returns" | "replacement">("replacement")
   const { toast } = useToast()
+
+  const createReplacementSession = () => {
+    const selectedEntries = returnRequest.selectedItems
+      .map((selectedItem) => {
+        const lastHyphenIndex = selectedItem.id.lastIndexOf("-")
+        const billId = selectedItem.id.substring(0, lastHyphenIndex)
+        const itemIdx = Number.parseInt(selectedItem.id.substring(lastHyphenIndex + 1), 10)
+        const bill = searchResults.find((b) => b.id === billId)
+        const item = bill?.items[itemIdx]
+
+        if (!bill || !item) return null
+
+        const qty = Math.max(1, Math.min(selectedItem.quantity, item.quantity))
+        return {
+          id: `${billId}-${item.productId}-${itemIdx}`,
+          billId,
+          productId: item.productId,
+          productName: item.productName,
+          quantity: qty,
+          unitPrice: Number(item.price || 0),
+          reason: returnRequest.returnReason || "Replacement",
+        }
+      })
+      .filter(Boolean)
+
+    if (selectedEntries.length === 0) return null
+
+    const firstBill = searchResults.find((b) => b.id === selectedEntries[0]?.billId)
+    return {
+      sessionId: `repl-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      originalBillId: selectedEntries[0]?.billId || "",
+      customerName: firstBill?.customerName || "Walk-in Customer",
+      customerPhone: firstBill?.customerPhone || "",
+      entries: selectedEntries,
+    }
+  }
 
   const handleSearch = async () => {
     if (!returnRequest.searchQuery.trim()) {
@@ -76,8 +114,7 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
       const response = await apiClient('/api/returns/search', {
         method: 'POST',
         body: JSON.stringify({
-          query: returnRequest.searchQuery,
-          searchType: returnRequest.searchType
+          query: returnRequest.searchQuery
         }),
       });
 
@@ -172,7 +209,7 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
     if (!returnRequest.returnReason.trim()) {
       toast({
         title: "Reason Required",
-        description: "Please provide a reason for the return",
+        description: `Please select a reason for the ${flowMode === "replacement" ? "replacement" : "return"}.`,
         variant: "destructive",
       })
       return
@@ -180,30 +217,57 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
 
     setIsSubmitting(true)
     try {
-      const response = await apiClient('/api/returns/submit', {
-        method: 'POST',
-        body: JSON.stringify({
-          selectedItems: returnRequest.selectedItems,
-          returnReason: returnRequest.returnReason,
-          refundMethod: returnRequest.refundMethod,
-          searchResults: searchResults,
-          createdBy: user?.name || "Unknown"
-        }),
-      });
+      if (flowMode === "returns") {
+        const response = await apiClient('/api/returns/submit', {
+          method: 'POST',
+          body: JSON.stringify({
+            selectedItems: returnRequest.selectedItems,
+            returnReason: returnRequest.returnReason,
+            refundMethod: returnRequest.refundMethod,
+            searchResults: searchResults,
+            createdBy: user?.name || "Unknown"
+          }),
+        })
 
-      const result = await response.json()
-      toast({
-        title: "Return Submitted",
-        description: `Return request submitted successfully. Return ID: ${result.returnId}`,
-      })
+        const result = await response.json()
+        if (!response.ok) {
+          throw new Error(result?.message || "Failed to submit return request")
+        }
+
+        toast({
+          title: "Return Submitted",
+          description: `Return request submitted successfully. Return ID: ${result.returnId}`,
+        })
+      } else {
+        const replacementSession = createReplacementSession()
+        if (!replacementSession) {
+          toast({
+            title: "Selection Error",
+            description: "Could not build replacement session from selected items.",
+            variant: "destructive",
+          })
+          return
+        }
+
+        if (typeof window !== "undefined") {
+          window.sessionStorage.setItem("replacement-session", JSON.stringify(replacementSession))
+          window.dispatchEvent(new CustomEvent("start-replacement-session"))
+        }
+        onStartReplacement?.()
+
+        toast({
+          title: "Replacement Started",
+          description: "Moved selected return items to Billing Cart as replacement credit.",
+        })
+      }
 
       resetForm()
       onClose()
     } catch (error) {
-      console.error("Error submitting return:", error)
+      console.error("Error submitting return action:", error)
       toast({
-        title: "Submission Failed",
-        description: (error as Error).message || "Failed to submit return request. Please try again.",
+        title: "Action Failed",
+        description: (error as Error).message || "Failed to process action. Please try again.",
         variant: "destructive",
       })
     } finally {
@@ -214,7 +278,6 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
   const resetForm = () => {
     setReturnRequest({
       searchQuery: '',
-      searchType: 'customer',
       selectedItems: [],
       returnReason: '',
       refundMethod: 'cash'
@@ -238,14 +301,7 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
     return total;
   }
 
-  const getSearchPlaceholder = () => {
-    switch (returnRequest.searchType) {
-      case 'customer': return 'Enter customer name'
-      case 'phone': return 'Enter mobile number'
-      case 'invoice': return 'Enter invoice number'
-      default: return 'Enter search query'
-    }
-  }
+  const getSearchPlaceholder = () => 'Search by customer name, mobile number, or invoice number'
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -256,9 +312,23 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
             Process Returns
           </DialogTitle>
           <DialogDescription>
-            Search for bills and process return requests
+            Search for bills and process return or replacement requests
           </DialogDescription>
         </DialogHeader>
+
+        <Tabs
+          value={flowMode}
+          onValueChange={(value) => {
+            setFlowMode(value as "returns" | "replacement")
+            setShowReturnForm(false)
+          }}
+          className="w-full"
+        >
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="returns">Returns</TabsTrigger>
+            <TabsTrigger value="replacement">Replacement</TabsTrigger>
+          </TabsList>
+        </Tabs>
 
         {!showReturnForm ? (
           <>
@@ -266,43 +336,13 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Search Bills</CardTitle>
-                <CardDescription>Find bills by customer name, phone number, or invoice number</CardDescription>
+                <CardDescription>
+                  {flowMode === "replacement"
+                    ? "Find invoice items to start replacement billing flow"
+                    : "Find bills by customer name, phone number, or invoice number"}
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Search By</Label>
-                  <RadioGroup
-                    value={returnRequest.searchType}
-                    onValueChange={(value) => {
-                      console.log("RadioGroup onValueChange:", value);
-                      setReturnRequest(prev => ({ ...prev, searchType: value as 'customer' | 'phone' | 'invoice' }));
-                    }}
-                    className="space-y-2"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="customer" id="customer" />
-                      <Label htmlFor="customer" className="font-normal cursor-pointer">
-                        <User className="h-4 w-4 inline mr-1" />
-                        Customer Name
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="phone" id="phone" />
-                      <Label htmlFor="phone" className="font-normal cursor-pointer">
-                        <Phone className="h-4 w-4 inline mr-1" />
-                        Mobile Number
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="invoice" id="invoice" />
-                      <Label htmlFor="invoice" className="font-normal cursor-pointer">
-                        <CreditCard className="h-4 w-4 inline mr-1" />
-                        Invoice Number
-                      </Label>
-                    </div>
-                  </RadioGroup>
-                </div>
-
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <Label>Search Query</Label>
@@ -327,7 +367,11 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg">Search Results ({searchResults.length} bills found)</CardTitle>
-                  <CardDescription>Select items from the bills below to process returns</CardDescription>
+                  <CardDescription>
+                    {flowMode === "replacement"
+                      ? "Select invoice products and quantity for replacement"
+                      : "Select items from the bills below to process returns"}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {searchResults.map((bill) => (
@@ -413,7 +457,7 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
                 <CardHeader>
                   <CardTitle className="text-lg">Selected Items Summary</CardTitle>
                   <CardDescription>
-                    {returnRequest.selectedItems.length} item(s) selected for return
+                    {returnRequest.selectedItems.length} item(s) selected for {flowMode === "replacement" ? "replacement" : "return"}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -426,7 +470,7 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
                     className="w-full mt-3"
                     disabled={returnRequest.selectedItems.length === 0}
                   >
-                    Proceed to Return Details
+                    Proceed to {flowMode === "replacement" ? "Replacement" : "Return"} Details
                   </Button>
                 </CardContent>
               </Card>
@@ -443,8 +487,14 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
             {/* Return Form */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Return Information</CardTitle>
-                <CardDescription>Provide details for the return request</CardDescription>
+                <CardTitle className="text-lg">
+                  {flowMode === "replacement" ? "Replacement Information" : "Return Information"}
+                </CardTitle>
+                <CardDescription>
+                  {flowMode === "replacement"
+                    ? "Provide details before moving to Billing Cart"
+                    : "Provide details for the return request"}
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
@@ -465,23 +515,29 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Refund Method *</Label>
-                  <RadioGroup
-                    value={returnRequest.refundMethod}
-                    onValueChange={(value) => setReturnRequest(prev => ({ ...prev, refundMethod: value as 'cash' | 'upi' }))}
-                    className="space-y-2"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="cash" id="cash" />
-                      <Label htmlFor="cash" className="font-normal cursor-pointer">Cash Refund</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="upi" id="upi" />
-                      <Label htmlFor="upi" className="font-normal cursor-pointer">UPI Refund</Label>
-                    </div>
-                  </RadioGroup>
-                </div>
+                {flowMode === "returns" ? (
+                  <div className="space-y-2">
+                    <Label>Refund Method *</Label>
+                    <RadioGroup
+                      value={returnRequest.refundMethod}
+                      onValueChange={(value) => setReturnRequest(prev => ({ ...prev, refundMethod: value as 'cash' | 'upi' }))}
+                      className="space-y-2"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="cash" id="cash" />
+                        <Label htmlFor="cash" className="font-normal cursor-pointer">Cash Refund</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="upi" id="upi" />
+                        <Label htmlFor="upi" className="font-normal cursor-pointer">UPI Refund</Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground">
+                    This will continue to Billing Cart as replacement mode.
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -539,7 +595,11 @@ export default function ReturnsDialog({ isOpen, onClose, user }: ReturnsDialogPr
           </Button>
           {showReturnForm && (
             <Button onClick={handleSubmitReturn} disabled={isSubmitting}>
-              {isSubmitting ? 'Submitting...' : 'Submit Return Request'}
+              {isSubmitting
+                ? 'Processing...'
+                : flowMode === "replacement"
+                ? 'Proceed to Billing Cart'
+                : 'Submit Return Request'}
             </Button>
           )}
         </DialogFooter>

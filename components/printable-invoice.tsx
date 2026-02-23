@@ -127,21 +127,25 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
             {/* Items */}
             <div style={{ fontSize: 9, marginBottom: 5 }}>
               {safeInvoice.items.map((item, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    marginBottom: 2,
-                  }}
-                >
-                  <span style={{ flex: 1 }}>{item.name}</span>
-                  <span style={{ marginLeft: 5 }}>
-                    {item.quantity}×₹{formatNumber(item.price)}
-                  </span>
-                  <span style={{ marginLeft: 5, minWidth: "50px", textAlign: "right" }}>
-                    ₹{formatNumber(item.total)}
-                  </span>
+                <div key={i} style={{ marginBottom: 3 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginBottom: 1,
+                    }}
+                  >
+                    <span style={{ flex: 1 }}>{item.name}</span>
+                    <span style={{ marginLeft: 5 }}>
+                      {item.quantity}×₹{formatNumber(item.price)}
+                    </span>
+                    <span style={{ marginLeft: 5, minWidth: "50px", textAlign: "right" }}>
+                      ₹{formatNumber(item.total)}
+                    </span>
+                  </div>
+                  {item.replacementTag && (
+                    <div style={{ fontSize: 8, fontWeight: "bold" }}>{item.replacementTag}</div>
+                  )}
                 </div>
               ))}
             </div>
@@ -249,6 +253,11 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
 
             {/* Footer */}
             <div style={{ textAlign: "center", fontSize: 9, marginTop: 5 }}>
+              {(invoice as any).isReplacementBill && (
+                <div style={{ fontWeight: "bold", marginBottom: 4 }}>
+                  THIS IS A BILL FOR REPLACEMENT
+                </div>
+              )}
               <div>This is a computer-generated invoice</div>
               
               {safeInvoice.discountPercentage > 0 && safeInvoice.discountAmount > 0 && (

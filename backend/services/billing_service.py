@@ -112,6 +112,9 @@ def create_bill_transaction(
     bill_item_errors = []
     stock_update_errors = []
     updated_product_ids = []
+    replacement_save_errors = []
+    replacement_stock_errors = []
+    replacement_rows_created = 0
 
     for index, item in enumerate(items):
         product_id = item.get("product_id") or item.get("productId")
@@ -155,17 +158,95 @@ def create_bill_transaction(
         except Exception:
             stock_update_errors.append(product_id)
 
+    replacements = data.get("replacements", []) or []
+    for index, replacement in enumerate(replacements):
+        replaced_product_id = replacement.get("replaced_product_id")
+        new_product_id = replacement.get("new_product_id")
+        quantity = int(replacement.get("quantity", 0) or 0)
+        price = float(replacement.get("price", 0) or 0)
+        final_amount = float(replacement.get("final_amount", 0) or 0)
+        damaged_qty = int(replacement.get("damaged_qty", 0) or 0)
+        damage_reason = replacement.get("damage_reason")
+        is_damaged = bool(replacement.get("is_damaged")) or damaged_qty > 0
+        original_bill_id = replacement.get("original_bill_id") or data.get("original_bill_id")
+
+        if not replaced_product_id or not new_product_id or quantity <= 0:
+            replacement_save_errors.append(f"replacement[{index}] invalid payload")
+            continue
+
+        replacement_id = f"REP-{uuid.uuid4().hex[:12].upper()}"
+        replacement_payload = {
+            "id": replacement_id,
+            "bill_id": bill_id,
+            "original_bill_id": original_bill_id,
+            "replaced_product_id": replaced_product_id,
+            "new_product_id": new_product_id,
+            "quantity": quantity,
+            "price": price,
+            "final_amount": final_amount,
+            "is_damaged": is_damaged,
+            "damaged_qty": damaged_qty if is_damaged else 0,
+            "damage_reason": damage_reason if is_damaged else None,
+            "store_id": store_id,
+            "user_id": current_user_id,
+            "created_at": now,
+            "updated_at": now,
+        }
+
+        try:
+            replacement_insert = supabase.table("replacements").insert(replacement_payload).execute()
+            if replacement_insert.data:
+                replacement_rows_created += 1
+            else:
+                replacement_save_errors.append(f"replacement[{index}] insert returned empty response")
+        except Exception as replacement_error:
+            replacement_save_errors.append(f"replacement[{index}] insert error: {str(replacement_error)}")
+
+        if is_damaged and damaged_qty > 0:
+            try:
+                supabase.table("damaged_inventory_events").insert(
+                    {
+                        "id": f"DMG-{uuid.uuid4().hex[:12].upper()}",
+                        "store_id": store_id,
+                        "product_id": replaced_product_id,
+                        "quantity": damaged_qty,
+                        "source_type": "replacement",
+                        "source_id": replacement_id,
+                        "reason": damage_reason or "Damaged in replacement flow",
+                        "status": "reported",
+                        "reported_by": current_user_id,
+                        "created_at": now,
+                        "updated_at": now,
+                    }
+                ).execute()
+            except Exception as damaged_error:
+                replacement_save_errors.append(f"replacement[{index}] damaged-event insert error: {str(damaged_error)}")
+
+        try:
+            restored = update_both_inventory_and_product_stock(
+                store_id=store_id,
+                product_id=replaced_product_id,
+                quantity_sold=-quantity,
+            )
+            if restored:
+                updated_product_ids.append(replaced_product_id)
+            else:
+                replacement_stock_errors.append(replaced_product_id)
+        except Exception:
+            replacement_stock_errors.append(replaced_product_id)
+
     if len(bill_items_created) == 0:
         raise RuntimeError(
             f"Bill created but no bill items were saved. Errors: {bill_item_errors or ['unknown']}"
         )
 
-    if updated_product_ids:
+    unique_updated_products = list(dict.fromkeys(updated_product_ids))
+    if unique_updated_products:
         publish(
             {
                 "type": "stock_update",
                 "store_id": store_id,
-                "product_ids": updated_product_ids,
+                "product_ids": unique_updated_products,
                 "ts": datetime.now(timezone.utc).isoformat(),
             }
         )
@@ -176,6 +257,7 @@ def create_bill_transaction(
         "bill": created_bill,
         "items_created": len(bill_items_created),
         "total_amount": data["total_amount"],
+        "replacements_created": replacement_rows_created,
     }
 
     if bill_item_errors:
@@ -183,5 +265,9 @@ def create_bill_transaction(
     if stock_update_errors:
         response_data["stock_update_errors"] = stock_update_errors
         response_data["warning"] = f"Stock update failed for {len(stock_update_errors)} products"
+    if replacement_save_errors:
+        response_data["replacement_save_errors"] = replacement_save_errors
+    if replacement_stock_errors:
+        response_data["replacement_stock_errors"] = replacement_stock_errors
 
     return response_data
