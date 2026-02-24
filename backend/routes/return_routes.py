@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, current_app as app
 from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
 from utils.connection_pool import get_supabase_client
+from data_access.data_access import update_both_inventory_and_product_stock
 from datetime import datetime, timezone
 import uuid
 import traceback
@@ -302,6 +303,26 @@ def approve_return(return_id):
             return jsonify({"message": "Return not found"}), 404
         
         return_data = response.data[0]
+
+        # 🏬 Restock only the non‑damaged quantity
+        try:
+            restock_qty = max(
+                0,
+                int(return_data.get('return_quantity') or 0)
+                - (int(return_data.get('damaged_qty') or 0) if return_data.get('is_damaged') else 0),
+            )
+            if restock_qty > 0 and return_data.get('product_id') and return_data.get('store_id'):
+                updated = update_both_inventory_and_product_stock(
+                    store_id=return_data['store_id'],
+                    product_id=return_data['product_id'],
+                    quantity_sold=-restock_qty,
+                )
+                if not updated:
+                    app.logger.warning(
+                        f"⚠️ Restock failed for return {return_id} (product {return_data.get('product_id')})"
+                    )
+        except Exception as inventory_error:
+            app.logger.error(f"❌ Inventory update failed for return {return_id}: {inventory_error}")
         
         # ✅ Fetch product name for notification
         product_name = 'Product'

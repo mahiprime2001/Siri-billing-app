@@ -222,18 +222,21 @@ def create_bill_transaction(
             except Exception as damaged_error:
                 replacement_save_errors.append(f"replacement[{index}] damaged-event insert error: {str(damaged_error)}")
 
-        try:
-            restored = update_both_inventory_and_product_stock(
-                store_id=store_id,
-                product_id=replaced_product_id,
-                quantity_sold=-quantity,
-            )
-            if restored:
-                updated_product_ids.append(replaced_product_id)
-            else:
+        # Only restock the non-damaged quantity. Damaged units stay out of inventory.
+        restock_qty = max(0, quantity - (damaged_qty if is_damaged else 0))
+        if restock_qty > 0:
+            try:
+                restored = update_both_inventory_and_product_stock(
+                    store_id=store_id,
+                    product_id=replaced_product_id,
+                    quantity_sold=-restock_qty,
+                )
+                if restored:
+                    updated_product_ids.append(replaced_product_id)
+                else:
+                    replacement_stock_errors.append(replaced_product_id)
+            except Exception:
                 replacement_stock_errors.append(replaced_product_id)
-        except Exception:
-            replacement_stock_errors.append(replaced_product_id)
 
     if len(bill_items_created) == 0:
         raise RuntimeError(

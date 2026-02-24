@@ -1,16 +1,15 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
+// Printing in history is now identical to billing-cart: direct print (no dialog)
 import { Eye, Search, Printer } from "lucide-react"
 import InvoicePreview from "./invoice-preview"
+import PrintableInvoice from "./printable-invoice"
 import { apiClient } from "@/lib/api-client"
 import { isTauriApp, printHtmlContent } from "@/lib/tauriPrinter"
 
@@ -40,9 +39,8 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
   const [showPreview, setShowPreview] = useState(false)
-  const [showPrintDialog, setShowPrintDialog] = useState(false)
-  const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null)
-  const [printPaperSize, setPrintPaperSize] = useState("Thermal 80mm")
+  const printPaperSize = "Thermal 80mm"
+  const printRef = useRef<HTMLDivElement>(null)
   const [isTauriRuntime, setIsTauriRuntime] = useState(false)
 
   useEffect(() => {
@@ -293,316 +291,131 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
     setShowPreview(true)
   }
 
+  // Direct print flow to match billing-cart
   const handlePrintInvoice = async (invoice: Invoice) => {
     const [items, replacements] = await Promise.all([
       fetchBillItems(invoice.id),
       fetchBillReplacements(invoice.id),
     ])
     const enrichedItems = enrichItemsWithReplacementMeta(items, replacements)
-    setPrintInvoice({ ...invoice, items: enrichedItems, isReplacementBill: replacements.length > 0 } as Invoice)
-    setShowPrintDialog(true)
-  }
+    const printable = { ...invoice, items: enrichedItems, isReplacementBill: replacements.length > 0 } as Invoice
+    setSelectedInvoice(printable)
 
-  const handleConfirmPrint = async () => {
-    if (printInvoice) {
-      setShowPrintDialog(false)
-      setSelectedInvoice(printInvoice)
-      setShowPreview(true)
+    // Wait a tick for PrintableInvoice to render into the hidden ref
+    await new Promise((resolve) => setTimeout(resolve, 0))
 
-      setTimeout(async () => {
-        const printContent = generatePrintContent(printInvoice, printPaperSize)
+    const printInner = printRef.current?.innerHTML || ""
+    const printContent = generatePrintHTML(printInner, printPaperSize, printable.id || "invoice")
 
-        if (isTauriRuntime) {
-          try {
-            await printHtmlContent(printContent, {
-              paperSize: printPaperSize,
-              copies: 1,
-            })
-          } catch (error) {
-            console.error("❌ [BillingHistory] Tauri print failed:", error)
-          }
-          return
-        }
-
-        const printWindow = window.open("", "_blank")
-        if (printWindow) {
-          printWindow.document.write(printContent)
-          printWindow.document.close()
-          printWindow.focus()
-          setTimeout(() => {
-            printWindow.print()
-            printWindow.close()
-          }, 250)
-        }
-      }, 500)
+    if (isTauriRuntime) {
+      try {
+        await printHtmlContent(printContent, { paperSize: printPaperSize, copies: 1 })
+      } catch (error) {
+        console.error("❌ [BillingHistory] Tauri print failed:", error)
+      }
+      return
+    }
+    const frame = document.createElement("iframe")
+    frame.style.position = "fixed"
+    frame.style.right = "0"
+    frame.style.bottom = "0"
+    frame.style.width = "0"
+    frame.style.height = "0"
+    frame.style.border = "0"
+    document.body.appendChild(frame)
+    const doc = frame.contentDocument || frame.contentWindow?.document
+    if (!doc) {
+      document.body.removeChild(frame)
+      return
+    }
+    doc.open()
+    doc.write(printContent)
+    doc.close()
+    frame.onload = () => {
+      try {
+        frame.contentWindow?.focus()
+        frame.contentWindow?.print()
+      } finally {
+        setTimeout(() => {
+          if (document.body.contains(frame)) document.body.removeChild(frame)
+        }, 300)
+      }
     }
   }
 
-  const generatePrintContent = (invoice: Invoice, paperSize: string) => {
-    const customerName = getCustomerName(invoice)
-    const customerPhone = getCustomerPhone(invoice)
-    const storeName = getStoreName(invoice)
-    const storeAddress = getStoreAddress(invoice)
-    const storePhone = getStorePhone(invoice)
-    const storeEmail = invoice.companyEmail || "info@siriartjewellers.com"
-    const gstin = invoice.gstin || "27ABCDE1234F1Z5"
-
-    const getPageStyles = () => {
-      if (paperSize === "Thermal 58mm" || paperSize === "Thermal 80mm") {
+  const generatePrintHTML = (printContent: string, paperSize: string, invoiceId: string): string => {
+    const getPageStyles = (): string => {
+      if (paperSize === "Thermal 58mm") {
         return `
-          @page {
-            size: ${paperSize === "Thermal 58mm" ? "58mm auto" : "80mm auto"};
-            margin: 2mm;
-          }
+          @page { size: 58mm auto; margin: 0; }
+          body { width: 58mm; margin: 0; padding: 2mm; }
+        `
+      } else if (paperSize === "Thermal 80mm") {
+        return `
+          @page { size: 80mm auto; margin: 0; }
+          body { width: 80mm; margin: 0; padding: 2mm; }
         `
       } else if (paperSize === "A4") {
         return `
-          @page {
-            size: A4 portrait;
-            margin: 15mm 10mm;
-          }
+          @page { size: A4 portrait; margin: 0; }
+          body { margin: 0; padding: 15mm 10mm; }
         `
       } else if (paperSize === "Letter") {
         return `
-          @page {
-            size: Letter portrait;
-            margin: 0.6in 0.4in;
-          }
+          @page { size: Letter portrait; margin: 0; }
+          body { margin: 0; padding: 0.6in 0.4in; }
         `
       }
       return `
-        @page {
-          size: A4 portrait;
-          margin: 15mm 10mm;
-        }
+        @page { size: A4 portrait; margin: 0; }
+        body { margin: 0; padding: 15mm 10mm; }
       `
     }
 
-    const isThermal = paperSize.includes("Thermal")
-
-    const thermalContent = `
-      <div style="width: ${
-        paperSize === "Thermal 58mm" ? "58mm" : "80mm"
-      }; font-family: Courier New, monospace; font-size: ${
-      paperSize === "Thermal 58mm" ? "10px" : "11px"
-    }; line-height: ${paperSize === "Thermal 58mm" ? "1.2" : "1.3"}; color: #000;">
-        <div style="text-align: center; margin-bottom: 8px;">
-          <div style="font-size: 14px; font-weight: bold;">${storeName.toUpperCase()}</div>
-          <div style="font-size: 12px;">${storeAddress}</div>
-          <div style="font-size: 12px;">Ph: ${storePhone}</div>
-          <div style="font-size: 12px;">${storeEmail}</div>
-          <div style="font-size: 12px;">GSTIN: ${gstin}</div>
-          <div style="border-top: 1px dashed #000; margin: 4px 0;"></div>
-          <div style="font-size: 12px; font-weight: bold;">TAX INVOICE</div>
-        </div>
-        
-        <div style="font-size: 12px; margin-bottom: 8px;">
-          <div style="display: flex; justify-content: space-between;">
-              <span>Invoice: ${invoice.id}</span>
-              <span>${new Date(invoice.timestamp).toLocaleDateString()}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between;">
-              <span>Payment: ${invoice.paymentMethod || "Cash"}</span>
-            </div>
-        </div>
-
-        ${
-          customerName !== "Walk-in Customer" || customerPhone
-            ? `
-          <div style="font-size: 12px; margin-bottom: 8px;">
-            <div style="border-top: 1px dashed #000; margin: 4px 0;"></div>
-            <div>Customer: ${customerName}</div>
-            ${customerPhone ? `<div>Phone: ${customerPhone}</div>` : ""}
-            <div style="border-top: 1px dashed #000; margin: 4px 0;"></div>
-          </div>
-        `
-            : ""
-        }
-
-        <div style="font-size: 12px; margin-bottom: 8px;">
-          ${
-            invoice.items
-              ?.map(
-                (item: any, index: number) => `
-            <div style="margin-bottom: 4px;">
-              <div style="display: flex; justify-content: space-between;">
-                <span style="flex: 1;">${item.name || "Unknown Item"}</span>
-              </div>
-              <div style="display: flex; justify-content: space-between;">
-                <span>${item.quantity} x ₹${item.price.toLocaleString()}</span>
-                <span>₹${item.total.toLocaleString()}</span>
-              </div>
-              ${item.replacementTag ? `<div style="font-size: 11px; font-weight: bold;">${item.replacementTag}</div>` : ""}
-              ${item.hsnCode ? `<div style="font-size: 11px;">HSN: ${item.hsnCode}</div>` : ""}
-              ${
-                index < (invoice.items?.length || 0) - 1
-                  ? '<div style="border-top: 1px dotted #000; margin: 2px 0;"></div>'
-                  : ""
-              }
-            </div>
-          `
-              )
-              .join("") || ""
-          }
-        </div>
-
-          <div style="font-size: 12px;">
-          <div style="border-top: 1px dashed #000; margin: 4px 0;"></div>
-          <div style="display: flex; justify-content: space-between;">
-            <span>Subtotal:</span>
-            <span>₹${invoice.subtotal.toLocaleString()}</span>
-          </div>
-          ${
-            invoice.discountPercentage > 0
-              ? `
-            <div style="display: flex; justify-content: space-between;">
-              <span>Discount (${invoice.discountPercentage}%):</span>
-              <span>-₹${invoice.discountAmount.toLocaleString()}</span>
-            </div>
-          `
-              : ""
-          }
-          <div style="display: flex; justify-content: space-between;">
-            <span>Tax (${invoice.taxPercentage}%):</span>
-            <span>₹${invoice.taxAmount.toLocaleString()}</span>
-          </div>
-          <div style="border-top: 1px dashed #000; margin: 4px 0;"></div>
-          <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 14px;">
-            <span>TOTAL:</span>
-            <span>₹${invoice.total.toLocaleString()}</span>
-          </div>
-          <div style="border-top: 1px dashed #000; margin: 4px 0;"></div>
-        </div>
-
-        <div style="text-align: center; font-size: 12px; margin-top: 8px;">
-          ${(invoice as any).isReplacementBill ? '<div style="font-weight: bold; margin-bottom: 4px;">THIS IS A BILL FOR REPLACEMENT</div>' : ""}
-          <div>Thank you for your business!</div>
-          <div>This is a computer generated invoice</div>
-        </div>
-      </div>
-    `
-
-    const standardContent = `
-      <div style="width: 100%; font-size: 11px; line-height: 1.3; color: #000;">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
-          <div>
-            <h1 style="font-size: 24px; font-weight: bold; margin: 0 0 4px 0;">${storeName}</h1>
-            <p style="margin: 2px 0;">${storeAddress}</p>
-            <p style="margin: 2px 0;">Phone: ${storePhone} | Email: ${storeEmail}</p>
-            <p style="margin: 2px 0;">GSTIN: ${gstin}</p>
-          </div>
-          <div style="text-align: right;">
-            <h2 style="font-size: 20px; font-weight: bold; margin: 0 0 4px 0;">TAX INVOICE</h2>
-            <p style="margin: 2px 0;">#${invoice.id}</p>
-            <p style="margin: 2px 0;">Date: ${new Date(invoice.timestamp).toLocaleDateString()}</p>
-            <p style="margin: 2px 0;">Payment: ${invoice.paymentMethod || "Cash"}</p>
-          </div>
-        </div>
-
-        <div style="margin-bottom: 20px;">
-          <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">Bill To:</h3>
-          <p style="font-weight: 500; margin: 2px 0;">${customerName}</p>
-          ${customerPhone ? `<p style="margin: 2px 0;">${customerPhone}</p>` : ""}
-        </div>
-
-        <div style="margin-bottom: 20px;">
-          <table style="width: 100%; border-collapse: collapse; border: 1px solid #000;">
-            <thead>
-              <tr style="background-color: #f5f5f5;">
-                <th style="border: 1px solid #000; padding: 8px; text-align: left;">Item</th>
-                <th style="border: 1px solid #000; padding: 8px; text-align: left;">HSN</th>
-                <th style="border: 1px solid #000; padding: 8px; text-align: right;">Price</th>
-                <th style="border: 1px solid #000; padding: 8px; text-align: right;">Qty</th>
-                <th style="border: 1px solid #000; padding: 8px; text-align: right;">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${
-                invoice.items
-                  ?.map(
-                    (item: any) => `
-                <tr>
-                  <td style="border: 1px solid #000; padding: 8px;">${item.name || "Unknown Item"}</td>
-                  <td style="border: 1px solid #000; padding: 8px;">${item.hsnCode || "-"}</td>
-                  <td style="border: 1px solid #000; padding: 8px; text-align: right;">₹${item.price.toLocaleString()}</td>
-                  <td style="border: 1px solid #000; padding: 8px; text-align: right;">${item.quantity}</td>
-                  <td style="border: 1px solid #000; padding: 8px; text-align: right;">₹${item.total.toLocaleString()}</td>
-                </tr>
-                ${item.replacementTag ? `<tr><td colspan="5" style="border: 1px solid #000; padding: 6px; font-weight: bold;">${item.replacementTag}</td></tr>` : ""}
-              `
-                  )
-                  .join("") || ""
-              }
-            </tbody>
-          </table>
-        </div>
-
-        <div style="display: flex; justify-content: flex-end; margin-bottom: 20px;">
-          <div style="width: 256px;">
-            <div style="display: flex; justify-content: space-between; padding: 8px 0;">
-              <span>Subtotal:</span>
-              <span>₹${invoice.subtotal.toLocaleString()}</span>
-            </div>
-            ${
-              invoice.discountPercentage > 0
-                ? `
-              <div style="display: flex; justify-content: space-between; padding: 8px 0;">
-                <span>Discount (${invoice.discountPercentage}%):</span>
-                <span>-₹${invoice.discountAmount.toLocaleString()}</span>
-              </div>
-            `
-                : ""
-            }
-            <div style="display: flex; justify-content: space-between; padding: 8px 0;">
-              <span>Tax (${invoice.taxPercentage}%):</span>
-              <span>₹${invoice.taxAmount.toLocaleString()}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-top: 1px solid #000; font-weight: bold; font-size: 18px;">
-              <span>Total Amount:</span>
-              <span>₹${invoice.total.toLocaleString()}</span>
-            </div>
-          </div>
-        </div>
-
-        <div style="text-align: center; font-size: 14px; border-top: 1px solid #ccc; padding-top: 16px;">
-          ${(invoice as any).isReplacementBill ? '<p style="margin: 2px 0; font-weight: bold;">THIS IS A BILL FOR REPLACEMENT</p>' : ""}
-          <p style="margin: 2px 0;">Thank you for your business!</p>
-          <p style="margin: 2px 0;">This is a computer generated tax invoice</p>
-          <p style="margin: 2px 0;">For any queries, please contact us at ${storeEmail}</p>
-        </div>
-      </div>
-    `
-
     return `
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
         <head>
-          <title>Invoice-${invoice.id}</title>
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>Invoice-${invoiceId}</title>
           <style>
             ${getPageStyles()}
-            
-            body {
+            * {
+              box-sizing: border-box;
               margin: 0;
               padding: 0;
-              -webkit-print-color-adjust: exact;
-              color-adjust: exact;
-              font-family: Arial, sans-serif;
             }
-            
+            html, body {
+              font-family: "Courier New", monospace;
+              font-size: ${paperSize.includes("Thermal") ? "12px" : "14px"};
+              line-height: 1.5;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+              background: white;
+              color: black;
+            }
             @media print {
-              body {
-                -webkit-print-color-adjust: exact;
-                color-adjust: exact;
+              html, body {
+                margin: 0 !important;
+                overflow: visible !important;
+                height: auto !important;
               }
-              
-              * {
-                box-sizing: border-box;
-              }
+              @page { margin: 0; }
+              .no-print { display: none !important; }
+            }
+            .print-container {
+              width: 100%;
+              max-width: 100%;
+              padding: 0;
+              margin: 0 auto;
             }
           </style>
         </head>
         <body>
-          ${isThermal ? thermalContent : standardContent}
+          <div class="print-container">
+            ${printContent}
+          </div>
         </body>
       </html>
     `
@@ -714,52 +527,6 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
         </CardContent>
       </Card>
 
-      {/* Print Options Dialog */}
-      <Dialog open={showPrintDialog} onOpenChange={setShowPrintDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Print Invoice - {printInvoice?.id}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="printPaperSize">Select Paper Size</Label>
-              <Select value={printPaperSize} onValueChange={setPrintPaperSize}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Thermal 80mm">🧾 Thermal 80mm (Receipt)</SelectItem>
-                  <SelectItem value="Thermal 58mm">🧾 Thermal 58mm (Small Receipt)</SelectItem>
-                  <SelectItem value="A4">📄 A4 (Standard)</SelectItem>
-                  <SelectItem value="Letter">📄 Letter (US Standard)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="bg-gray-50 p-3 rounded-md">
-              <p className="text-sm text-gray-600">
-                <strong>Selected:</strong> {printPaperSize}
-              </p>
-              <p className="text-xs text-gray-500 mt-1">
-                {printPaperSize.includes("Thermal")
-                  ? "Optimized for thermal receipt printers"
-                  : "Standard document format with margins"}
-              </p>
-            </div>
-
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setShowPrintDialog(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleConfirmPrint}>
-                <Printer className="h-4 w-4 mr-2" />
-                Print Now
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {showPreview && selectedInvoice && (
         <InvoicePreview
           invoice={selectedInvoice}
@@ -768,6 +535,13 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
           initialPaperSize={printPaperSize}
         />
       )}
+
+      {/* Hidden printable invoice to mirror billing-cart layout for printing */}
+      <div style={{ display: "none" }}>
+        {selectedInvoice && (
+          <PrintableInvoice ref={printRef} invoice={selectedInvoice} paperSize={printPaperSize} />
+        )}
+      </div>
     </>
   )
 }
