@@ -38,7 +38,7 @@ jobs:
           run_install: false
 
       # --------------------------------------------------
-      # 3b. Ensure pnpm is available on PATH (Windows)
+      # 3b. Enable Corepack (pnpm)
       # --------------------------------------------------
       - name: Enable Corepack (pnpm)
         run: |
@@ -89,7 +89,6 @@ jobs:
           git config user.email github-actions@github.com
           git add src-tauri/tauri.conf.json package.json
           
-          # Check if there are changes to commit
           if git diff --staged --quiet; then
             echo "⚠️ No changes to commit (version may have been bumped by another workflow)"
             exit 0
@@ -97,7 +96,6 @@ jobs:
           
           git commit -m "chore: release v${{ steps.bump.outputs.version }}"
           
-          # Pull and push with retry logic
           echo "🔄 Attempting to push changes..."
           for i in {1..3}; do
             echo "  Attempt $i/3"
@@ -208,7 +206,6 @@ jobs:
           REPO="${{ github.repository }}"
           TAG="v$VERSION"
           
-          # Find MSI file
           MSI_FILE=$(ls "$MSI_DIR"/*.msi 2>/dev/null | head -n 1)
           if [ -z "$MSI_FILE" ]; then
             echo "❌ No MSI file found in $MSI_DIR"
@@ -216,20 +213,17 @@ jobs:
             exit 1
           fi
           
-          # Verify signature exists
           if [ ! -f "$MSI_FILE.sig" ]; then
             echo "❌ MSI signature file not found: $MSI_FILE.sig"
             exit 1
           fi
           
-          # Get filename and signature
           MSI_NAME=$(basename "$MSI_FILE")
           MSI_SIG=$(cat "$MSI_FILE.sig")
           
           echo "📦 MSI File: $MSI_NAME"
           echo "🔗 Download URL: https://github.com/$REPO/releases/download/$TAG/$MSI_NAME"
           
-          # Create latest.json
           cat > "$MSI_DIR/latest.json" <<EOF
           {
             "version": "$VERSION",
@@ -248,9 +242,10 @@ jobs:
           cat "$MSI_DIR/latest.json"
 
       # --------------------------------------------------
-      # 17. Create GitHub Release & upload assets (using gh CLI)
+      # 17. Create / Update GitHub Release using gh CLI
       # --------------------------------------------------
-      - name: Create GitHub Release & upload assets
+      - name: Create or update GitHub Release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -259,14 +254,15 @@ jobs:
 
           echo "Creating or updating release $TAG..."
 
+          # Try to create the release + upload assets
           gh release create "$TAG" \
             --title "Release $TAG" \
             --notes "Auto-release $TAG\nBuilt with Tauri 2 • Next.js 16 • Python backend" \
             --latest \
             src-tauri/target/release/bundle/msi/*.msi \
             src-tauri/target/release/bundle/msi/*.sig \
-            src-tauri/target/release/bundle/msi/latest.json || {
-              echo "Release $TAG already exists → uploading/updating assets only"
+            src-tauri/target/release/bundle/msi/latest.json 2>/dev/null || {
+              echo "Release $TAG already exists → uploading / updating assets only"
               gh release upload "$TAG" \
                 src-tauri/target/release/bundle/msi/*.msi \
                 src-tauri/target/release/bundle/msi/*.sig \
