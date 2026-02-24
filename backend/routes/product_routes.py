@@ -2,6 +2,8 @@ from flask import Blueprint, request, jsonify, current_app as app
 from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
 from utils.connection_pool import get_supabase_client
+from helpers.utils import read_json_file
+from config.config import PRODUCTS_FILE
 
 product_bp = Blueprint('product', __name__)
 
@@ -125,7 +127,14 @@ def get_products():
         app.logger.error(f"Error fetching store inventory products: {str(e)}")
         import traceback
         app.logger.error(traceback.format_exc())
-        return jsonify({"message": "An error occurred"}), 500
+        cached_products = read_json_file(PRODUCTS_FILE, [])
+        if search:
+            term = search.lower()
+            cached_products = [
+                p for p in cached_products
+                if term in str(p.get("name", "")).lower() or term in str(p.get("barcode", "")).lower()
+            ]
+        return jsonify(cached_products[:limit]), 200
 
 
 @product_bp.route('/products/<product_id>', methods=['GET'])
@@ -196,4 +205,8 @@ def get_product(product_id):
         app.logger.error(f"Error fetching product {product_id}: {str(e)}")
         import traceback
         app.logger.error(traceback.format_exc())
-        return jsonify({"message": "An error occurred"}), 500
+        cached_products = read_json_file(PRODUCTS_FILE, [])
+        product = next((p for p in cached_products if str(p.get("id")) == str(product_id)), None)
+        if not product:
+            return jsonify({"message": "Product not found"}), 404
+        return jsonify(product), 200

@@ -5,6 +5,8 @@ from utils.connection_pool import get_supabase_client
 from datetime import datetime, timezone
 import uuid
 import traceback
+from helpers.utils import read_json_file
+from config.config import CUSTOMERS_FILE
 
 customer_bp = Blueprint('customer', __name__)
 
@@ -36,7 +38,16 @@ def get_customers():
     except Exception as e:
         app.logger.error(f"❌ Error fetching customers: {str(e)}")
         app.logger.error(traceback.format_exc())
-        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+        cached = read_json_file(CUSTOMERS_FILE, [])
+        if search:
+            term = search.lower()
+            cached = [
+                c for c in cached
+                if term in str(c.get("name", "")).lower()
+                or term in str(c.get("phone", "")).lower()
+                or term in str(c.get("email", "")).lower()
+            ]
+        return jsonify(cached[:limit]), 200
 
 
 @customer_bp.route('/customers/<customer_id>', methods=['GET'])
@@ -60,7 +71,11 @@ def get_customer(customer_id):
     except Exception as e:
         app.logger.error(f"❌ Error fetching customer {customer_id}: {str(e)}")
         app.logger.error(traceback.format_exc())
-        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+        cached = read_json_file(CUSTOMERS_FILE, [])
+        customer = next((c for c in cached if str(c.get("id")) == str(customer_id)), None)
+        if not customer:
+            return jsonify({"message": "Customer not found"}), 404
+        return jsonify(customer), 200
 
 
 @customer_bp.route('/customers', methods=['POST'])
@@ -121,6 +136,8 @@ def update_customer(customer_id):
         
         allowed_fields = ['name', 'phone', 'email', 'address']
         update_data = {k: v for k, v in data.items() if k in allowed_fields}
+        base_version = data.get("baseVersion") or data.get("base_version")
+        base_updated_at = data.get("baseUpdatedAt") or data.get("base_updated_at") or data.get("baseupdatedat")
         
         if not update_data:
             return jsonify({"message": "No valid fields to update"}), 400
@@ -129,10 +146,31 @@ def update_customer(customer_id):
         update_data['updatedat'] = datetime.now(timezone.utc).isoformat()
         
         supabase = get_supabase_client()
-        response = supabase.table('customers').update(update_data).eq('id', customer_id).execute()
-        
+        query = supabase.table('customers').update(update_data).eq('id', customer_id)
+        if base_version is not None:
+            try:
+                base_version = int(base_version)
+                query = query.eq('version', base_version)
+                update_data['version'] = base_version + 1
+            except (TypeError, ValueError):
+                return jsonify({"message": "Invalid baseVersion"}), 400
+        elif base_updated_at:
+            query = query.eq('updatedat', base_updated_at)
+        else:
+            latest = supabase.table('customers').select('id, updatedat, version').eq('id', customer_id).limit(1).execute()
+            return jsonify({
+                "message": "Conflict check required. Send baseVersion or baseUpdatedAt.",
+                "latest": latest.data[0] if latest.data else None,
+            }), 409
+
+        response = query.execute()
+
         if not response.data or len(response.data) == 0:
-            return jsonify({"message": "Customer not found"}), 404
+            latest = supabase.table('customers').select('*').eq('id', customer_id).limit(1).execute()
+            return jsonify({
+                "message": "Update conflict: record changed in another app/session.",
+                "latest": latest.data[0] if latest.data else None,
+            }), 409
         
         updated_customer = response.data[0]
         app.logger.info(f"✅ Updated customer: {customer_id}")

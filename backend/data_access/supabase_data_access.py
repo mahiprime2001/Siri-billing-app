@@ -3,10 +3,57 @@ from supabase import Client
 from typing import List, Dict, Any, Optional
 from utils.connection_pool import get_supabase_client
 from utils.sync_controller import SyncController  # Keep this for now, will be refactored later
+from helpers.utils import read_json_file, write_json_file
+from config.config import (
+    USERS_FILE,
+    PRODUCTS_FILE,
+    BILLS_FILE,
+    CUSTOMERS_FILE,
+    SYSTEM_SETTINGS_FILE,
+    STORES_FILE,
+    RETURNS_FILE,
+    USER_STORES_FILE,
+    HSN_CODES_FILE,
+)
 
 logger = logging.getLogger('supabase_data_access')
 
 # Placeholder SyncController for now, will be properly integrated/refactored
+
+TABLE_CACHE_FILES = {
+    "users": USERS_FILE,
+    "products": PRODUCTS_FILE,
+    "bills": BILLS_FILE,
+    "customers": CUSTOMERS_FILE,
+    "systemsettings": SYSTEM_SETTINGS_FILE,
+    "stores": STORES_FILE,
+    "returns": RETURNS_FILE,
+    "userstores": USER_STORES_FILE,
+    "hsn_codes": HSN_CODES_FILE,
+}
+
+
+def _read_local_cache(table_name: str) -> Optional[List[Dict]]:
+    cache_file = TABLE_CACHE_FILES.get(table_name.lower())
+    if not cache_file:
+        return None
+    default = {} if table_name.lower() == "systemsettings" else []
+    data = read_json_file(cache_file, default)
+    if isinstance(data, dict):
+        return [data]
+    if isinstance(data, list):
+        return data
+    return []
+
+
+def _refresh_local_cache(table_name: str, records: List[Dict]) -> None:
+    cache_file = TABLE_CACHE_FILES.get(table_name.lower())
+    if not cache_file:
+        return
+    if table_name.lower() == "systemsettings":
+        write_json_file(cache_file, records[0] if records else {})
+    else:
+        write_json_file(cache_file, records)
 
 def sync_to_supabase_immediately(table_name: str, record: Dict, operation: str = "INSERT") -> bool:
     """
@@ -59,12 +106,12 @@ def sync_to_supabase_immediately(table_name: str, record: Dict, operation: str =
 
 
 def get_supabase_data(table_name: str, filters: Optional[Dict[str, Any]] = None) -> Optional[List[Dict]]:
-    """Fetch data directly from Supabase with optional filters"""
+    """Supabase-first read with local JSON fallback cache."""
     try:
         supabase: Client = get_supabase_client()
         if not supabase:
-            logger.error("Supabase client not available for fetching data.")
-            return None
+            logger.warning("Supabase client not available; using local cache fallback.")
+            return _read_local_cache(table_name)
         
         query = supabase.from_(table_name.lower()).select("*")
         
@@ -79,16 +126,18 @@ def get_supabase_data(table_name: str, filters: Optional[Dict[str, Any]] = None)
         
         response = query.execute()
         
-        if response.data:
-            return response.data
-        else:
-            # If response.data is empty, it means no records found, which is a successful query.
-            # No need to check for status_code == 200 explicitly with new client behavior.
-            return []
+        records = response.data or []
+        # Refresh local cache from cloud truth for unfiltered reads.
+        if not filters:
+            try:
+                _refresh_local_cache(table_name, records)
+            except Exception as cache_error:
+                logger.warning(f"Failed to refresh local cache for {table_name}: {cache_error}")
+        return records
             
     except Exception as e:
-        logger.error(f"Error fetching from Supabase {table_name}: {e}")
-        return None
+        logger.warning(f"Error fetching from Supabase {table_name}, using local cache fallback: {e}")
+        return _read_local_cache(table_name)
 
 
 def check_user_exists_supabase(user_id: str) -> bool:

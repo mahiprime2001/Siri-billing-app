@@ -2,6 +2,9 @@ from flask import Blueprint, request, jsonify, current_app as app
 from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
 from utils.connection_pool import get_supabase_client
+from datetime import datetime, timezone
+from helpers.utils import read_json_file
+from config.config import USERS_FILE
 
 user_bp = Blueprint('user', __name__)
 
@@ -28,7 +31,10 @@ def get_users():
         
     except Exception as e:
         app.logger.error(f"❌ Error fetching users: {str(e)}")
-        return jsonify({"message": "An error occurred while fetching users"}), 500
+        cached = read_json_file(USERS_FILE, [])
+        cached = [u for u in cached if u.get("role") != "super_admin"]
+        app.logger.warning(f"Returning {len(cached)} cached users as fallback")
+        return jsonify(cached), 200
 
 
 @user_bp.route('/users/<user_id>', methods=['GET'])
@@ -62,7 +68,13 @@ def get_user(user_id):
         
     except Exception as e:
         app.logger.error(f"❌ Error fetching user {user_id}: {str(e)}")
-        return jsonify({"message": "An error occurred while fetching user"}), 500
+        cached = read_json_file(USERS_FILE, [])
+        user = next((u for u in cached if str(u.get("id")) == str(user_id)), None)
+        if user and user.get("role") == "super_admin":
+            user = None
+        if not user:
+            return jsonify({"message": "User not found"}), 404
+        return jsonify(user), 200
 
 
 @user_bp.route('/users/<user_id>', methods=['PUT'])
@@ -90,6 +102,8 @@ def update_user(user_id):
         # Only allow updating certain fields
         allowed_fields = ['name', 'role']
         update_data = {k: v for k, v in data.items() if k in allowed_fields}
+        base_version = data.get("baseVersion") or data.get("base_version")
+        base_updated_at = data.get("baseUpdatedAt") or data.get("base_updated_at") or data.get("baseupdatedat")
         
         # ✅ SECURITY: Don't allow changing role to super_admin
         if 'role' in update_data and update_data['role'] == 'super_admin':
@@ -98,12 +112,35 @@ def update_user(user_id):
         
         if not update_data:
             return jsonify({"message": "No valid fields to update"}), 400
-        
-        # Update user
-        response = supabase.table('users').update(update_data).eq('id', user_id).execute()
-        
+
+        update_data['updatedat'] = datetime.now(timezone.utc).isoformat()
+
+        # Conflict-safe update: require base marker to avoid blind overwrite.
+        query = supabase.table('users').update(update_data).eq('id', user_id)
+        if base_version is not None:
+            try:
+                base_version = int(base_version)
+                query = query.eq('version', base_version)
+                update_data['version'] = base_version + 1
+            except (TypeError, ValueError):
+                return jsonify({"message": "Invalid baseVersion"}), 400
+        elif base_updated_at:
+            query = query.eq('updatedat', base_updated_at)
+        else:
+            latest = supabase.table('users').select('id, updatedat, version').eq('id', user_id).limit(1).execute()
+            return jsonify({
+                "message": "Conflict check required. Send baseVersion or baseUpdatedAt.",
+                "latest": latest.data[0] if latest.data else None,
+            }), 409
+
+        response = query.execute()
+
         if not response.data or len(response.data) == 0:
-            return jsonify({"message": "User not found"}), 404
+            latest = supabase.table('users').select('*').eq('id', user_id).limit(1).execute()
+            return jsonify({
+                "message": "Update conflict: record changed in another app/session.",
+                "latest": latest.data[0] if latest.data else None,
+            }), 409
         
         updated_user = response.data[0]
         app.logger.info(f"✅ Updated user: {updated_user['email']}")

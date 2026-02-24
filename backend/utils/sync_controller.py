@@ -14,6 +14,26 @@ from config.config import (
 
 logger = logging.getLogger("sync_controller")
 
+
+def _extract_base_markers(record: Dict[str, Any]) -> tuple[Optional[int], Optional[str]]:
+    base_version_raw = (
+        record.pop("baseVersion", None)
+        or record.pop("base_version", None)
+        or record.pop("baseversion", None)
+    )
+    base_updated_at = (
+        record.pop("baseUpdatedAt", None)
+        or record.pop("base_updated_at", None)
+        or record.pop("baseupdatedat", None)
+    )
+    base_version = None
+    if base_version_raw is not None:
+        try:
+            base_version = int(base_version_raw)
+        except (TypeError, ValueError):
+            base_version = None
+    return base_version, str(base_updated_at) if base_updated_at is not None else None
+
 def json_serial(obj):
     """JSON serializer for objects not serializable by default"""
     if isinstance(obj, (datetime, date)):
@@ -131,10 +151,22 @@ class SyncController:
             item["attempts"] += 1
 
             try:
+                record_for_db = dict(record)
+                base_version, base_updated_at = _extract_base_markers(record_for_db)
+
                 if change_type == "INSERT":
-                    response = supabase.from_(table_name.lower()).insert(record).execute()
+                    response = supabase.from_(table_name.lower()).insert(record_for_db).execute()
                 elif change_type == "UPDATE":
-                    response = supabase.from_(table_name.lower()).update(record).eq("id", record_id).execute()
+                    update_query = supabase.from_(table_name.lower()).update(record_for_db).eq("id", record_id)
+                    if base_version is not None:
+                        update_query = update_query.eq("version", base_version)
+                        record_for_db["version"] = base_version + 1
+                    elif base_updated_at:
+                        # Support both common timestamp columns across tables.
+                        table_l = table_name.lower()
+                        updated_col = "updatedat" if table_l in {"users", "products", "customers", "stores", "batch", "storeinventory"} else "updated_at"
+                        update_query = update_query.eq(updated_col, base_updated_at)
+                    response = update_query.execute()
                 else:
                     logger.error(f"Unsupported change type in queue: {change_type}")
                     self._log_to_sync_table(supabase, table_name, record_id, change_type, record, status="failed", error_message=f"Unsupported change type: {change_type}")
@@ -144,9 +176,13 @@ class SyncController:
                     logger.info(f"Successfully synced {change_type} for {table_name}: {record_id}")
                     self._log_to_sync_table(supabase, table_name, record_id, change_type, record, status="synced")
                 else:
-                    # This part might need more sophisticated error handling based on Supabase client exceptions
-                    logger.error(f"Failed to sync {change_type} for {table_name}: {record_id} - Response: {response.data}")
-                    error_message = f"Supabase response error: {response.data}"
+                    if change_type == "UPDATE":
+                        latest = supabase.from_(table_name.lower()).select("*").eq("id", record_id).limit(1).execute()
+                        latest_row = latest.data[0] if latest.data else None
+                        error_message = f"Conflict detected for {table_name}:{record_id}. latest={latest_row}"
+                    else:
+                        error_message = f"Supabase response error: {response.data}"
+                    logger.error(f"Failed to sync {change_type} for {table_name}: {record_id} - {error_message}")
                     if item["attempts"] < 3:  # Retry a few times
                         items_to_retry.append(item)
                         self._log_to_sync_table(supabase, table_name, record_id, change_type, record, status="pending", error_message=error_message)
@@ -181,49 +217,16 @@ class SyncController:
 
     def push_sync(self, sync_data: Dict[str, List[Dict]]) -> Dict[str, Any]:
         """
-        Synchronizes data from local JSON files (or any provided data) to Supabase.
-        This is a more aggressive push, overwriting Supabase data based on local.
+        Legacy bulk push is intentionally disabled to avoid stale local snapshots
+        overwriting newer cloud rows.
         """
-        logger.info("Starting push_sync (local JSON to Supabase)")
-        supabase: Client = get_supabase_client()
         results = {
-            "success": False,
+            "success": True,
             "stats": {},
-            "errors": []
+            "errors": [],
+            "message": "Bulk push disabled. Use row-level queue_for_sync/process_sync_queue only."
         }
-
-        if not supabase:
-            logger.error("No Supabase client available for push_sync")
-            results["errors"].append("Failed to get Supabase client")
-            return results
-
-        for table_name, records in sync_data.items():
-            logger.info(f"Push syncing table {table_name} with {len(records)} records")
-            try:
-                # For simplicity in initial implementation, we'll try to insert/upsert all records.
-                # A more complex logic might involve checking last_updated timestamps.
-                # Using upsert (on_conflict) to handle existing records.
-                response = supabase.from_(table_name.lower()).upsert(records, on_conflict="id").execute()
-
-                if response.data:
-                    results["stats"][table_name] = {"pushed": len(response.data)}
-                    logger.info(f"Successfully push synced {len(response.data)} records to {table_name}")
-                else:
-                    logger.error(f"Failed to push sync {table_name}: {response.data}")
-                    results["errors"].append(f"{table_name}: Failed to push - {response.data}")
-
-            except APIError as e:
-                logger.error(f"Supabase API error during push sync for {table_name}: {str(e)}")
-                results["errors"].append(f"{table_name}: Supabase API Error - {str(e)}")
-
-            except Exception as e:
-                logger.error(f"Error during push sync for {table_name}: {e}")
-                results["errors"].append(f"{table_name}: General Error - {e}")
-
-        if not results["errors"]:
-            results["success"] = True
-
-        logger.info("Finished push_sync")
+        logger.warning(results["message"])
         return results
 
     def pull_sync(self, last_sync: Optional[str], tables: Optional[List[str]] = None) -> Dict[str, Any]:

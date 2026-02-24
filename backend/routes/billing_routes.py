@@ -4,6 +4,8 @@ from auth.auth import require_auth
 from utils.connection_pool import get_supabase_client
 from datetime import datetime, timezone
 import traceback
+from helpers.utils import read_json_file
+from config.config import BILLS_FILE
 
 from services.billing_service import create_bill_transaction
 from utils.offline_bill_queue import enqueue_bill_create
@@ -47,7 +49,10 @@ def get_bills():
     except Exception as e:
         app.logger.error(f"❌ Error fetching bills: {str(e)}")
         app.logger.error(traceback.format_exc())
-        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+        cached_bills = read_json_file(BILLS_FILE, [])
+        if store_id:
+            cached_bills = [b for b in cached_bills if str(b.get("storeid")) == str(store_id)]
+        return jsonify(cached_bills[:limit]), 200
 
 
 @billing_bp.route('/bills/<bill_id>', methods=['GET'])
@@ -76,7 +81,11 @@ def get_bill(bill_id):
     except Exception as e:
         app.logger.error(f"❌ Error fetching bill {bill_id}: {str(e)}")
         app.logger.error(traceback.format_exc())
-        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+        cached_bills = read_json_file(BILLS_FILE, [])
+        bill = next((b for b in cached_bills if str(b.get("id")) == str(bill_id)), None)
+        if not bill:
+            return jsonify({"message": "Bill not found"}), 404
+        return jsonify(bill), 200
 
 
 @billing_bp.route('/bills', methods=['POST'])
@@ -220,7 +229,18 @@ def get_billing_stats():
     except Exception as e:
         app.logger.error(f"❌ Error fetching billing stats: {str(e)}")
         app.logger.error(traceback.format_exc())
-        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+        cached_bills = read_json_file(BILLS_FILE, [])
+        if store_id:
+            cached_bills = [b for b in cached_bills if str(b.get("storeid")) == str(store_id)]
+        completed = [b for b in cached_bills if str(b.get("status")) == "completed"]
+        total_sales = sum(float(b.get('total') or 0) for b in completed)
+        total_bills = len(completed)
+        avg_bill_amount = total_sales / total_bills if total_bills > 0 else 0
+        return jsonify({
+            'total_sales': total_sales,
+            'total_bills': total_bills,
+            'average_bill_amount': avg_bill_amount
+        }), 200
 
 
 @billing_bp.route('/bills/<bill_id>/items', methods=['GET'])
@@ -262,7 +282,7 @@ def get_bill_items(bill_id):
     except Exception as e:
         app.logger.error(f"❌ Error fetching bill items: {str(e)}")
         app.logger.error(traceback.format_exc())
-        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+        return jsonify([]), 200
 
 
 @billing_bp.route('/bills/<bill_id>/replacements', methods=['GET'])
@@ -285,4 +305,4 @@ def get_bill_replacements(bill_id):
     except Exception as e:
         app.logger.error(f"❌ Error fetching bill replacements: {str(e)}")
         app.logger.error(traceback.format_exc())
-        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+        return jsonify([]), 200

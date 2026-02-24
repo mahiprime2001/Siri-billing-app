@@ -4,6 +4,8 @@ from auth.auth import require_auth
 from utils.connection_pool import get_supabase_client
 from datetime import datetime, timezone
 import hashlib
+from helpers.utils import read_json_file
+from config.config import STORES_FILE, USER_STORES_FILE
 
 store_bp = Blueprint('store', __name__)
 
@@ -48,7 +50,8 @@ def get_stores():
         
     except Exception as e:
         app.logger.error(f"❌ Error fetching stores: {str(e)}")
-        return jsonify({"message": "An error occurred"}), 500
+        stores = read_json_file(STORES_FILE, [])
+        return jsonify({"stores": stores}), 200  # ✅ Wrapped in object
 
 
 @store_bp.route('/user-stores', methods=['GET'])
@@ -78,7 +81,9 @@ def get_user_stores():
         app.logger.error(f"❌ Error fetching user stores: {str(e)}")
         import traceback
         app.logger.error(traceback.format_exc())
-        return jsonify({"message": "An error occurred"}), 500
+        user_stores = read_json_file(USER_STORES_FILE, [])
+        user_stores = [u for u in user_stores if str(u.get("userId")) == str(current_user_id)]
+        return jsonify(user_stores), 200
 
 
 @store_bp.route('/stores/current', methods=['GET'])
@@ -123,7 +128,15 @@ def get_current_user_store():
         app.logger.error(f"❌ Error fetching current user store: {str(e)}")
         import traceback
         app.logger.error(traceback.format_exc())
-        return jsonify({"message": "An error occurred"}), 500
+        user_stores = read_json_file(USER_STORES_FILE, [])
+        assigned = next((u for u in user_stores if str(u.get("userId")) == str(current_user_id)), None)
+        if not assigned:
+            return jsonify({"message": "No store assigned to this user"}), 404
+        stores = read_json_file(STORES_FILE, [])
+        store = next((s for s in stores if str(s.get("id")) == str(assigned.get("storeId"))), None)
+        if not store:
+            return jsonify({"message": "Store not found"}), 404
+        return jsonify(store), 200
 
 
 @store_bp.route('/stores/current/transfer-orders', methods=['GET'])

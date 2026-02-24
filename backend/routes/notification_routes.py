@@ -3,8 +3,16 @@ from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
 from utils.connection_pool import get_supabase_client
 from datetime import datetime, timezone
+from helpers.utils import read_json_file
+import os
 
 notification_bp = Blueprint('notification', __name__)
+NOTIFICATIONS_CACHE_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "data",
+    "json",
+    "notifications.json",
+)
 
 @notification_bp.route('/notifications', methods=['GET'])
 @require_auth
@@ -34,7 +42,10 @@ def get_notifications():
         app.logger.error(f"❌ Error fetching notifications: {str(e)}")
         import traceback
         app.logger.error(traceback.format_exc())
-        return jsonify({"message": "An error occurred"}), 500
+        notifications = read_json_file(NOTIFICATIONS_CACHE_FILE, [])
+        if unread_only:
+            notifications = [n for n in notifications if not n.get("is_read")]
+        return jsonify(notifications[:limit]), 200
 
 
 @notification_bp.route('/notifications/unread/count', methods=['GET'])
@@ -54,7 +65,9 @@ def get_unread_count():
         
     except Exception as e:
         app.logger.error(f"❌ Error fetching unread count: {str(e)}")
-        return jsonify({"message": "An error occurred"}), 500
+        notifications = read_json_file(NOTIFICATIONS_CACHE_FILE, [])
+        count = len([n for n in notifications if not n.get("is_read")])
+        return jsonify({"count": count}), 200
 
 
 @notification_bp.route('/notifications/<int:notification_id>/read', methods=['POST'])

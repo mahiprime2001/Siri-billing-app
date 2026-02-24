@@ -35,4 +35,5 @@ def get_hsn_codes():
     except Exception as e:
         app.logger.error(f"Error fetching HSN codes: {str(e)}")
         app.logger.error(traceback.format_exc())
-        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+        hsn_codes = get_hsn_codes_data()
+        return jsonify(hsn_codes), 200
