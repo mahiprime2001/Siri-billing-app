@@ -126,7 +126,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-           # --------------------------------------------------
+      # --------------------------------------------------
       # 9. Setup Python
       # --------------------------------------------------
       - name: Setup Python
@@ -248,18 +248,30 @@ jobs:
           cat "$MSI_DIR/latest.json"
 
       # --------------------------------------------------
-      # 17. Create GitHub Release
+      # 17. Create GitHub Release & upload assets (using gh CLI)
       # --------------------------------------------------
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ steps.bump.outputs.version }}
-          name: Release v${{ steps.bump.outputs.version }}
-          draft: false
-          prerelease: false
-          files: |
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/msi/*.sig
-            src-tauri/target/release/bundle/msi/latest.json
+      - name: Create GitHub Release & upload assets
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.bump.outputs.version }}"
+          TAG="v$VERSION"
+
+          echo "Creating or updating release $TAG..."
+
+          gh release create "$TAG" \
+            --title "Release $TAG" \
+            --notes "Auto-release $TAG\nBuilt with Tauri 2 • Next.js 16 • Python backend" \
+            --latest \
+            src-tauri/target/release/bundle/msi/*.msi \
+            src-tauri/target/release/bundle/msi/*.sig \
+            src-tauri/target/release/bundle/msi/latest.json || {
+              echo "Release $TAG already exists → uploading/updating assets only"
+              gh release upload "$TAG" \
+                src-tauri/target/release/bundle/msi/*.msi \
+                src-tauri/target/release/bundle/msi/*.sig \
+                src-tauri/target/release/bundle/msi/latest.json \
+                --clobber
+            }
+
+          echo "Release page: https://github.com/${{ github.repository }}/releases/tag/$TAG"
