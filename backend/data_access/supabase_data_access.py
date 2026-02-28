@@ -12,6 +12,7 @@ from config.config import (
     SYSTEM_SETTINGS_FILE,
     STORES_FILE,
     RETURNS_FILE,
+    STORE_DAMAGE_RETURNS_FILE,
     USER_STORES_FILE,
     HSN_CODES_FILE,
 )
@@ -28,6 +29,7 @@ TABLE_CACHE_FILES = {
     "systemsettings": SYSTEM_SETTINGS_FILE,
     "stores": STORES_FILE,
     "returns": RETURNS_FILE,
+    "store_damage_returns": STORE_DAMAGE_RETURNS_FILE,
     "userstores": USER_STORES_FILE,
     "hsn_codes": HSN_CODES_FILE,
 }

@@ -6,7 +6,7 @@ from utils.connection_pool import get_supabase_client
 from config.config import (
     USERS_FILE, PRODUCTS_FILE, BILLS_FILE, CUSTOMERS_FILE,
     SYSTEM_SETTINGS_FILE, STORES_FILE, RETURNS_FILE, USER_STORES_FILE,
-    HSN_CODES_FILE
+    HSN_CODES_FILE, STORE_DAMAGE_RETURNS_FILE
 )
 
 from helpers.utils import read_json_file, write_json_file
@@ -294,6 +294,21 @@ def save_returns_data(returns):
     # Sync recent returns
     for return_item in returns[-10:]:  # Assuming only recent returns are synced
         sync_to_supabase_immediately('returns', return_item, "INSERT")
+
+
+def get_store_damage_returns_data():
+    """Load store damaged return rows from Supabase first, fallback to JSON"""
+    supabase_data = get_supabase_data('store_damage_returns')
+    if supabase_data is not None:
+        return supabase_data
+    return read_json_file(STORE_DAMAGE_RETURNS_FILE, [])
+
+
+def save_store_damage_returns_data(rows):
+    """Save store damaged return rows to JSON and queue sync"""
+    write_json_file(STORE_DAMAGE_RETURNS_FILE, rows)
+    for row in rows[-20:]:
+        sync_to_supabase_immediately('store_damage_returns', row, "INSERT")
 
 
 def update_store_inventory_stock(store_id: str, product_id: str, quantity_sold: int) -> bool:

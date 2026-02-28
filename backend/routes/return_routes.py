@@ -6,8 +6,51 @@ from data_access.data_access import update_both_inventory_and_product_stock
 from datetime import datetime, timezone
 import uuid
 import traceback
+from helpers.utils import read_json_file, write_json_file
+from config.config import STORE_DAMAGE_RETURNS_FILE, PRODUCTS_FILE, STOREINVENTORY_FILE, USER_STORES_FILE
+from utils.offline_damage_return_queue import enqueue_damage_return_create
 
 return_bp = Blueprint('return', __name__)
+
+
+def _resolve_current_store_id(supabase, user_id: str):
+    try:
+        user_store_response = (
+            supabase.table("userstores").select("storeId").eq("userId", user_id).limit(1).execute()
+        )
+        if user_store_response.data:
+            return user_store_response.data[0].get("storeId")
+    except Exception:
+        pass
+
+    # Offline fallback
+    user_stores = read_json_file(USER_STORES_FILE, [])
+    match = next((row for row in user_stores if str(row.get("userId")) == str(user_id)), None)
+    return match.get("storeId") if match else None
+
+
+def _apply_local_stock_reduction(store_id: str, product_id: str, quantity: int) -> None:
+    """Offline fallback: update local JSON snapshots immediately."""
+    if quantity <= 0:
+        return
+
+    products = read_json_file(PRODUCTS_FILE, [])
+    for product in products:
+        if str(product.get("id")) == str(product_id):
+            current_stock = int(product.get("stock") or 0)
+            product["stock"] = max(0, current_stock - quantity)
+            product["updatedat"] = datetime.now(timezone.utc).isoformat()
+            break
+    write_json_file(PRODUCTS_FILE, products)
+
+    inventory = read_json_file(STOREINVENTORY_FILE, [])
+    for row in inventory:
+        if str(row.get("storeid")) == str(store_id) and str(row.get("productid")) == str(product_id):
+            current_qty = int(row.get("quantity") or 0)
+            row["quantity"] = max(0, current_qty - quantity)
+            row["updatedat"] = datetime.now(timezone.utc).isoformat()
+            break
+    write_json_file(STOREINVENTORY_FILE, inventory)
 
 
 @return_bp.route('/returns', methods=['GET'])
@@ -411,3 +454,135 @@ def get_pending_returns_count():
     except Exception as e:
         app.logger.error(f"❌ Error fetching pending returns count: {str(e)}")
         return jsonify({"message": "An error occurred"}), 500
+
+
+@return_bp.route('/store-damage-returns', methods=['GET'])
+@require_auth
+def get_store_damage_returns():
+    """List damage-return rows for current store user."""
+    try:
+        current_user_id = get_jwt_identity()
+        status = request.args.get("status")
+        limit = request.args.get("limit", 100, type=int)
+
+        supabase = get_supabase_client()
+        store_id = _resolve_current_store_id(supabase, current_user_id)
+        if not store_id:
+            return jsonify([]), 200
+
+        query = supabase.table("store_damage_returns").select(
+            "*, products(id, name, barcode), stores(id, name)"
+        ).eq("store_id", store_id)
+        if status:
+            query = query.eq("status", status)
+        response = query.order("created_at", desc=True).limit(limit).execute()
+        return jsonify(response.data or []), 200
+    except Exception as e:
+        app.logger.error(f"❌ Error fetching store damage returns: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        rows = read_json_file(STORE_DAMAGE_RETURNS_FILE, [])
+        return jsonify(rows[:limit]), 200
+
+
+@return_bp.route('/store-damage-returns', methods=['POST'])
+@require_auth
+def create_store_damage_return():
+    """
+    Create a new damage-return row.
+    Business rule: decrement storeinventory + global products stock at submit time.
+    """
+    try:
+        current_user_id = get_jwt_identity()
+        data = request.get_json() or {}
+        selected_items = data.get("selectedItems", []) or []
+        reason = (data.get("reason") or "").strip()
+        damage_origin = (data.get("damageOrigin") or "store").strip().lower()
+
+        if damage_origin not in {"store", "transport"}:
+            return jsonify({"message": "damageOrigin must be 'store' or 'transport'"}), 400
+        if not selected_items:
+            return jsonify({"message": "selectedItems is required"}), 400
+        if not reason:
+            return jsonify({"message": "reason is required"}), 400
+
+        supabase = get_supabase_client()
+        store_id = _resolve_current_store_id(supabase, current_user_id)
+        if not store_id:
+            return jsonify({"message": "No store assigned to this user"}), 404
+
+        created_rows = []
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        for item in selected_items:
+            product_id = item.get("productId") or item.get("product_id")
+            quantity = int(item.get("quantity") or 0)
+            note = item.get("note") or data.get("note") or ""
+            if not product_id or quantity <= 0:
+                continue
+
+            row = {
+                "id": f"SDR-{uuid.uuid4().hex[:12].upper()}",
+                "store_id": store_id,
+                "product_id": product_id,
+                "quantity": quantity,
+                "reason": reason,
+                "damage_origin": damage_origin,
+                "status": "sent_to_admin",
+                "notes": note,
+                "created_by": current_user_id,
+                "created_at": now_iso,
+                "updated_at": now_iso,
+            }
+
+            try:
+                supabase.table("store_damage_returns").insert(row).execute()
+                stock_ok = update_both_inventory_and_product_stock(
+                    store_id=store_id,
+                    product_id=product_id,
+                    quantity_sold=quantity,
+                )
+                if not stock_ok:
+                    raise RuntimeError("Failed to reduce stock for damaged return")
+
+                supabase.table("damaged_inventory_events").insert(
+                    {
+                        "id": f"DMG-{uuid.uuid4().hex[:12].upper()}",
+                        "store_id": store_id,
+                        "product_id": product_id,
+                        "quantity": quantity,
+                        "source_type": "store_damage_return",
+                        "source_id": row["id"],
+                        "reason": reason,
+                        "status": "reported",
+                        "reported_by": current_user_id,
+                        "created_at": now_iso,
+                        "updated_at": now_iso,
+                    }
+                ).execute()
+                created_rows.append(row)
+            except Exception as cloud_error:
+                # Offline fallback: local write + queue
+                rows = read_json_file(STORE_DAMAGE_RETURNS_FILE, [])
+                rows.append(row)
+                write_json_file(STORE_DAMAGE_RETURNS_FILE, rows)
+                _apply_local_stock_reduction(store_id, product_id, quantity)
+                queue_info = enqueue_damage_return_create(current_user_id, row)
+                row["queued"] = True
+                row["queue_id"] = queue_info["queue_id"]
+                row["cloud_error"] = str(cloud_error)
+                created_rows.append(row)
+
+        if not created_rows:
+            return jsonify({"message": "No valid items to submit"}), 400
+
+        was_queued = any(r.get("queued") for r in created_rows)
+        return jsonify({
+            "message": "Damage return submitted",
+            "count": len(created_rows),
+            "queued": was_queued,
+            "rows": created_rows,
+        }), 202 if was_queued else 201
+    except Exception as e:
+        app.logger.error(f"❌ Error creating store damage return: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"message": "An error occurred", "error": str(e)}), 500

@@ -43,12 +43,15 @@ BILLS_FILE = os.path.join(JSON_DIR, "bills.json")
 CUSTOMERS_FILE = os.path.join(JSON_DIR, "customers.json")
 SYSTEM_SETTINGS_FILE = os.path.join(JSON_DIR, "system_settings.json")
 STORES_FILE = os.path.join(JSON_DIR, "stores.json")
+STOREINVENTORY_FILE = os.path.join(JSON_DIR, "storeinventory.json")
 RETURNS_FILE = os.path.join(JSON_DIR, "returns.json")
+STORE_DAMAGE_RETURNS_FILE = os.path.join(JSON_DIR, "store_damage_returns.json")
 BILL_FORMATS_FILE = os.path.join(JSON_DIR, "bill_formats.json")
 USER_STORES_FILE = os.path.join(JSON_DIR, "userstores.json")
 HSF_CODE_FILE = os.path.join(JSON_DIR, "hsf_codes.json")
 HSN_CODES_FILE = os.path.join(JSON_DIR, "hsn_codes.json")
 OFFLINE_BILL_QUEUE_FILE = os.path.join(JSON_DIR, "offline_bill_queue.json")
+OFFLINE_DAMAGE_RETURN_QUEUE_FILE = os.path.join(JSON_DIR, "offline_damage_return_queue.json")
 
 # =========================================================
 # 📝 LOGGING

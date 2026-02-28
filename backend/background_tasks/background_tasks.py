@@ -4,12 +4,14 @@ import os
 from flask import Flask
 from config.config import (
     PRODUCTS_FILE, CUSTOMERS_FILE, USERS_FILE, STORES_FILE, SYSTEM_SETTINGS_FILE,
-    RETURNS_FILE, BILLS_FILE, BILL_FORMATS_FILE, USER_STORES_FILE
+    RETURNS_FILE, STORE_DAMAGE_RETURNS_FILE, BILLS_FILE, BILL_FORMATS_FILE, USER_STORES_FILE
 )
 
 from helpers.utils import write_json_file, read_json_file
 from utils.sync_controller import SyncController  # Global instance is fine as it manages client pool
 from utils.offline_bill_queue import process_offline_bill_queue
+from utils.offline_damage_return_queue import process_offline_damage_return_queue
+from utils.connection_pool import get_supabase_client
 
 # Map table names to their corresponding file paths
 TABLE_FILE_MAP = {
@@ -19,6 +21,7 @@ TABLE_FILE_MAP = {
     'Stores': STORES_FILE,
     'SystemSettings': SYSTEM_SETTINGS_FILE,
     'Returns': RETURNS_FILE,
+    'Store_Damage_Returns': STORE_DAMAGE_RETURNS_FILE,
     'Bills': BILLS_FILE,
     'BillFormats': BILL_FORMATS_FILE,
     'UserStores': USER_STORES_FILE,
@@ -29,6 +32,23 @@ last_sync_timestamps = {table: None for table in TABLE_FILE_MAP.keys()}
 
 # Global SyncController instance
 sync_controller = SyncController()
+_background_started = False
+_background_lock = threading.Lock()
+
+
+def _is_supabase_reachable(app: Flask) -> bool:
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            return False
+        if getattr(supabase, "is_offline_fallback", False):
+            return False
+        # Lightweight probe before starting full table loop.
+        supabase.from_("app_config").select("id").limit(1).execute()
+        return True
+    except Exception as e:
+        app.logger.warning(f"Supabase health probe failed; using local JSON only for this cycle: {e}")
+        return False
 
 def initial_full_sync(app: Flask):
     """Perform an initial full sync for any missing JSON files."""
@@ -76,6 +96,10 @@ def background_pull_sync_scheduler(app: Flask, interval_minutes=5):
         while True:
             app.logger.info(f"Background pull sync starting. Next sync in {interval_minutes} minutes.")
             try:
+                if not _is_supabase_reachable(app):
+                    time.sleep(interval_minutes * 60)
+                    continue
+
                 # We need to iterate through each table to pass its specific last_sync_timestamp
                 for table_name, file_path in TABLE_FILE_MAP.items():
                     current_last_sync = last_sync_timestamps[table_name]
@@ -178,6 +202,13 @@ def background_json_to_supabase_sync_scheduler(app: Flask, interval_minutes=5):
 
 def start_background_tasks(app: Flask):
     """Starts all background tasks."""
+    global _background_started
+    with _background_lock:
+        if _background_started:
+            app.logger.info("Background tasks already running; skipping duplicate start.")
+            return
+        _background_started = True
+
     # Pull sync (Supabase to JSON)
     pull_scheduler_thread = threading.Thread(
         target=background_pull_sync_scheduler, daemon=True, args=(app, 5,)
@@ -199,6 +230,12 @@ def start_background_tasks(app: Flask):
     offline_bill_queue_thread.start()
     app.logger.info("Background offline bill queue scheduler started.")
 
+    offline_damage_queue_thread = threading.Thread(
+        target=background_offline_damage_return_queue_scheduler, daemon=True, args=(app, 1,)
+    )
+    offline_damage_queue_thread.start()
+    app.logger.info("Background offline damage-return queue scheduler started.")
+
 
 def background_offline_bill_queue_scheduler(app: Flask, interval_minutes=1):
     """Periodically retry offline bill operations saved to local queue."""
@@ -209,5 +246,18 @@ def background_offline_bill_queue_scheduler(app: Flask, interval_minutes=1):
                 process_offline_bill_queue(app_logger=app.logger, max_items=25)
             except Exception as e:
                 app.logger.error(f"Error while processing offline bill queue: {e}")
+
+            time.sleep(interval_minutes * 60)
+
+
+def background_offline_damage_return_queue_scheduler(app: Flask, interval_minutes=1):
+    """Periodically retry offline damaged-return operations saved to local queue."""
+    with app.app_context():
+        app.logger.info("Starting offline damaged-return queue scheduler.")
+        while True:
+            try:
+                process_offline_damage_return_queue(app_logger=app.logger, max_items=25)
+            except Exception as e:
+                app.logger.error(f"Error while processing offline damaged-return queue: {e}")
 
             time.sleep(interval_minutes * 60)

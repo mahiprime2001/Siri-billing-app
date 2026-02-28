@@ -279,6 +279,28 @@ CREATE TABLE public.stores (
   updatedat timestamp without time zone,
   CONSTRAINT stores_pkey PRIMARY KEY (id)
 );
+CREATE TABLE public.store_damage_returns (
+  id character varying NOT NULL,
+  store_id character varying NOT NULL,
+  product_id character varying NOT NULL,
+  quantity integer NOT NULL DEFAULT 0,
+  reason text,
+  damage_origin character varying DEFAULT 'store'::character varying,
+  status character varying DEFAULT 'sent_to_admin'::character varying,
+  notes text,
+  created_by character varying,
+  repaired_by character varying,
+  repaired_qty integer DEFAULT 0,
+  repair_notes text,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  repaired_at timestamp without time zone,
+  CONSTRAINT store_damage_returns_pkey PRIMARY KEY (id),
+  CONSTRAINT store_damage_returns_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id),
+  CONSTRAINT store_damage_returns_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
+  CONSTRAINT store_damage_returns_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
+  CONSTRAINT store_damage_returns_repaired_by_fkey FOREIGN KEY (repaired_by) REFERENCES public.users(id)
+);
 CREATE TABLE public.systemsettings (
   id integer NOT NULL DEFAULT nextval('systemsettings_id_seq'::regclass),
   gstin character varying,
