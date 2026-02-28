@@ -10,8 +10,26 @@ from flask_jwt_extended import (
 
 from datetime import datetime, timezone
 from utils.connection_pool import get_supabase_client
+from helpers.utils import read_json_file
+from config.config import USERS_FILE
 
 auth_bp = Blueprint('auth', __name__)
+
+
+def _find_local_user_by_email(email: str):
+    users = read_json_file(USERS_FILE, [])
+    for user in users:
+        if str(user.get("email", "")).strip().lower() == email:
+            return user
+    return None
+
+
+def _find_local_user_by_id(user_id: str):
+    users = read_json_file(USERS_FILE, [])
+    for user in users:
+        if str(user.get("id")) == str(user_id):
+            return user
+    return None
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
@@ -31,14 +49,24 @@ def login():
         # Get Supabase client
         supabase = get_supabase_client()
         
-        # Query user from Supabase
-        response = supabase.table('users').select('*').eq('email', email).execute()
-        
-        if not response.data or len(response.data) == 0:
+        user = None
+        supabase_error = None
+        try:
+            # Query user from Supabase (primary)
+            response = supabase.table('users').select('*').eq('email', email).execute()
+            if response.data and len(response.data) > 0:
+                user = response.data[0]
+        except Exception as e:
+            supabase_error = e
+            app.logger.warning(f"⚠️ [BACKEND-LOGIN] Supabase unavailable, using local fallback: {e}")
+
+        if user is None:
+            # Offline fallback to local JSON cache
+            user = _find_local_user_by_email(email)
+
+        if not user:
             app.logger.warning(f"⚠️ [BACKEND-LOGIN] User not found: {email}")
             return jsonify({"message": "Invalid email or password"}), 401
-        
-        user = response.data[0]
         user_id = user['id']
         stored_password = user.get('password', '')
         user_name = user.get('name', 'Unknown')
@@ -90,6 +118,8 @@ def login():
         app.logger.error(f"❌ [BACKEND-LOGIN] Login error: {str(e)}")
         import traceback
         app.logger.error(f"📋 [BACKEND-LOGIN] Traceback: {traceback.format_exc()}")
+        if "timed out" in str(e).lower():
+            return jsonify({"message": "Supabase timeout. Retry in a moment."}), 503
         return jsonify({"message": "An error occurred during login"}), 500
 
 
@@ -125,15 +155,29 @@ def get_current_user():
         app.logger.info(f"👤 [BACKEND-ME] Fetching current user info for: {user_id}")
         app.logger.debug(f"🎫 [BACKEND-ME] JWT claims: {jwt_data}")
         
-        # Get fresh user data from database
-        supabase = get_supabase_client()
-        response = supabase.table('users').select('*').eq('id', user_id).execute()
-        
-        if not response.data or len(response.data) == 0:
-            app.logger.warning(f"⚠️ [BACKEND-ME] User not found in database: {user_id}")
-            return jsonify({"message": "User not found"}), 404
-        
-        user = response.data[0]
+        user = None
+        try:
+            # Get fresh user data from database
+            supabase = get_supabase_client()
+            response = supabase.table('users').select('*').eq('id', user_id).execute()
+            if response.data and len(response.data) > 0:
+                user = response.data[0]
+        except Exception as e:
+            app.logger.warning(f"⚠️ [BACKEND-ME] Supabase unavailable, using local fallback: {e}")
+
+        if user is None:
+            user = _find_local_user_by_id(user_id)
+
+        if not user:
+            app.logger.warning(f"⚠️ [BACKEND-ME] User not found in Supabase/local JSON: {user_id}")
+            # Last fallback: JWT claims only
+            return jsonify({
+                "id": user_id,
+                "email": jwt_data.get("email"),
+                "name": jwt_data.get("name", "Unknown"),
+                "role": jwt_data.get("role", "user"),
+                "offline": True,
+            }), 200
         user_info = {
             "id": user['id'],
             "email": user['email'],

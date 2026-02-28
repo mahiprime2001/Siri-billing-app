@@ -248,7 +248,7 @@ class SyncController:
                       'BillFormats', 'Returns', 'Notifications', 'Bills', 'UserStores',
                       'Inventory_Transfer_Orders', 'Inventory_Transfer_Items',
                       'Inventory_Transfer_Scans', 'Inventory_Transfer_Verifications',
-                      'Damaged_Inventory_Events']
+                      'Damaged_Inventory_Events', 'Store_Damage_Returns']
 
         try:
             supabase = get_supabase_client()
@@ -273,7 +273,8 @@ class SyncController:
                         elif table_name in ['App_Config', 'BillItems', 'Bills', 'Notifications', 'Password_Change_Log',
                                            'Password_Reset_Tokens', 'Returns', 'Sync_Table', 'SystemSettings', 'UserStores',
                                            'Inventory_Transfer_Orders', 'Inventory_Transfer_Items',
-                                           'Inventory_Transfer_Scans', 'Damaged_Inventory_Events']:
+                                           'Inventory_Transfer_Scans', 'Damaged_Inventory_Events',
+                                           'Store_Damage_Returns']:
                             filter_conditions.append(f"updated_at.gte.{last_sync}")
                             filter_conditions.append(f"created_at.gte.{last_sync}")
                         elif table_name in ['Inventory_Transfer_Verifications']:
@@ -290,7 +291,8 @@ class SyncController:
                     elif table_name in ['App_Config', 'BillItems', 'Bills', 'Notifications', 'Password_Change_Log',
                                        'Password_Reset_Tokens', 'Returns', 'Sync_Table', 'SystemSettings', 'UserStores',
                                        'Inventory_Transfer_Orders', 'Inventory_Transfer_Items',
-                                       'Inventory_Transfer_Scans', 'Damaged_Inventory_Events']:
+                                       'Inventory_Transfer_Scans', 'Damaged_Inventory_Events',
+                                       'Store_Damage_Returns']:
                         order_column = "updated_at"
                     elif table_name in ['Inventory_Transfer_Verifications']:
                         order_column = "submitted_at"
@@ -323,6 +325,11 @@ class SyncController:
                 except Exception as e:
                     logger.error(f"General error on pull sync table {table_name}: {e}")
                     results['errors'].append(f"{table_name}: General Error - {e}")
+                    if "timed out" in str(e).lower() or "timeout" in str(e).lower():
+                        # Stop this cycle on connectivity failures to avoid log spam on every table.
+                        logger.warning("Timeout detected during pull_sync; aborting remaining tables for this cycle.")
+                        results['success'] = False
+                        return results
 
             results['success'] = True
             logger.info("Finished pull_sync")

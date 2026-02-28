@@ -293,8 +293,11 @@ if __name__ == '__main__':
     app.logger.info(f"CORS: Accepting all requests from local machine")
     app.logger.info("🛑 Shutdown endpoint available at /api/shutdown (POST)")
     
-    # Start background tasks
-    start_background_tasks(app)
+    # Start background tasks only once when Werkzeug reloader is active.
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
+        start_background_tasks(app)
+    else:
+        app.logger.info("Skipping background task startup in reloader parent process.")
     
     try:
         app.run(debug=True, port=port, host=host)

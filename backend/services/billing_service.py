@@ -174,6 +174,12 @@ def create_bill_transaction(
             replacement_save_errors.append(f"replacement[{index}] invalid payload")
             continue
 
+        if is_damaged or damage_reason:
+            replacement_save_errors.append(
+                f"replacement[{index}] damaged flow is not allowed in replacement"
+            )
+            continue
+
         replacement_id = f"REP-{uuid.uuid4().hex[:12].upper()}"
         replacement_payload = {
             "id": replacement_id,
@@ -184,9 +190,9 @@ def create_bill_transaction(
             "quantity": quantity,
             "price": price,
             "final_amount": final_amount,
-            "is_damaged": is_damaged,
-            "damaged_qty": damaged_qty if is_damaged else 0,
-            "damage_reason": damage_reason if is_damaged else None,
+            "is_damaged": False,
+            "damaged_qty": 0,
+            "damage_reason": None,
             "store_id": store_id,
             "user_id": current_user_id,
             "created_at": now,
@@ -202,28 +208,8 @@ def create_bill_transaction(
         except Exception as replacement_error:
             replacement_save_errors.append(f"replacement[{index}] insert error: {str(replacement_error)}")
 
-        if is_damaged and damaged_qty > 0:
-            try:
-                supabase.table("damaged_inventory_events").insert(
-                    {
-                        "id": f"DMG-{uuid.uuid4().hex[:12].upper()}",
-                        "store_id": store_id,
-                        "product_id": replaced_product_id,
-                        "quantity": damaged_qty,
-                        "source_type": "replacement",
-                        "source_id": replacement_id,
-                        "reason": damage_reason or "Damaged in replacement flow",
-                        "status": "reported",
-                        "reported_by": current_user_id,
-                        "created_at": now,
-                        "updated_at": now,
-                    }
-                ).execute()
-            except Exception as damaged_error:
-                replacement_save_errors.append(f"replacement[{index}] damaged-event insert error: {str(damaged_error)}")
-
-        # Only restock the non-damaged quantity. Damaged units stay out of inventory.
-        restock_qty = max(0, quantity - (damaged_qty if is_damaged else 0))
+        # Entire replaced quantity is restocked in replacement flow.
+        restock_qty = max(0, quantity)
         if restock_qty > 0:
             try:
                 restored = update_both_inventory_and_product_stock(
