@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -46,9 +46,18 @@ interface ReturnsDialogProps {
   onClose: () => void
   user: { name: string } | null
   onStartReplacement?: () => void
+  mode?: "returns" | "replacement"
+  allowReturns?: boolean
 }
 
-export default function ReturnsDialog({ isOpen, onClose, user, onStartReplacement }: ReturnsDialogProps) {
+export default function ReturnsDialog({
+  isOpen,
+  onClose,
+  user,
+  onStartReplacement,
+  mode = "replacement",
+  allowReturns = true,
+}: ReturnsDialogProps) {
   const [returnRequest, setReturnRequest] = useState<ReturnRequest>({
     searchQuery: '',
     selectedItems: [],
@@ -59,8 +68,18 @@ export default function ReturnsDialog({ isOpen, onClose, user, onStartReplacemen
   const [isSearching, setIsSearching] = useState(false)
   const [showReturnForm, setShowReturnForm] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [flowMode, setFlowMode] = useState<"returns" | "replacement">("replacement")
+  const [flowMode, setFlowMode] = useState<"returns" | "replacement">(mode)
+  const [reasonError, setReasonError] = useState(false)
+  const [reasonShakeKey, setReasonShakeKey] = useState(0)
   const { toast } = useToast()
+
+  useEffect(() => {
+    if (!allowReturns) {
+      setFlowMode("replacement")
+      return
+    }
+    setFlowMode(mode)
+  }, [allowReturns, mode])
 
   const createReplacementSession = () => {
     const selectedEntries = returnRequest.selectedItems
@@ -207,11 +226,8 @@ export default function ReturnsDialog({ isOpen, onClose, user, onStartReplacemen
     }
 
     if (!returnRequest.returnReason.trim()) {
-      toast({
-        title: "Reason Required",
-        description: `Please select a reason for the ${flowMode === "replacement" ? "replacement" : "return"}.`,
-        variant: "destructive",
-      })
+      setReasonError(true)
+      setReasonShakeKey((prev) => prev + 1)
       return
     }
 
@@ -284,6 +300,7 @@ export default function ReturnsDialog({ isOpen, onClose, user, onStartReplacemen
     })
     setSearchResults([])
     setShowReturnForm(false)
+    setReasonError(false)
   }
 
   const calculateSelectedTotal = () => {
@@ -302,6 +319,11 @@ export default function ReturnsDialog({ isOpen, onClose, user, onStartReplacemen
   }
 
   const getSearchPlaceholder = () => 'Search by customer name, mobile number, or invoice number'
+  const isReplacementOnly = !allowReturns
+  const dialogTitle = isReplacementOnly ? "Replacement" : "Process Returns"
+  const dialogDescription = isReplacementOnly
+    ? "Search for bills and start the replacement billing flow"
+    : "Search for bills and process return or replacement requests"
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -309,26 +331,28 @@ export default function ReturnsDialog({ isOpen, onClose, user, onStartReplacemen
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
-            Process Returns
+            {dialogTitle}
           </DialogTitle>
           <DialogDescription>
-            Search for bills and process return or replacement requests
+            {dialogDescription}
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs
-          value={flowMode}
-          onValueChange={(value) => {
-            setFlowMode(value as "returns" | "replacement")
-            setShowReturnForm(false)
-          }}
-          className="w-full"
-        >
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="returns">Returns</TabsTrigger>
-            <TabsTrigger value="replacement">Replacement</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        {allowReturns && (
+          <Tabs
+            value={flowMode}
+            onValueChange={(value) => {
+              setFlowMode(value as "returns" | "replacement")
+              setShowReturnForm(false)
+            }}
+            className="w-full"
+          >
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="returns">Returns</TabsTrigger>
+              <TabsTrigger value="replacement">Replacement</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
 
         {!showReturnForm ? (
           <>
@@ -497,22 +521,25 @@ export default function ReturnsDialog({ isOpen, onClose, user, onStartReplacemen
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
+                <div key={reasonShakeKey} className={`space-y-2 ${reasonError ? "animate-shake" : ""}`}>
                   <Label htmlFor="returnReason">Return Reason *</Label>
                   <Select
                     value={returnRequest.returnReason}
-                    onValueChange={(value) => setReturnRequest(prev => ({ ...prev, returnReason: value }))}
+                    onValueChange={(value) => {
+                      setReturnRequest(prev => ({ ...prev, returnReason: value }))
+                      setReasonError(false)
+                    }}
                   >
                     <SelectTrigger id="returnReason">
                       <SelectValue placeholder="Select return reason" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Product is damaged">Product is damaged</SelectItem>
-                      <SelectItem value="Product size is inadequate">Product size is inadequate</SelectItem>
-                      <SelectItem value="Doesn't like the product">Doesn't like the product</SelectItem>
-                      <SelectItem value="Other reasons">Other reasons</SelectItem>
+                      <SelectItem value="Size inadequate">Size inadequate</SelectItem>
                     </SelectContent>
                   </Select>
+                  {reasonError && (
+                    <p className="text-xs text-destructive">This field is required</p>
+                  )}
                 </div>
 
                 {flowMode === "returns" ? (

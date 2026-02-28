@@ -359,7 +359,7 @@ export default function InvoicePreview({
         throw new Error('Print reference not found')
       }
 
-      const printContent = printRef.current.innerHTML
+      const printContent = printRef.current.outerHTML
       const html = generatePrintHTML(printContent, paperSize, invoice.id || 'unknown')
 
       // ✅ Create hidden iframe for printing
@@ -813,6 +813,7 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
             print-color-adjust: exact;
             background: white;
             color: black;
+            height: auto;
           }
           
           @media print {
@@ -837,6 +838,11 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
             max-width: 100%;
             padding: 0;
             margin: 0 auto;
+          }
+
+          .invoice-wrapper {
+            break-after: avoid-page;
+            page-break-after: avoid;
           }
         </style>
       </head>

@@ -496,6 +496,7 @@ def create_store_damage_return():
         data = request.get_json() or {}
         selected_items = data.get("selectedItems", []) or []
         reason = (data.get("reason") or "").strip()
+        reason_type = (data.get("reasonType") or data.get("reason_type") or "").strip().lower()
         damage_origin = (data.get("damageOrigin") or "store").strip().lower()
 
         if damage_origin not in {"store", "transport"}:
@@ -504,6 +505,20 @@ def create_store_damage_return():
             return jsonify({"message": "selectedItems is required"}), 400
         if not reason:
             return jsonify({"message": "reason is required"}), 400
+        if not reason_type:
+            lowered_reason = reason.lower()
+            if "damage" in lowered_reason:
+                reason_type = "damaged"
+            elif "modif" in lowered_reason:
+                reason_type = "modification"
+            elif "sale" in lowered_reason:
+                reason_type = "low_sales"
+            else:
+                reason_type = "other"
+
+        allowed_reason_types = {"damaged", "modification", "low_sales", "other"}
+        if reason_type not in allowed_reason_types:
+            return jsonify({"message": "reasonType must be damaged, modification, low_sales, or other"}), 400
 
         supabase = get_supabase_client()
         store_id = _resolve_current_store_id(supabase, current_user_id)
@@ -526,8 +541,10 @@ def create_store_damage_return():
                 "product_id": product_id,
                 "quantity": quantity,
                 "reason": reason,
+                "reason_type": reason_type,
                 "damage_origin": damage_origin,
                 "status": "sent_to_admin",
+                "resolution_status": "pending",
                 "notes": note,
                 "created_by": current_user_id,
                 "created_at": now_iso,
@@ -544,21 +561,22 @@ def create_store_damage_return():
                 if not stock_ok:
                     raise RuntimeError("Failed to reduce stock for damaged return")
 
-                supabase.table("damaged_inventory_events").insert(
-                    {
-                        "id": f"DMG-{uuid.uuid4().hex[:12].upper()}",
-                        "store_id": store_id,
-                        "product_id": product_id,
-                        "quantity": quantity,
-                        "source_type": "store_damage_return",
-                        "source_id": row["id"],
-                        "reason": reason,
-                        "status": "reported",
-                        "reported_by": current_user_id,
-                        "created_at": now_iso,
-                        "updated_at": now_iso,
-                    }
-                ).execute()
+                if reason_type == "damaged":
+                    supabase.table("damaged_inventory_events").insert(
+                        {
+                            "id": f"DMG-{uuid.uuid4().hex[:12].upper()}",
+                            "store_id": store_id,
+                            "product_id": product_id,
+                            "quantity": quantity,
+                            "source_type": "store_damage_return",
+                            "source_id": row["id"],
+                            "reason": reason,
+                            "status": "reported",
+                            "reported_by": current_user_id,
+                            "created_at": now_iso,
+                            "updated_at": now_iso,
+                        }
+                    ).execute()
                 created_rows.append(row)
             except Exception as cloud_error:
                 # Offline fallback: local write + queue

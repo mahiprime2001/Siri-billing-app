@@ -29,7 +29,7 @@ def create_bill_transaction(
     if not supabase:
         raise RuntimeError("Supabase client unavailable")
 
-    bill_id = forced_bill_id or f"BILL-{uuid.uuid4().hex[:12]}"
+    bill_id = forced_bill_id or f"inv-{uuid.uuid4().hex[:12]}"
     now = datetime.now(timezone.utc).isoformat()
     customer_id = data.get("customer_id") or DEFAULT_WALKIN_CUSTOMER_ID
 

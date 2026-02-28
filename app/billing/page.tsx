@@ -11,11 +11,10 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
 import {
-  LogOut, Download, Menu, Bell, BellRing, Package
+  LogOut, Download, Bell, BellRing, Package, UserCircle, Settings
 } from 'lucide-react'
 import {BillingHistory} from '@/components/billing-history'
 import BillingAndCart from '@/components/billing-and-cart'
-import ReturnsManagement from '@/components/returns-management'
 import { useToast } from '@/hooks/use-toast'
 import { useIsMobile } from '@/hooks/use-mobile'
 import Image from 'next/image'
@@ -32,6 +31,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import TransferVerificationDialog from "@/components/transfer-verification-dialog"
+import ReturnToAdminDialog from "@/components/return-to-admin-dialog"
 
 interface User {
   id: string
@@ -53,12 +53,12 @@ interface Notification {
 export default function BillingPage() {
   const [user, setUser] = useState<User | null>(null)
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
-  const [pendingReturnsCount, setPendingReturnsCount] = useState(0)
   const [currentStore, setCurrentStore] = useState<{ id: string; name: string } | null>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [activeTab, setActiveTab] = useState('billing')
   const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false)
+  const [isReturnToAdminOpen, setIsReturnToAdminOpen] = useState(false)
   const isMobile = useIsMobile()
   const router = useRouter()
   const { toast } = useToast()
@@ -159,18 +159,6 @@ export default function BillingPage() {
     }
   }, [toast])
 
-  const fetchPendingReturnsCount = useCallback(async () => {
-    try {
-      const response = await apiClient('/api/returns/pending/count')
-      if (response.ok) {
-        const data = await response.json()
-        setPendingReturnsCount(data.count)
-      }
-    } catch (error) {
-      console.error('Error fetching pending returns count:', error)
-    }
-  }, [])
-
   const fetchNotifications = useCallback(async () => {
     try {
       const response = await apiClient('/api/notifications')
@@ -195,10 +183,10 @@ export default function BillingPage() {
       await fetchNotifications()
       
       if (notification.type === 'return_approved') {
-        setActiveTab('returns')
+        setActiveTab('billing')
         toast({
-          title: 'Navigated to Returns',
-          description: 'View your approved return request.',
+          title: 'Return Approved',
+          description: 'A return request was approved.',
         })
       }
     } catch (error) {
@@ -222,17 +210,14 @@ export default function BillingPage() {
   useEffect(() => {
     fetchUserData()
     fetchCurrentStore()
-    fetchPendingReturnsCount()
     fetchNotifications()
 
-    const returnsInterval = setInterval(fetchPendingReturnsCount, 30 * 1000)
     const notificationsInterval = setInterval(fetchNotifications, 30 * 1000)
 
     return () => {
-      clearInterval(returnsInterval)
       clearInterval(notificationsInterval)
     }
-  }, [fetchUserData, fetchCurrentStore, fetchPendingReturnsCount, fetchNotifications])
+  }, [fetchUserData, fetchCurrentStore, fetchNotifications])
 
   // ✅ UPDATED: Logout with localStorage cleanup
   const handleLogout = async () => {
@@ -318,6 +303,10 @@ export default function BillingPage() {
     }
   }
 
+  const handleReturnToAdmin = () => {
+    setIsReturnToAdminOpen(true)
+  }
+
   if (!user) {
     return <div className="flex items-center justify-center h-screen">Loading...</div>
   }
@@ -399,11 +388,11 @@ export default function BillingPage() {
               </PopoverContent>
             </Popover>
 
-            {/* More Menu */}
+            {/* Profile Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm">
-                  <Menu className="h-4 w-4" />
+                  <UserCircle className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -411,13 +400,28 @@ export default function BillingPage() {
                   <Download className="h-4 w-4 mr-2" />
                   {isCheckingUpdate ? 'Checking...' : 'Check for Updates'}
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setIsTransferDialogOpen(true)}>
-                  <Package className="h-4 w-4 mr-2" />
-                  Receive Assigned Products
-                </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleLogout}>
                   <LogOut className="h-4 w-4 mr-2" />
                   Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Settings Menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setIsTransferDialogOpen(true)}>
+                  <Package className="h-4 w-4 mr-2" />
+                  Received Resigned Product
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleReturnToAdmin}>
+                  <Package className="h-4 w-4 mr-2" />
+                  Return to Admin
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -427,17 +431,9 @@ export default function BillingPage() {
 
       {/* Main Content */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="billing">Billing & Cart</TabsTrigger>
           <TabsTrigger value="billing-history">Billing History</TabsTrigger>
-          <TabsTrigger value="returns" className="relative">
-            Returns
-            {pendingReturnsCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                {pendingReturnsCount}
-              </span>
-            )}
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="billing" className="flex-1 overflow-auto p-4">
@@ -454,11 +450,9 @@ export default function BillingPage() {
           )}
         </TabsContent>
 
-        <TabsContent value="returns" className="flex-1 overflow-auto p-4">
-          <ReturnsManagement user={user} onCountChange={fetchPendingReturnsCount}  />
-        </TabsContent>
       </Tabs>
       <TransferVerificationDialog open={isTransferDialogOpen} onOpenChange={setIsTransferDialogOpen} />
+      <ReturnToAdminDialog isOpen={isReturnToAdminOpen} onClose={() => setIsReturnToAdminOpen(false)} />
     </div>
   )
 }

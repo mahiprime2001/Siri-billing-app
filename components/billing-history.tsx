@@ -39,12 +39,36 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
   const [showPreview, setShowPreview] = useState(false)
+  const [settings, setSettings] = useState<{
+    gstin?: string
+    companyName?: string
+    companyAddress?: string
+    companyPhone?: string
+    companyEmail?: string
+  } | null>(null)
   const printPaperSize = "Thermal 80mm"
   const printRef = useRef<HTMLDivElement>(null)
   const [isTauriRuntime, setIsTauriRuntime] = useState(false)
 
   useEffect(() => {
     setIsTauriRuntime(isTauriApp())
+  }, [])
+
+  const fetchSettings = useCallback(async () => {
+    try {
+      const response = await apiClient("/api/settings", { method: "GET" })
+      if (!response.ok) return
+      const data = await response.json()
+      setSettings({
+        gstin: data?.gstin || "",
+        companyName: data?.companyName || "",
+        companyAddress: data?.companyAddress || "",
+        companyPhone: data?.companyPhone || "",
+        companyEmail: data?.companyEmail || "",
+      })
+    } catch (error) {
+      console.error("Failed to fetch settings for billing history:", error)
+    }
   }, [])
 
   // ✅ Helper function to get customer name (handles both old and new formats)
@@ -245,11 +269,12 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
 
   useEffect(() => {
     fetchBillingHistory()
+    fetchSettings()
 
     // Refresh every 30 seconds
     const refreshInterval = setInterval(fetchBillingHistory, 30 * 1000)
     return () => clearInterval(refreshInterval)
-  }, [fetchBillingHistory])
+  }, [fetchBillingHistory, fetchSettings])
 
   // ✅ Filter invoices with safe property access
   useEffect(() => {
@@ -287,25 +312,43 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
       fetchBillReplacements(invoice.id),
     ])
     const enrichedItems = enrichItemsWithReplacementMeta(items, replacements)
-    setSelectedInvoice({ ...invoice, items: enrichedItems, isReplacementBill: replacements.length > 0 } as Invoice)
+    setSelectedInvoice({
+      ...invoice,
+      items: enrichedItems,
+      isReplacementBill: replacements.length > 0,
+      companyName: settings?.companyName || invoice.companyName || "",
+      companyAddress: settings?.companyAddress || invoice.companyAddress || "",
+      companyPhone: settings?.companyPhone || invoice.companyPhone || "",
+      companyEmail: settings?.companyEmail || invoice.companyEmail || "",
+      gstin: settings?.gstin || invoice.gstin || "",
+    } as Invoice)
     setShowPreview(true)
   }
 
-  // Direct print flow to match billing-cart
+  // Direct print flow using PrintableInvoice (isolated iframe)
   const handlePrintInvoice = async (invoice: Invoice) => {
     const [items, replacements] = await Promise.all([
       fetchBillItems(invoice.id),
       fetchBillReplacements(invoice.id),
     ])
     const enrichedItems = enrichItemsWithReplacementMeta(items, replacements)
-    const printable = { ...invoice, items: enrichedItems, isReplacementBill: replacements.length > 0 } as Invoice
+    const printable = {
+      ...invoice,
+      items: enrichedItems,
+      isReplacementBill: replacements.length > 0,
+      companyName: settings?.companyName || invoice.companyName || "",
+      companyAddress: settings?.companyAddress || invoice.companyAddress || "",
+      companyPhone: settings?.companyPhone || invoice.companyPhone || "",
+      companyEmail: settings?.companyEmail || invoice.companyEmail || "",
+      gstin: settings?.gstin || invoice.gstin || "",
+    } as Invoice
     setSelectedInvoice(printable)
 
-    // Wait a tick for PrintableInvoice to render into the hidden ref
+    // Wait a tick for PrintableInvoice to render into the ref
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    const printInner = printRef.current?.innerHTML || ""
-    const printContent = generatePrintHTML(printInner, printPaperSize, printable.id || "invoice")
+    const printOuter = printRef.current?.outerHTML || ""
+    const printContent = generatePrintHTML(printOuter, printPaperSize, printable.id || "invoice")
 
     if (isTauriRuntime) {
       try {
@@ -315,6 +358,7 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
       }
       return
     }
+
     const frame = document.createElement("iframe")
     frame.style.position = "fixed"
     frame.style.right = "0"
@@ -394,6 +438,7 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
               print-color-adjust: exact;
               background: white;
               color: black;
+              height: auto;
             }
             @media print {
               html, body {
@@ -402,13 +447,17 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
                 height: auto !important;
               }
               @page { margin: 0; }
-              .no-print { display: none !important; }
             }
             .print-container {
               width: 100%;
               max-width: 100%;
               padding: 0;
               margin: 0 auto;
+            }
+
+            .invoice-wrapper {
+              break-after: avoid-page;
+              page-break-after: avoid;
             }
           </style>
         </head>
@@ -536,8 +585,8 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
         />
       )}
 
-      {/* Hidden printable invoice to mirror billing-cart layout for printing */}
-      <div style={{ display: "none" }}>
+      {/* Printable invoice directly used for billing-history printing */}
+      <div className="hidden print:block">
         {selectedInvoice && (
           <PrintableInvoice ref={printRef} invoice={selectedInvoice} paperSize={printPaperSize} />
         )}

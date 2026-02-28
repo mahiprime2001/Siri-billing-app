@@ -13,6 +13,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   Plus,
   Trash2,
   X,
@@ -28,9 +38,9 @@ import {
   Store as StoreIcon,
 } from "lucide-react"
 import InvoicePreview from "./invoice-preview"
+import ReturnsDialog from "./returns-dialog"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/components/ui/use-toast"
-import { LogOut } from "lucide-react"
 import { useOnlineStatus } from "@/hooks/use-online-status"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { apiClient } from "@/lib/api-client"
@@ -132,6 +142,7 @@ interface BillingInstance {
 }
 
 const SUGGESTED_DISCOUNTS = [10]
+const MAX_BILL_TABS = 7
 
 const createNewBillingInstance = (id: string): BillingInstance => ({
   id,
@@ -172,10 +183,29 @@ export default function BillingAndCart() {
   const [showPreview, setShowPreview] = useState(false)
   const [currentInvoice, setCurrentInvoice] = useState<Invoice | null>(null)
   const [replacementSession, setReplacementSession] = useState<ReplacementSession | null>(null)
+  const [replacementTabId, setReplacementTabId] = useState<string | null>(null)
+  const [pendingReplacementCloseId, setPendingReplacementCloseId] = useState<string | null>(null)
+  const [isReplacementDialogOpen, setIsReplacementDialogOpen] = useState(false)
 
   const barcodeInputRef = useRef<HTMLInputElement>(null)
   const idleFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const IDLE_FOCUS_DELAY_MS = 5000
+  const billingTabsRef = useRef<BillingInstance[]>([])
+  const activeTabRef = useRef<string>("")
+  const replacementTabIdRef = useRef<string | null>(null)
+  const lastReplacementSessionIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    billingTabsRef.current = billingTabs
+  }, [billingTabs])
+
+  useEffect(() => {
+    activeTabRef.current = activeTab
+  }, [activeTab])
+
+  useEffect(() => {
+    replacementTabIdRef.current = replacementTabId
+  }, [replacementTabId])
 
   const generateCartItemId = useCallback(() => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`, [])
 
@@ -227,6 +257,7 @@ export default function BillingAndCart() {
   }, [resetIdleFocusTimer])
 
   const activeBillingInstance = billingTabs.find((tab) => tab.id === activeTab)
+  const isReplacementActive = !!replacementSession && replacementTabId === activeTab
   const getProductById = useCallback((productId: string) => products.find((p) => p.id === productId), [products])
   const getAvailableStock = useCallback((productId: string) => getProductById(productId)?.stock ?? null, [getProductById])
   const isCreditLine = useCallback((item: CartItem) => item.lineType === "replacement_credit", [])
@@ -252,12 +283,12 @@ export default function BillingAndCart() {
     return usage
   }, [isCreditLine])
 
-  const applyReplacementSessionToActiveCart = useCallback((session: ReplacementSession) => {
+  const applyReplacementSessionToTab = useCallback((session: ReplacementSession, targetTabId: string) => {
     if (!session.entries || session.entries.length === 0) return
 
     setBillingTabs((prevTabs) =>
-      prevTabs.map((tab) => {
-        if (tab.id !== activeTab) return tab
+      (prevTabs.some((tab) => tab.id === targetTabId) ? prevTabs : [...prevTabs, createNewBillingInstance(targetTabId)]).map((tab) => {
+        if (tab.id !== targetTabId) return tab
 
         const currentCart = tab.cartItems
         const existingCredits = new Set(
@@ -302,30 +333,59 @@ export default function BillingAndCart() {
         }
       }),
     )
-  }, [activeTab, generateCartItemId, isCreditLine])
+  }, [generateCartItemId, isCreditLine])
+
+  const hydrateReplacementSession = useCallback(() => {
+    if (typeof window === "undefined") return
+    const raw = window.sessionStorage.getItem("replacement-session")
+    if (!raw) return
+
+    try {
+      const parsed: ReplacementSession = JSON.parse(raw)
+      if (!parsed?.entries?.length) return
+
+      if (parsed.sessionId && lastReplacementSessionIdRef.current === parsed.sessionId) {
+        return
+      }
+
+      setReplacementSession(parsed)
+
+      let targetTabId = replacementTabIdRef.current
+      const currentTabs = billingTabsRef.current
+      const hasReplacementTab = targetTabId && currentTabs.some((tab) => tab.id === targetTabId)
+      if (!hasReplacementTab) {
+        const emptyTab = currentTabs.find((tab) => tab.cartItems.length === 0)
+        if (emptyTab) {
+          targetTabId = emptyTab.id
+        } else if (currentTabs.length < MAX_BILL_TABS) {
+          targetTabId = `repl-${Date.now()}`
+        } else {
+          targetTabId = activeTabRef.current
+        }
+      }
+      if (!targetTabId) return
+
+      if (replacementTabIdRef.current !== targetTabId) {
+        setReplacementTabId(targetTabId)
+      }
+      if (activeTabRef.current !== targetTabId) {
+        setActiveTab(targetTabId)
+      }
+
+      applyReplacementSessionToTab(parsed, targetTabId)
+      lastReplacementSessionIdRef.current = parsed.sessionId
+    } catch (error) {
+      console.error("Failed to parse replacement session:", error)
+    }
+  }, [applyReplacementSessionToTab])
 
   useEffect(() => {
-    const hydrateReplacementSession = () => {
-      if (typeof window === "undefined") return
-      const raw = window.sessionStorage.getItem("replacement-session")
-      if (!raw) return
-
-      try {
-        const parsed: ReplacementSession = JSON.parse(raw)
-        if (!parsed?.entries?.length) return
-        setReplacementSession(parsed)
-        applyReplacementSessionToActiveCart(parsed)
-      } catch (error) {
-        console.error("Failed to parse replacement session:", error)
-      }
-    }
-
     hydrateReplacementSession()
     window.addEventListener("start-replacement-session", hydrateReplacementSession as EventListener)
     return () => {
       window.removeEventListener("start-replacement-session", hydrateReplacementSession as EventListener)
     }
-  }, [applyReplacementSessionToActiveCart])
+  }, [hydrateReplacementSession])
 
   // ✅ Calculate base price from selling price (reverse calculation)
   const calculateBasePrice = (sellingPrice: number, taxPercentage: number): number => {
@@ -493,6 +553,15 @@ export default function BillingAndCart() {
       });
     }
   };
+
+  const clearReplacementSession = () => {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem("replacement-session")
+    }
+    setReplacementSession(null)
+    setReplacementTabId(null)
+    lastReplacementSessionIdRef.current = null
+  }
 
   const sortProductsByName = useCallback((items: Product[]) => {
     return [...items].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
@@ -800,7 +869,7 @@ export default function BillingAndCart() {
   }
 
   const toggleReplacementForLine = (itemId: string, enabled: boolean) => {
-    if (!activeBillingInstance || !replacementSession) return
+    if (!activeBillingInstance || !replacementSession || replacementTabId !== activeTab) return
 
     const targetItem = activeBillingInstance.cartItems.find((item) => item.id === itemId)
     if (!targetItem || isCreditLine(targetItem)) return
@@ -943,7 +1012,8 @@ export default function BillingAndCart() {
   }
 
   const generateInvoiceId = () => {
-    return `INV-${Date.now().toString().slice(-6)}`
+    const randomPart = Math.random().toString(36).slice(2, 10)
+    return `inv-${randomPart}`
   }
 
   const handlePreview = async () => {
@@ -1043,26 +1113,29 @@ export default function BillingAndCart() {
 
       console.log("💾 Saving invoice:", invoiceToSave);
 
+      const isReplacementInvoice = replacementTabId === activeTab && !!replacementSession
       const allItems = (invoiceToSave.items || []) as CartItem[]
       const saleItems = allItems.filter((item) => item.lineType !== "replacement_credit")
-      const replacementItemsPayload = saleItems
-        .filter((item) => item.replacementMeta)
-        .map((item) => {
-          const mappedQty = getMappedQuantityForItem(item)
-          if (mappedQty <= 0 || !item.replacementMeta) return null
-          const oldUnitPrice = Number(item.replacementMeta.originalUnitPrice || 0)
-          const newUnitPrice = Number(item.price || 0)
-          const finalAmount = Math.round((newUnitPrice - oldUnitPrice) * mappedQty * 100) / 100
-          return {
-            original_bill_id: item.replacementMeta.originalBillId,
-            replaced_product_id: item.replacementMeta.originalProductId,
-            new_product_id: item.productId,
-            quantity: mappedQty,
-            price: newUnitPrice,
-            final_amount: finalAmount,
-          }
-        })
-        .filter(Boolean)
+      const replacementItemsPayload = isReplacementInvoice
+        ? saleItems
+            .filter((item) => item.replacementMeta)
+            .map((item) => {
+              const mappedQty = getMappedQuantityForItem(item)
+              if (mappedQty <= 0 || !item.replacementMeta) return null
+              const oldUnitPrice = Number(item.replacementMeta.originalUnitPrice || 0)
+              const newUnitPrice = Number(item.price || 0)
+              const finalAmount = Math.round((newUnitPrice - oldUnitPrice) * mappedQty * 100) / 100
+              return {
+                original_bill_id: item.replacementMeta.originalBillId,
+                replaced_product_id: item.replacementMeta.originalProductId,
+                new_product_id: item.productId,
+                quantity: mappedQty,
+                price: newUnitPrice,
+                final_amount: finalAmount,
+              }
+            })
+            .filter(Boolean)
+        : []
 
       if (saleItems.length === 0) {
         toast({
@@ -1088,7 +1161,7 @@ export default function BillingAndCart() {
         total_amount: invoiceToSave.total,
         payment_method: invoiceToSave.paymentMethod,
         notes: invoiceToSave.notes || '',
-        original_bill_id: replacementSession?.originalBillId || undefined,
+        original_bill_id: isReplacementInvoice ? replacementSession?.originalBillId || undefined : undefined,
         replacements: replacementItemsPayload,
         items: saleItems.map((item: any) => ({
           product_id: item.productId,
@@ -1136,10 +1209,9 @@ export default function BillingAndCart() {
           console.warn("Product refresh skipped:", refreshError);
         }
 
-        if (typeof window !== "undefined") {
-          window.sessionStorage.removeItem("replacement-session")
+        if (isReplacementInvoice) {
+          clearReplacementSession()
         }
-        setReplacementSession(null)
 
         setShowPreview(false);
         return true;
@@ -1223,6 +1295,14 @@ export default function BillingAndCart() {
   }
 
   const addTab = () => {
+    if (billingTabs.length >= MAX_BILL_TABS) {
+      toast({
+        title: "Tab Limit Reached",
+        description: `You can open up to ${MAX_BILL_TABS} bill tabs.`,
+        variant: "default",
+      })
+      return
+    }
     const newTabId = `bill-${Date.now()}`
     setBillingTabs([...billingTabs, createNewBillingInstance(newTabId)])
     setActiveTab(newTabId)
@@ -1230,6 +1310,10 @@ export default function BillingAndCart() {
 
   const closeTab = (tabId: string) => {
     if (billingTabs.length === 1) return
+    if (tabId === replacementTabId) {
+      setPendingReplacementCloseId(tabId)
+      return
+    }
 
     const tabIndex = billingTabs.findIndex((tab) => tab.id === tabId)
     const newTabs = billingTabs.filter((tab) => tab.id !== tabId)
@@ -1241,28 +1325,30 @@ export default function BillingAndCart() {
     }
   }
 
+  const confirmCloseReplacementTab = () => {
+    if (!pendingReplacementCloseId) return
+    const tabId = pendingReplacementCloseId
+    setPendingReplacementCloseId(null)
+
+    setBillingTabs((prevTabs) => {
+      if (prevTabs.length === 1) return prevTabs
+      const tabIndex = prevTabs.findIndex((tab) => tab.id === tabId)
+      const newTabs = prevTabs.filter((tab) => tab.id !== tabId)
+      if (activeTab === tabId && newTabs.length > 0) {
+        const newActiveIndex = Math.max(0, tabIndex - 1)
+        setActiveTab(newTabs[newActiveIndex].id)
+      }
+      return newTabs
+    })
+
+    clearReplacementSession()
+  }
+
   if (!activeBillingInstance) {
     return <div>Loading...</div>
   }
 
   const tax = calculateTotalTax()
-  const usageMap = getUsageByReplacementEntry(activeBillingInstance.cartItems)
-  const replacementStatus = replacementSession?.entries.map((entry) => {
-    const mappedItemId = usageMap.get(entry.id)
-    const mappedItem = mappedItemId
-      ? activeBillingInstance.cartItems.find((item) => item.id === mappedItemId)
-      : null
-    const mappedQty = mappedItem ? getMappedQuantityForItem(mappedItem) : 0
-    const pendingQty = Math.max(0, entry.quantity - mappedQty)
-    return {
-      ...entry,
-      mappedItemName: mappedItem?.name || null,
-      mappedQty,
-      pendingQty,
-    }
-  }) || []
-  const mappedReplacementStatus = replacementStatus.filter((entry) => entry.mappedQty > 0)
-  const pendingReplacementStatus = replacementStatus.filter((entry) => entry.pendingQty > 0)
 
   return (
     <>
@@ -1351,53 +1437,12 @@ export default function BillingAndCart() {
 
         {/* Right Column - Customer Info, Cart & Billing */}
         <div className="space-y-6">
-          {replacementSession && (
-            <Card className="border-orange-300 bg-orange-50/50">
-              <CardHeader>
-                <CardTitle className="text-base">Replacement Mapping</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="text-sm">
-                  Original Bill: <span className="font-semibold">{replacementSession.originalBillId}</span>
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-green-700 mb-1">Selected & Mapped</p>
-                  {mappedReplacementStatus.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No mappings selected yet.</p>
-                  ) : (
-                    <div className="space-y-1">
-                      {mappedReplacementStatus.map((entry) => (
-                        <p key={entry.id} className="text-sm">
-                          {entry.productName} (Qty {entry.quantity}){" -> "}{entry.mappedItemName} (Replaced Qty {entry.mappedQty})
-                        </p>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-amber-700 mb-1">Not Yet Mapped</p>
-                  {pendingReplacementStatus.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">All selected return items are mapped.</p>
-                  ) : (
-                    <div className="space-y-1">
-                      {pendingReplacementStatus.map((entry) => (
-                        <p key={entry.id} className="text-sm">
-                          {entry.productName} pending qty {entry.pendingQty}
-                        </p>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <div className="flex items-center">
-              <TabsList className={isMobile ? "w-full grid grid-cols-3" : ""}>
+            <div className="flex flex-wrap items-center gap-2">
+              <TabsList className={isMobile ? "w-full grid grid-cols-3" : "flex flex-wrap gap-2 flex-1 min-w-0"}>
                 {billingTabs.map((tab, index) => (
                   <TabsTrigger key={tab.id} value={tab.id} className="relative pr-7">
-                    Bill {index + 1}
+                    {tab.id === replacementTabId ? "Replacement" : `Bill ${index + 1}`}
                     {billingTabs.length > 1 && (
                       <span
                         className="absolute top-1/2 right-1 transform -translate-y-1/2 rounded-full p-0.5 hover:bg-gray-200 dark:hover:bg-gray-700"
@@ -1412,12 +1457,88 @@ export default function BillingAndCart() {
                   </TabsTrigger>
                 ))}
               </TabsList>
-              <Button onClick={addTab} size="sm" variant="outline" className="ml-2">
-                <Plus className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-2 ml-auto">
+                <Button
+                  onClick={addTab}
+                  size="sm"
+                  variant="outline"
+                  disabled={billingTabs.length >= MAX_BILL_TABS}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+                <Button
+                  onClick={() => setIsReplacementDialogOpen(true)}
+                  size="sm"
+                  className="bg-blue-900 text-white hover:bg-blue-800"
+                >
+                  Replace
+                </Button>
+              </div>
             </div>
-            {billingTabs.map((tab) => (
+            {billingTabs.map((tab) => {
+              const isReplacementTab = !!replacementSession && replacementTabId === tab.id
+              const usageMap = isReplacementTab ? getUsageByReplacementEntry(tab.cartItems) : new Map<string, string>()
+              const replacementStatus = isReplacementTab
+                ? (replacementSession?.entries.map((entry) => {
+                    const mappedItemId = usageMap.get(entry.id)
+                    const mappedItem = mappedItemId
+                      ? tab.cartItems.find((item) => item.id === mappedItemId)
+                      : null
+                    const mappedQty = mappedItem ? getMappedQuantityForItem(mappedItem) : 0
+                    const pendingQty = Math.max(0, entry.quantity - mappedQty)
+                    return {
+                      ...entry,
+                      mappedItemName: mappedItem?.name || null,
+                      mappedQty,
+                      pendingQty,
+                    }
+                  }) || [])
+                : []
+              const mappedReplacementStatus = replacementStatus.filter((entry) => entry.mappedQty > 0)
+              const pendingReplacementStatus = replacementStatus.filter((entry) => entry.pendingQty > 0)
+
+              return (
               <TabsContent key={tab.id} value={tab.id} className="mt-4">
+                {isReplacementTab && replacementSession && (
+                  <Card className="mb-6 border-orange-300 bg-orange-50/50">
+                    <CardHeader>
+                      <CardTitle className="text-base">Replacement Mapping</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="text-sm">
+                        Original Bill: <span className="font-semibold">{replacementSession.originalBillId}</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-green-700 mb-1">Selected & Mapped</p>
+                        {mappedReplacementStatus.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No mappings selected yet.</p>
+                        ) : (
+                          <div className="space-y-1">
+                            {mappedReplacementStatus.map((entry) => (
+                              <p key={entry.id} className="text-sm">
+                                {entry.productName} (Qty {entry.quantity}){" -> "}{entry.mappedItemName} (Replaced Qty {entry.mappedQty})
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-amber-700 mb-1">Not Yet Mapped</p>
+                        {pendingReplacementStatus.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">All selected return items are mapped.</p>
+                        ) : (
+                          <div className="space-y-1">
+                            {pendingReplacementStatus.map((entry) => (
+                              <p key={entry.id} className="text-sm">
+                                {entry.productName} pending qty {entry.pendingQty}
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
                 {/* Store Information */}
                 {currentStore && (
                   <Card className="mb-6">
@@ -1485,7 +1606,7 @@ export default function BillingAndCart() {
                                         Replacement credit line
                                       </span>
                                     )}
-                                    {item.lineType !== "replacement_credit" && replacementSession && (
+                                    {item.lineType !== "replacement_credit" && isReplacementActive && (
                                       <div className="mt-2 space-y-1">
                                         <label className="text-xs text-gray-600 flex items-center gap-2">
                                           <input
@@ -1701,10 +1822,42 @@ export default function BillingAndCart() {
                   </>
                 )}
               </TabsContent>
-            ))}
+              )
+            })}
           </Tabs>
         </div>
       </div>
+
+      <ReturnsDialog
+        isOpen={isReplacementDialogOpen}
+        onClose={() => setIsReplacementDialogOpen(false)}
+        user={currentUser ? { name: currentUser.name } : null}
+        onStartReplacement={() => setIsReplacementDialogOpen(false)}
+        mode="replacement"
+        allowReturns={false}
+      />
+
+      <AlertDialog
+        open={!!pendingReplacementCloseId}
+        onOpenChange={(open) => {
+          if (!open) setPendingReplacementCloseId(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Close replacement tab?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will clear the replacement session and its cached data for this tab.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmCloseReplacementTab}>
+              Close Replacement
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {showPreview && currentInvoice && (
         <InvoicePreview
