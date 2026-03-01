@@ -185,6 +185,10 @@ export default function BillingAndCart() {
   const [replacementSession, setReplacementSession] = useState<ReplacementSession | null>(null)
   const [replacementTabId, setReplacementTabId] = useState<string | null>(null)
   const [pendingReplacementCloseId, setPendingReplacementCloseId] = useState<string | null>(null)
+  const [pendingReplacementAction, setPendingReplacementAction] = useState<{
+    type: "clear" | "remove"
+    itemId?: string
+  } | null>(null)
   const [isReplacementDialogOpen, setIsReplacementDialogOpen] = useState(false)
 
   const barcodeInputRef = useRef<HTMLInputElement>(null)
@@ -862,10 +866,28 @@ export default function BillingAndCart() {
     }
   }
 
-  const removeFromCart = (id: string) => {
+  const cleanReplacementCartItems = useCallback((items: CartItem[]) => {
+    return items
+      .filter((item) => item.lineType !== "replacement_credit")
+      .map((item) => (item.replacementMeta ? { ...item, replacementMeta: null } : item))
+  }, [])
+
+  const removeFromCartInternal = (id: string) => {
     if (!activeBillingInstance) return
     const updatedCartItems = activeBillingInstance.cartItems.filter((item) => item.id !== id)
     updateBillingInstance(activeTab, { cartItems: updatedCartItems })
+  }
+
+  const removeFromCart = (id: string) => {
+    removeFromCartInternal(id)
+  }
+
+  const requestRemoveFromCart = (id: string) => {
+    if (isReplacementActive) {
+      setPendingReplacementAction({ type: "remove", itemId: id })
+      return
+    }
+    removeFromCartInternal(id)
   }
 
   const toggleReplacementForLine = (itemId: string, enabled: boolean) => {
@@ -930,7 +952,7 @@ export default function BillingAndCart() {
     const product = products.find((p) => p.id === targetItem.productId)
 
     if (product && product.stock <= 0) {
-      removeFromCart(id)
+      removeFromCartInternal(id)
       toast({
         title: "Out of Stock",
         description: `${targetItem.name} is now out of stock and was removed from the cart.`,
@@ -942,7 +964,7 @@ export default function BillingAndCart() {
     const cappedQuantity = product ? Math.min(newQuantity, product.stock) : newQuantity
 
     if (cappedQuantity <= 0) {
-      removeFromCart(id)
+      removeFromCartInternal(id)
       return
     }
 
@@ -1002,13 +1024,21 @@ export default function BillingAndCart() {
     })
   }
 
-  const clearCart = () => {
+  const clearCartInternal = () => {
     updateBillingInstance(activeTab, {
       cartItems: [],
       discount: 0,
       editableTotal: 0,
       isEditingTotal: false,
     })
+  }
+
+  const clearCart = () => {
+    if (isReplacementActive) {
+      setPendingReplacementAction({ type: "clear" })
+      return
+    }
+    clearCartInternal()
   }
 
   const generateInvoiceId = () => {
@@ -1124,13 +1154,15 @@ export default function BillingAndCart() {
               if (mappedQty <= 0 || !item.replacementMeta) return null
               const oldUnitPrice = Number(item.replacementMeta.originalUnitPrice || 0)
               const newUnitPrice = Number(item.price || 0)
-              const finalAmount = Math.round((newUnitPrice - oldUnitPrice) * mappedQty * 100) / 100
+              const newUnitTax = Number(item.taxPercentage || 0)
+              const newUnitPriceWithTax = Math.round(newUnitPrice * (1 + newUnitTax / 100) * 100) / 100
+              const finalAmount = Math.round((newUnitPriceWithTax - oldUnitPrice) * mappedQty * 100) / 100
               return {
                 original_bill_id: item.replacementMeta.originalBillId,
                 replaced_product_id: item.replacementMeta.originalProductId,
                 new_product_id: item.productId,
                 quantity: mappedQty,
-                price: newUnitPrice,
+                price: newUnitPriceWithTax,
                 final_amount: finalAmount,
               }
             })
@@ -1342,6 +1374,24 @@ export default function BillingAndCart() {
     })
 
     clearReplacementSession()
+  }
+
+  const confirmReplacementAction = () => {
+    if (!pendingReplacementAction || !activeBillingInstance) return
+
+    if (pendingReplacementAction.type === "clear") {
+      clearCartInternal()
+    } else if (pendingReplacementAction.type === "remove" && pendingReplacementAction.itemId) {
+      const remaining = activeBillingInstance.cartItems.filter((item) => item.id !== pendingReplacementAction.itemId)
+      updateBillingInstance(activeTab, { cartItems: cleanReplacementCartItems(remaining) })
+    }
+
+    clearReplacementSession()
+    setPendingReplacementAction(null)
+  }
+
+  const cancelReplacementAction = () => {
+    setPendingReplacementAction(null)
   }
 
   if (!activeBillingInstance) {
@@ -1653,7 +1703,7 @@ export default function BillingAndCart() {
                                   </TableCell>
                                   <TableCell>₹{item.total.toLocaleString()}</TableCell>
                                   <TableCell>
-                                    <Button variant="outline" size="sm" onClick={() => removeFromCart(item.id)}>
+                                    <Button variant="outline" size="sm" onClick={() => requestRemoveFromCart(item.id)}>
                                       <Trash2 className="h-4 w-4" />
                                     </Button>
                                   </TableCell>
@@ -1855,6 +1905,28 @@ export default function BillingAndCart() {
             <AlertDialogAction onClick={confirmCloseReplacementTab}>
               Close Replacement
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!pendingReplacementAction}
+        onOpenChange={(open) => {
+          if (!open) setPendingReplacementAction(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Exit replacement mode?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingReplacementAction?.type === "clear"
+                ? "This will clear all items, remove the replacement session, and return this tab to a normal bill."
+                : "This will remove the product, clear the replacement session, and return this tab to a normal bill."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cancelReplacementAction}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmReplacementAction}>Confirm</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

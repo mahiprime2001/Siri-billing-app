@@ -20,6 +20,7 @@ interface BillItem {
   productId: string
   productName: string
   price: number
+  taxPercentage?: number
   quantity: number
   total: number
 }
@@ -31,6 +32,9 @@ interface Bill {
   items: BillItem[]
   paymentMethod: string
   total: number
+  subtotal?: number
+  discountAmount?: number
+  discountPercentage?: number
   timestamp: string
 }
 
@@ -73,6 +77,29 @@ export default function ReturnsDialog({
   const [reasonShakeKey, setReasonShakeKey] = useState(0)
   const { toast } = useToast()
 
+  const getBillTaxPercentage = (bill?: Bill) => {
+    if (!bill) return 0
+    const total = Number(bill.total || 0)
+    const baseFromItems = bill.items.reduce((sum, item) => {
+      const hasTotal = item.total !== undefined && item.total !== null
+      const itemBase = hasTotal ? Number(item.total) : Number(item.price || 0) * (item.quantity || 1)
+      return sum + (Number.isFinite(itemBase) ? itemBase : 0)
+    }, 0)
+    const subtotal = Number(bill.subtotal || 0) || baseFromItems
+    const discountAmount = Number(bill.discountAmount || 0)
+    const base = Math.max(0, subtotal - discountAmount) || baseFromItems
+    if (base <= 0) return 0
+    const taxAmount = total - base
+    return Math.max(0, (taxAmount / base) * 100)
+  }
+
+  const getItemUnitPriceWithTax = (item: BillItem, bill?: Bill) => {
+    const base = Number(item.price || 0)
+    const itemTax = Number(item.taxPercentage || 0)
+    const taxPct = itemTax > 0 ? itemTax : getBillTaxPercentage(bill)
+    return Math.round(base * (1 + taxPct / 100) * 100) / 100
+  }
+
   useEffect(() => {
     if (!allowReturns) {
       setFlowMode("replacement")
@@ -99,7 +126,7 @@ export default function ReturnsDialog({
           productId: item.productId,
           productName: item.productName,
           quantity: qty,
-          unitPrice: Number(item.price || 0),
+          unitPrice: getItemUnitPriceWithTax(item, bill),
           reason: returnRequest.returnReason || "Replacement",
         }
       })
@@ -310,7 +337,7 @@ export default function ReturnsDialog({
       const itemIdx = selectedItem.id.substring(lastHyphenIndex + 1);
       const bill = searchResults.find(b => b.id === billId)
       const item = bill?.items[parseInt(itemIdx)]
-      const itemTotal = (item?.price || 0) * selectedItem.quantity
+      const itemTotal = item ? getItemUnitPriceWithTax(item, bill) * selectedItem.quantity : 0
       console.log(`Calculating for itemId: ${selectedItem.id}, quantity: ${selectedItem.quantity}, billId: ${billId}, itemIdx: ${itemIdx}, found bill: ${!!bill}, found item: ${!!item}, item total: ${itemTotal}`);
       return total + itemTotal
     }, 0)
@@ -446,8 +473,8 @@ export default function ReturnsDialog({
                                   <div className="font-medium">{item.productName}</div>
                                   <div className="text-sm text-muted-foreground space-x-3">
                                     <span>Available: {item.quantity}</span>
-                                    <span>Unit Price: ₹{item.price.toFixed(2)}</span>
-                                    <span>Total: ₹{item.total.toFixed(2)}</span>
+                                    <span>Unit Price: ₹{getItemUnitPriceWithTax(item, bill).toFixed(2)}</span>
+                                    <span>Total: ₹{(getItemUnitPriceWithTax(item, bill) * item.quantity).toFixed(2)}</span>
                                   </div>
                                 </div>
                                 {isSelected && (
@@ -535,6 +562,7 @@ export default function ReturnsDialog({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Size inadequate">Size inadequate</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
                     </SelectContent>
                   </Select>
                   {reasonError && (
@@ -583,6 +611,7 @@ export default function ReturnsDialog({
                       const itemIdx = selectedItem.id.substring(lastHyphenIndex + 1);
                       const bill = searchResults.find(b => b.id === billId)
                       const item = bill?.items[parseInt(itemIdx)]
+                      const unitWithTax = item ? getItemUnitPriceWithTax(item, bill) : 0
 
                       return (
                         <div key={selectedItem.id} className="flex justify-between items-center p-3 border rounded-lg">
@@ -590,11 +619,11 @@ export default function ReturnsDialog({
                             <div className="font-medium">{item?.productName}</div>
                             <div className="text-sm text-muted-foreground">Invoice: {billId}</div>
                             <div className="text-sm text-muted-foreground">
-                              Quantity: {selectedItem.quantity} × ₹{item?.price.toFixed(2)}
+                              Quantity: {selectedItem.quantity} × ₹{unitWithTax.toFixed(2)}
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="font-semibold">Amount: ₹{((item?.price || 0) * selectedItem.quantity).toFixed(2)}</div>
+                            <div className="font-semibold">Amount: ₹{(unitWithTax * selectedItem.quantity).toFixed(2)}</div>
                           </div>
                         </div>
                       )

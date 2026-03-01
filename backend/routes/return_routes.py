@@ -164,13 +164,27 @@ def search_bills():
         for bill in bills:
             # Get bill items with product details via JOIN
             bill_items_response = supabase.table('billitems').select(
-                '*, products(id, name, selling_price)'
+                '*, products(id, name, selling_price, hsn_codes(tax))'
             ).eq('billid', bill['id']).execute()
             
             bill_items = bill_items_response.data if bill_items_response.data else []
             
             customer_data = bill.get('customers') or {}
             
+            transformed_items = []
+            for item in bill_items:
+                product = item.get('products') or {}
+                hsn = product.get('hsn_codes') or {}
+                tax_percentage = float(hsn.get('tax', 0) or 0)
+                transformed_items.append({
+                    'productId': item.get('productid', ''),
+                    'productName': product.get('name', 'Unknown Product'),
+                    'price': float(item.get('price', 0)),
+                    'taxPercentage': tax_percentage,
+                    'quantity': int(item.get('quantity', 0)),
+                    'total': float(item.get('total', 0))
+                })
+
             transformed_bills.append({
                 'id': bill['id'],
                 'storeId': bill.get('storeid') or bill.get('storeId') or '',
@@ -178,15 +192,12 @@ def search_bills():
                 'customerName': customer_data.get('name', 'Walk-in Customer'),
                 'customerPhone': customer_data.get('phone', ''),
                 'paymentMethod': bill.get('paymentmethod', 'cash'),
+                'subtotal': float(bill.get('subtotal', 0) or 0),
+                'discountAmount': float(bill.get('discount_amount', 0) or 0),
+                'discountPercentage': float(bill.get('discount_percentage', 0) or 0),
                 'total': float(bill.get('total', 0)),
                 'timestamp': bill.get('timestamp', bill.get('created_at', '')),
-                'items': [{
-                    'productId': item.get('productid', ''),
-                    'productName': item.get('products', {}).get('name', 'Unknown Product'),
-                    'price': float(item.get('price', 0)),
-                    'quantity': int(item.get('quantity', 0)),
-                    'total': float(item.get('total', 0))
-                } for item in bill_items]
+                'items': transformed_items
             })
         
         app.logger.info(f"✅ Found {len(transformed_bills)} bills")
