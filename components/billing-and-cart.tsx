@@ -734,17 +734,31 @@ export default function BillingAndCart() {
     }
   }
 
-  const addToCart = (productId: string, qty = 1) => {
-    if (!activeBillingInstance) return
+  const addToCart = (productId: string, qty = 1): boolean => {
+    if (!activeBillingInstance) {
+      toast({
+        title: "Billing Unavailable",
+        description: "No active billing tab found. Open a bill and try again.",
+        variant: "destructive",
+      })
+      return false
+    }
     const product = products.find((p) => p.id === productId)
-    if (!product) return
+    if (!product) {
+      toast({
+        title: "Product Unavailable",
+        description: "The scanned product is not available in this store.",
+        variant: "destructive",
+      })
+      return false
+    }
     if (product.stock <= 0) {
       toast({
         title: "Out of Stock",
         description: `${product.name} is out of stock.`,
         variant: "destructive",
       })
-      return
+      return false
     }
 
     // ✅ Calculate base price (without tax)
@@ -770,7 +784,7 @@ export default function BillingAndCart() {
         description: `No more stock available for ${product.name}.`,
         variant: "destructive",
       })
-      return
+      return false
     }
 
     const finalQty = Math.min(qty, maxAddable)
@@ -815,6 +829,7 @@ export default function BillingAndCart() {
       title: "Added to Cart",
       description: `${product.name} x${finalQty}${adjustedMsg}`,
     })
+    return true
   }
 
   const normalizeBarcode = (code: string) => {
@@ -838,9 +853,11 @@ export default function BillingAndCart() {
     })
 
     if (product) {
-      addToCart(product.id, 1)
-      setLastScanned(product)
-      setBarcodeInput("")
+      const added = addToCart(product.id, 1)
+      if (added) {
+        setLastScanned(product)
+        setBarcodeInput("")
+      }
 
       setTimeout(() => {
         barcodeInputRef.current?.focus()

@@ -35,6 +35,7 @@ interface SelectedItem {
   name: string
   barcode?: string
   quantity: number
+  availableStock: number
 }
 
 interface ReturnToAdminDialogProps {
@@ -80,26 +81,72 @@ export default function ReturnToAdminDialog({ isOpen, onClose }: ReturnToAdminDi
     onClose()
   }
 
-  const addOrIncrementItem = (product: ProductSearchResult) => {
-    setItems((prev) => {
-      const existing = prev.find((item) => item.productId === product.id)
-      if (existing) {
-        return prev.map((item) =>
-          item.productId === product.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item,
-        )
+  const addOrIncrementItem = (product: ProductSearchResult): boolean => {
+    const availableStock = Number.isFinite(Number(product.stock)) ? Math.max(0, Number(product.stock)) : 0
+
+    if (availableStock <= 0) {
+      toast({
+        title: "Out of Stock",
+        description: `${product.name} is not available in stock.`,
+        variant: "destructive",
+      })
+      return false
+    }
+
+    const existing = items.find((item) => item.productId === product.id)
+    if (existing) {
+      if (existing.quantity >= existing.availableStock) {
+        toast({
+          title: "Stock Limit Reached",
+          description: `No more stock available for ${product.name}.`,
+          variant: "destructive",
+        })
+        return false
       }
-      return [
-        ...prev,
-        {
-          productId: product.id,
-          name: product.name,
-          barcode: product.barcode || product.barcodes,
-          quantity: 1,
-        },
-      ]
-    })
+      setItems((prev) =>
+        prev.map((item) =>
+          item.productId === product.id
+            ? { ...item, quantity: item.quantity + 1, availableStock }
+            : item,
+        ),
+      )
+      return true
+    }
+
+    setItems((prev) => [
+      ...prev,
+      {
+        productId: product.id,
+        name: product.name,
+        barcode: product.barcode || product.barcodes,
+        quantity: 1,
+        availableStock,
+      },
+    ])
+    return true
+  }
+
+  const handleQtyChange = (productId: string, value: number) => {
+    const next = Math.max(1, Number.isFinite(value) ? Math.floor(value) : 1)
+    const existing = items.find((item) => item.productId === productId)
+    if (!existing) return
+
+    if (next > existing.availableStock) {
+      toast({
+        title: "Stock Limit Reached",
+        description: `Only ${existing.availableStock} available for ${existing.name}.`,
+        variant: "destructive",
+      })
+      setItems((prev) =>
+        prev.map((item) =>
+          item.productId === productId ? { ...item, quantity: existing.availableStock } : item,
+        ),
+      )
+      return
+    }
+    setItems((prev) =>
+      prev.map((item) => (item.productId === productId ? { ...item, quantity: next } : item)),
+    )
   }
 
   const handleSearch = async () => {
@@ -138,8 +185,10 @@ export default function ReturnToAdminDialog({ isOpen, onClose }: ReturnToAdminDi
         return
       }
 
-      addOrIncrementItem(match)
-      setBarcodeInput("")
+      const added = addOrIncrementItem(match)
+      if (added) {
+        setBarcodeInput("")
+      }
     } catch (error) {
       console.error("Barcode search failed:", error)
       toast({
@@ -150,13 +199,6 @@ export default function ReturnToAdminDialog({ isOpen, onClose }: ReturnToAdminDi
     } finally {
       setIsSearching(false)
     }
-  }
-
-  const handleQtyChange = (productId: string, value: number) => {
-    const next = Math.max(1, Number.isFinite(value) ? Math.floor(value) : 1)
-    setItems((prev) =>
-      prev.map((item) => (item.productId === productId ? { ...item, quantity: next } : item)),
-    )
   }
 
   const handleRemove = (productId: string) => {
