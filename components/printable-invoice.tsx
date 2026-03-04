@@ -53,10 +53,14 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
     const totalQuantity = itemRows.reduce((sum, row) => sum + row.quantity, 0);
     const totalAfterTax = itemRows.reduce((sum, row) => sum + row.lineTotalAfterTax, 0);
     const totalAfterTaxRounded = Math.round(totalAfterTax * 100) / 100;
+    const totalBeforeTax =
+      Number(safeInvoice.subtotal || 0) > 0
+        ? Number(safeInvoice.subtotal || 0)
+        : Math.round(itemRows.reduce((sum, row) => sum + Number(row.total || 0), 0) * 100) / 100;
 
     const taxGroupMap = new Map<
       string,
-      { hsnCode: string; gst: number; taxableAmount: number; cgst: number; sgst: number; igst: number; totalTax: number }
+      { hsnCode: string; gst: number; totalQuantity: number; taxableAmount: number; cgst: number; sgst: number; igst: number; totalTax: number; totalAfterTax: number }
     >();
 
     itemRows.forEach((row: any) => {
@@ -67,38 +71,48 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
       const totalTax = row.totalTax;
       const cgst = Math.round((totalTax / 2) * 100) / 100;
       const sgst = Math.round((totalTax / 2) * 100) / 100;
+      const totalAfterTaxByHsn = Math.round((taxableAmount + totalTax) * 100) / 100;
 
       const existing = taxGroupMap.get(key);
       if (existing) {
+        existing.totalQuantity += row.quantity;
         existing.taxableAmount += taxableAmount;
         existing.cgst += cgst;
         existing.sgst += sgst;
         existing.totalTax += totalTax;
+        existing.totalAfterTax += totalAfterTaxByHsn;
       } else {
         taxGroupMap.set(key, {
           hsnCode,
           gst,
+          totalQuantity: row.quantity,
           taxableAmount,
           cgst,
           sgst,
           igst: 0,
           totalTax,
+          totalAfterTax: totalAfterTaxByHsn,
         });
       }
     });
 
     const taxClassificationRows = Array.from(taxGroupMap.values()).map((row) => ({
       ...row,
+      totalQuantity: Math.round(row.totalQuantity * 100) / 100,
       taxableAmount: Math.round(row.taxableAmount * 100) / 100,
       cgst: Math.round(row.cgst * 100) / 100,
       sgst: Math.round(row.sgst * 100) / 100,
       totalTax: Math.round(row.totalTax * 100) / 100,
+      totalAfterTax: Math.round(row.totalAfterTax * 100) / 100,
     }));
 
+    const groupedTotalQty = taxClassificationRows.reduce((sum, row) => sum + row.totalQuantity, 0);
+    const groupedTaxableTotal = taxClassificationRows.reduce((sum, row) => sum + row.taxableAmount, 0);
     const totalCGST = taxClassificationRows.reduce((sum, row) => sum + row.cgst, 0);
     const totalSGST = taxClassificationRows.reduce((sum, row) => sum + row.sgst, 0);
     const totalIGST = taxClassificationRows.reduce((sum, row) => sum + row.igst, 0);
     const totalTaxAmount = taxClassificationRows.reduce((sum, row) => sum + row.totalTax, 0);
+    const groupedTotalAfterTax = taxClassificationRows.reduce((sum, row) => sum + row.totalAfterTax, 0);
 
     return (
       <>
@@ -135,7 +149,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
             <div style={{ fontSize: 12 }}>
               {safeInvoice.storeAddress || safeInvoice.companyAddress}
             </div>
-            <div style={{ fontSize: 12 }}>Ph: {safeInvoice.companyPhone}</div>
+            <div style={{ fontSize: 12 }}>Ph: {safeInvoice.storePhone || safeInvoice.companyPhone}</div>
             <div style={{ fontSize: 12 }}>Email: {safeInvoice.companyEmail}</div>
             {safeInvoice.gstin && (
               <div style={{ fontSize: 12 }}>GSTIN: {safeInvoice.gstin}</div>
@@ -229,26 +243,10 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
 
             <div style={{ borderTop: "1px dashed #000", margin: "5px 0" }} />
 
-            {/* Summary */}
-            <div style={{ fontSize: 12, marginTop: 7 }}>
-              {safeInvoice.discountPercentage > 0 && (
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>Discount ({safeInvoice.discountPercentage}%)</span>
-                  <span>-₹{formatNumber(safeInvoice.discountAmount)}</span>
-                </div>
-              )}
-              
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  fontWeight: "bold",
-                  marginTop: 5,
-                  fontSize: 17,
-                }}
-              >
-                <span>TOTAL</span>
-                <span>₹{formatNumber(safeInvoice.total)}</span>
+            <div style={{ fontSize: 12, marginBottom: 6 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold" }}>
+                <span>Total Amount Before Tax</span>
+                <span>₹{formatNumber(totalBeforeTax)}</span>
               </div>
             </div>
 
@@ -268,12 +266,13 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
                 paddingBottom: 2,
                 marginBottom: 2
               }}>
-                <span style={{ width: "16%", fontSize: 9 }}>HSN</span>
-                <span style={{ width: "10%", fontSize: 9 }}>GST</span>
-                <span style={{ width: "22%", fontSize: 9, textAlign: "right" }}>CGST</span>
-                <span style={{ width: "22%", fontSize: 9, textAlign: "right" }}>SGST</span>
-                <span style={{ width: "12%", fontSize: 9, textAlign: "right" }}>IGST</span>
-                <span style={{ width: "18%", fontSize: 9, textAlign: "right" }}>Total</span>
+                <span style={{ width: "17%", fontSize: 9 }}>HSN</span>
+                <span style={{ width: "11%", fontSize: 9, textAlign: "right" }}>Qty</span>
+                <span style={{ width: "18%", fontSize: 9, textAlign: "right" }}>Taxable</span>
+                <span style={{ width: "14%", fontSize: 9, textAlign: "right" }}>CGST</span>
+                <span style={{ width: "14%", fontSize: 9, textAlign: "right" }}>SGST</span>
+                <span style={{ width: "10%", fontSize: 9, textAlign: "right" }}>IGST</span>
+                <span style={{ width: "16%", fontSize: 9, textAlign: "right" }}>Total</span>
               </div>
               
               {/* Data Rows */}
@@ -286,19 +285,27 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
                     marginBottom: 2
                   }}
                 >
-                  <span style={{ width: "16%", fontSize: 9 }}>{row.hsnCode}</span>
-                  <span style={{ width: "10%", fontSize: 9 }}>{row.gst}%</span>
-                  <span style={{ width: "22%", fontSize: 9, textAlign: "right" }}>
-                    ₹{formatNumber(row.cgst)} ({formatNumber(row.gst / 2)}%)
+                  <span style={{ width: "17%", fontSize: 9 }}>
+                    <div>{row.hsnCode}</div>
+                    <div style={{ fontSize: 8 }}>GST {formatNumber(row.gst)}%</div>
                   </span>
-                  <span style={{ width: "22%", fontSize: 9, textAlign: "right" }}>
-                    ₹{formatNumber(row.sgst)} ({formatNumber(row.gst / 2)}%)
-                  </span>
-                  <span style={{ width: "12%", fontSize: 9, textAlign: "right" }}>
-                    ₹{formatNumber(row.igst)}
+                  <span style={{ width: "11%", fontSize: 9, textAlign: "right" }}>
+                    {formatNumber(row.totalQuantity)}
                   </span>
                   <span style={{ width: "18%", fontSize: 9, textAlign: "right" }}>
-                    ₹{formatNumber(row.totalTax)}
+                    ₹{formatNumber(row.taxableAmount)}
+                  </span>
+                  <span style={{ width: "14%", fontSize: 9, textAlign: "right" }}>
+                    ₹{formatNumber(row.cgst)}
+                  </span>
+                  <span style={{ width: "14%", fontSize: 9, textAlign: "right" }}>
+                    ₹{formatNumber(row.sgst)}
+                  </span>
+                  <span style={{ width: "10%", fontSize: 9, textAlign: "right" }}>
+                    ₹{formatNumber(row.igst)}
+                  </span>
+                  <span style={{ width: "16%", fontSize: 9, textAlign: "right" }}>
+                    ₹{formatNumber(row.totalAfterTax)}
                   </span>
                 </div>
               ))}
@@ -312,17 +319,58 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
                 marginTop: 2,
                 fontWeight: "bold"
               }}>
-                <span style={{ width: "16%", fontSize: 9 }}>Total</span>
-                <span style={{ width: "10%", fontSize: 9 }}>-</span>
-                <span style={{ width: "22%", fontSize: 9, textAlign: "right" }}>₹{formatNumber(totalCGST)}</span>
-                <span style={{ width: "22%", fontSize: 9, textAlign: "right" }}>₹{formatNumber(totalSGST)}</span>
-                <span style={{ width: "12%", fontSize: 9, textAlign: "right" }}>₹{formatNumber(totalIGST)}</span>
-                <span style={{ width: "18%", fontSize: 9, textAlign: "right" }}>₹{formatNumber(totalTaxAmount)}</span>
+                <span style={{ width: "17%", fontSize: 9 }}>Total</span>
+                <span style={{ width: "11%", fontSize: 9, textAlign: "right" }}>{formatNumber(groupedTotalQty)}</span>
+                <span style={{ width: "18%", fontSize: 9, textAlign: "right" }}>₹{formatNumber(groupedTaxableTotal)}</span>
+                <span style={{ width: "14%", fontSize: 9, textAlign: "right" }}>₹{formatNumber(totalCGST)}</span>
+                <span style={{ width: "14%", fontSize: 9, textAlign: "right" }}>₹{formatNumber(totalSGST)}</span>
+                <span style={{ width: "10%", fontSize: 9, textAlign: "right" }}>₹{formatNumber(totalIGST)}</span>
+                <span style={{ width: "16%", fontSize: 9, textAlign: "right" }}>₹{formatNumber(groupedTotalAfterTax)}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3, fontWeight: "bold" }}>
                 <span>Total Tax Amount</span>
                 <span>₹{formatNumber(totalTaxAmount)}</span>
               </div>
+            </div>
+
+            <div style={{ borderTop: "1px dashed #000", margin: "5px 0" }} />
+
+            {/* Summary */}
+            <div style={{ fontSize: 12, marginTop: 7 }}>
+              {safeInvoice.discountPercentage > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>Discount ({safeInvoice.discountPercentage}%)</span>
+                  <span>-₹{formatNumber(safeInvoice.discountAmount)}</span>
+                </div>
+              )}
+              
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontWeight: "bold",
+                  marginTop: 5,
+                  fontSize: 17,
+                }}
+              >
+                <span>Grand Total</span>
+                <span>₹{formatNumber(safeInvoice.total)}</span>
+              </div>
+            </div>
+
+            <div style={{ borderTop: "1px dashed #000", margin: "5px 0" }} />
+
+            <div style={{ textAlign: "left", fontSize: 10, marginTop: 7, lineHeight: 1.5 }}>
+              <div style={{ fontWeight: "bold", marginBottom: 2 }}>Terms and Conditions:</div>
+              <div>* NO GURANTEE, NO RETURN</div>
+              <div>* GOODS Once Sold Cannot be exchanged</div>
+              <div>* Total amount Inclusive of GST</div>
+              <div>For any queries, please contact our customer service team.</div>
+              <div>
+                Customer care number: {safeInvoice.companyPhone || "Store Number"} (please feel free to contact us using
+                the same number in WhatsApp)
+              </div>
+              <div>Email.id: {safeInvoice.companyEmail || "-"}</div>
             </div>
 
             <div style={{ borderTop: "1px dashed #000", margin: "5px 0" }} />

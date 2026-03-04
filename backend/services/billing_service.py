@@ -1,6 +1,8 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
+import re
+from zoneinfo import ZoneInfo
 
 from utils.connection_pool import get_supabase_client
 from data_access.data_access import update_both_inventory_and_product_stock
@@ -8,6 +10,44 @@ from utils.stock_stream import publish
 from utils.discount_approval_cache import pop_discount_approval
 
 DEFAULT_WALKIN_CUSTOMER_ID = "CUST-1754821420265"
+INVOICE_ID_REGEX = re.compile(r"^INV-(\d{8})(\d{4})$")
+IST_ZONE = ZoneInfo("Asia/Kolkata")
+
+
+def _get_today_invoice_prefix() -> str:
+    return f"INV-{datetime.now(IST_ZONE).strftime('%d%m%Y')}"
+
+
+def _extract_serial_for_prefix(invoice_id: Optional[str], prefix: str) -> int:
+    if not invoice_id or not invoice_id.startswith(prefix):
+        return 0
+    match = INVOICE_ID_REGEX.match(invoice_id)
+    if not match:
+        return 0
+    try:
+        return int(match.group(2))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _generate_daily_invoice_id(supabase) -> str:
+    prefix = _get_today_invoice_prefix()
+    max_serial = 0
+
+    try:
+        response = (
+            supabase.table("bills")
+            .select("id")
+            .like("id", f"{prefix}%")
+            .execute()
+        )
+        for row in (response.data or []):
+            max_serial = max(max_serial, _extract_serial_for_prefix(str(row.get("id") or ""), prefix))
+    except Exception:
+        # If lookup fails, fallback to first serial for today.
+        pass
+
+    return f"{prefix}{max_serial + 1:04d}"
 
 
 def create_bill_transaction(
@@ -29,7 +69,7 @@ def create_bill_transaction(
     if not supabase:
         raise RuntimeError("Supabase client unavailable")
 
-    bill_id = forced_bill_id or f"inv-{uuid.uuid4().hex[:12]}"
+    bill_id = _generate_daily_invoice_id(supabase)
     now = datetime.now(timezone.utc).isoformat()
     customer_id = data.get("customer_id") or DEFAULT_WALKIN_CUSTOMER_ID
 
@@ -74,8 +114,21 @@ def create_bill_transaction(
         "updated_at": now,
     }
 
-    response = supabase.table("bills").insert(bill_data).execute()
-    if not response.data or len(response.data) == 0:
+    response = None
+    for _ in range(5):
+        try:
+            response = supabase.table("bills").insert(bill_data).execute()
+            if response.data and len(response.data) > 0:
+                break
+        except Exception as insert_error:
+            err_text = str(insert_error).lower()
+            if "duplicate" in err_text or "unique" in err_text:
+                bill_id = _generate_daily_invoice_id(supabase)
+                bill_data["id"] = bill_id
+                continue
+            raise
+
+    if not response or not response.data or len(response.data) == 0:
         raise RuntimeError("Bill insert failed")
 
     created_bill = response.data[0]
