@@ -12,6 +12,8 @@ import InvoicePreview from "./invoice-preview"
 import PrintableInvoice from "./printable-invoice"
 import { apiClient } from "@/lib/api-client"
 import { isTauriApp, printHtmlContent } from "@/lib/tauriPrinter"
+import { safePrint } from "@/lib/printUtils"
+import { useToast } from "@/components/ui/use-toast"
 
 // Raw invoice shape returned by backend (snake_case).
 interface RawInvoice {
@@ -34,6 +36,7 @@ interface BillingHistoryProps {
 }
 
 export function BillingHistory({ currentStore }: BillingHistoryProps) {
+  const { toast } = useToast()
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [filteredInvoices, setFilteredInvoices] = useState<Invoice[]>([])
   const [searchTerm, setSearchTerm] = useState("")
@@ -49,6 +52,7 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
   const printPaperSize = "Thermal 80mm"
   const printRef = useRef<HTMLDivElement>(null)
   const [isTauriRuntime, setIsTauriRuntime] = useState(false)
+  const [printingInvoiceId, setPrintingInvoiceId] = useState<string | null>(null)
 
   useEffect(() => {
     setIsTauriRuntime(isTauriApp())
@@ -327,6 +331,8 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
 
   // Direct print flow using PrintableInvoice (isolated iframe)
   const handlePrintInvoice = async (invoice: Invoice) => {
+    if (printingInvoiceId) return
+    setPrintingInvoiceId(invoice.id)
     const [items, replacements] = await Promise.all([
       fetchBillItems(invoice.id),
       fetchBillReplacements(invoice.id),
@@ -350,40 +356,26 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
     const printOuter = printRef.current?.outerHTML || ""
     const printContent = generatePrintHTML(printOuter, printPaperSize, printable.id || "invoice")
 
-    if (isTauriRuntime) {
-      try {
-        await printHtmlContent(printContent, { paperSize: printPaperSize, copies: 1 })
-      } catch (error) {
-        console.error("❌ [BillingHistory] Tauri print failed:", error)
+    try {
+      if (isTauriRuntime) {
+        const result = await printHtmlContent(printContent, { paperSize: printPaperSize })
+        console.log("✅ [BillingHistory] Tauri print submitted:", result)
+        toast({
+          title: "Print job queued",
+          description: "Printer: System default",
+          variant: "default",
+        })
+        return
       }
-      return
-    }
 
-    const frame = document.createElement("iframe")
-    frame.style.position = "fixed"
-    frame.style.right = "0"
-    frame.style.bottom = "0"
-    frame.style.width = "0"
-    frame.style.height = "0"
-    frame.style.border = "0"
-    document.body.appendChild(frame)
-    const doc = frame.contentDocument || frame.contentWindow?.document
-    if (!doc) {
-      document.body.removeChild(frame)
-      return
-    }
-    doc.open()
-    doc.write(printContent)
-    doc.close()
-    frame.onload = () => {
-      try {
-        frame.contentWindow?.focus()
-        frame.contentWindow?.print()
-      } finally {
-        setTimeout(() => {
-          if (document.body.contains(frame)) document.body.removeChild(frame)
-        }, 300)
+      const result = await safePrint(printContent, printPaperSize)
+      if (!result.success) {
+        console.error("❌ [BillingHistory] Browser print failed:", result.error)
       }
+    } catch (error) {
+      console.error("❌ [BillingHistory] Print failed:", error)
+    } finally {
+      setPrintingInvoiceId(null)
     }
   }
 
@@ -562,9 +554,26 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
                           <Eye className="h-4 w-4 mr-1" />
                           View
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => handlePrintInvoice(invoice)}>
-                          <Printer className="h-4 w-4 mr-1" />
-                          Print
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handlePrintInvoice(invoice)}
+                          disabled={printingInvoiceId === invoice.id}
+                          className={printingInvoiceId === invoice.id ? "animate-pulse" : ""}
+                        >
+                          {printingInvoiceId === invoice.id ? (
+                            <>
+                              <span className="mr-1 inline-flex items-center">
+                                <span className="h-3 w-3 animate-spin rounded-full border-2 border-gray-500 border-t-transparent"></span>
+                              </span>
+                              Printing...
+                            </>
+                          ) : (
+                            <>
+                              <Printer className="h-4 w-4 mr-1" />
+                              Print
+                            </>
+                          )}
                         </Button>
                       </div>
                     </TableCell>

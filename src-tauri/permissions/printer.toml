@@ -1,0 +1,14 @@
+# src-tauri/permissions/print-commands.toml
+# Defines ACL permissions for custom native print commands
+
+"$schema" = "../gen/schemas/desktop-schema.json"
+
+[[permission]]
+identifier = "allow-print-html-native"
+description = "Allows invoking the print_html_native command to print HTML directly to a printer"
+commands.allow = ["print_html_native"]
+
+[[permission]]
+identifier = "allow-list-printers-native"
+description = "Allows invoking the list_printers_native command to list available printers"
+commands.allow = ["list_printers_native"]

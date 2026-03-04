@@ -1,5 +1,9 @@
+// lib/tauriPrinter.ts
+// ✅ Uses native Tauri commands (print_html_native / list_printers_native)
+// ✅ No wkhtmltopdf, no PDF conversion, no plugin dependency
+// ✅ Supports N copies directly, preserves your HTML design
+
 import { invoke } from "@tauri-apps/api/core";
-import { getPrinters, printHtml } from "tauri-plugin-printer-v2";
 
 export const isTauriApp = (): boolean => {
   return typeof window !== "undefined" && Boolean((window as any).__TAURI__);
@@ -23,39 +27,22 @@ const debugLog = (forceDebug: boolean | undefined, ...args: unknown[]) => {
   }
 };
 
+// ── List available printers ────────────────────────────────────────────────
+
 export async function listPrinters(): Promise<string[]> {
   if (!isTauriApp()) return [];
   try {
-    debugLog(undefined, "Listing printers via plugin...");
-    const printersJson = await getPrinters();
-    debugLog(undefined, "Raw printers JSON:", printersJson);
-    const parsed = JSON.parse(printersJson);
-    if (Array.isArray(parsed)) {
-      const names = parsed.map((p) => p?.name).filter(Boolean);
-      debugLog(undefined, "Parsed printers:", names);
-      return names;
-    }
-    debugLog(undefined, "Printers JSON did not parse to array.");
-    return [];
+    debugLog(undefined, "Listing printers via native command...");
+    const printers = await invoke<string[]>("list_printers_native");
+    debugLog(undefined, "Printers:", printers);
+    return printers;
   } catch (error) {
     console.error("❌ [tauriPrinter] Failed to list printers:", error);
     return [];
   }
 }
 
-type SilentPrintOptions = {
-  printerName?: string;
-  paperSize?: string;
-  copies?: number;
-  debug?: boolean;
-};
-
-const getThermalWidthMm = (paperSize?: string): number | undefined => {
-  if (!paperSize) return undefined;
-  if (paperSize === "Thermal 58mm") return 58;
-  if (paperSize === "Thermal 80mm") return 80;
-  return undefined;
-};
+// ── Types ──────────────────────────────────────────────────────────────────
 
 type HtmlPrintOptions = {
   printerName?: string;
@@ -64,89 +51,209 @@ type HtmlPrintOptions = {
   debug?: boolean;
 };
 
-const getPageSize = (paperSize?: string): string | undefined => {
-  if (paperSize === "A4") return "A4";
-  if (paperSize === "Letter") return "Letter";
-  return undefined;
-};
+let printInProgress = false;
 
-export async function silentPrintText(
-  content: string,
-  options?: SilentPrintOptions
-): Promise<void> {
-  if (!isTauriApp()) {
-    throw new Error("Silent printing is only available in the desktop app.");
+// ── Build a complete, self-contained HTML document for printing ────────────
+// This ensures your invoice design is preserved exactly as-is.
+
+function buildPrintHtml(htmlContent: string, paperSize?: string): string {
+  // Determine page width for thermal printers
+  let pageWidth = "210mm"; // A4 default
+  let pageHeight = "auto";
+
+  if (paperSize === "Thermal 80mm") {
+    pageWidth = "80mm";
+  } else if (paperSize === "Thermal 58mm") {
+    pageWidth = "58mm";
+  } else if (paperSize === "A4") {
+    pageWidth = "210mm";
+    pageHeight = "297mm";
+  } else if (paperSize === "Letter") {
+    pageWidth = "216mm";
+    pageHeight = "279mm";
   }
-  const printerName = options?.printerName;
-  const copies = Math.max(
-    1,
-    Number.isFinite(options?.copies) ? Number(options?.copies) : 2 // Default to 2 copies
-  );
-  const paperWidthMm = getThermalWidthMm(options?.paperSize);
-  debugLog(options?.debug, "Printing via plugin (text)...", {
-    printer: printerName || "SYSTEM_DEFAULT",
-    copies,
-    paperSize: options?.paperSize,
-    contentLength: content.length,
-  });
-  const textPrintOptions = {
-    id: `receipt-${Date.now()}`,
-    html: `<pre style="font-family: 'Courier New', monospace; font-size: 12px; white-space: pre-wrap;${
-      paperWidthMm ? ` width: ${paperWidthMm}mm;` : ""
-    }">${content
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")}</pre>`,
-    printer: printerName || "",
-    copies,
-    ...(paperWidthMm ? { page_width: paperWidthMm } : {}),
-  };
-  const result = await printHtml(textPrintOptions);
-  debugLog(options?.debug, "Print job submitted (text).", result);
+
+  // Extract body content if a full HTML document was passed in
+  let content = htmlContent;
+  const bodyMatch = htmlContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (bodyMatch) {
+    content = bodyMatch[1];
+  }
+
+  // Strip scripts and comments for safety
+  content = content.replace(/<script[\s\S]*?<\/script>/gi, "");
+  content = content.replace(/<!--[\s\S]*?-->/g, "");
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Invoice</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+      line-height: 1.4;
+      background: #fff;
+      width: ${pageWidth};
+      ${pageHeight !== "auto" ? `height: ${pageHeight};` : ""}
+    }
+    @page {
+      size: ${pageWidth} ${pageHeight};
+      margin: 0;
+    }
+    @media print {
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      .no-print { display: none !important; }
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 4px 8px; text-align: left; border-bottom: 1px solid #ddd; font-size: 11px; }
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+    .font-bold { font-weight: bold; }
+  </style>
+</head>
+<body>
+  ${content}
+</body>
+</html>`;
 }
 
-/**
- * ✅ MAIN PRINT FUNCTION - Prints HTML with NO headers/footers
- * - Defaults to 2 copies
- * - Prints content-only (no blank space after)
- * - Uses tauri-plugin-printer-v2 directly
- */
+// ── MAIN FUNCTION: Print HTML directly to printer with N copies ────────────
+//
+// Calls the Rust `print_html_native` command which:
+//   1. Writes HTML to a temp file
+//   2. Uses PowerShell + IE COM automation to print silently
+//   3. No dialog, no PDF, no wkhtmltopdf required
+//   4. Supports exact copy count
+//
 export async function printHtmlContent(
   html: string,
   options?: HtmlPrintOptions
-): Promise<void> {
+): Promise<string> {
   if (!isTauriApp()) {
     throw new Error("HTML printing is only available in the desktop app.");
   }
-  
-  const printerName = options?.printerName;
+
+  if (printInProgress) {
+    const msg = "Print already in progress. Skipping duplicate call.";
+    debugLog(options?.debug, msg);
+    return msg;
+  }
+
+  const printerName = options?.printerName ?? "";
   const copies = Math.max(
     1,
-    Number.isFinite(options?.copies) ? Number(options?.copies) : 2 // ✅ DEFAULT 2 COPIES
+    Number.isFinite(options?.copies) ? Number(options?.copies) : 2
   );
-  const pageWidthMm = getThermalWidthMm(options?.paperSize);
-  const pageSize = getPageSize(options?.paperSize);
-  
-  debugLog(options?.debug, "Printing via plugin (HTML)...", {
+
+  debugLog(options?.debug, "Invoking print_html_native...", {
     printer: printerName || "SYSTEM_DEFAULT",
     copies,
     paperSize: options?.paperSize,
     htmlLength: html.length,
   });
-  
-  // ✅ Clean HTML - remove any duplicate rendering
-  const cleanedHtml = html.replace(/<div class="print-copy">[\s\S]*?<\/div>/g, '');
-  
-  const htmlPrintOptions = {
-    id: `invoice-${Date.now()}`,
-    html: cleanedHtml,
-    printer: printerName || "",
-    orientation: "portrait" as const,
-    copies, // ✅ 2 copies by default
-    ...(pageWidthMm ? { page_width: pageWidthMm } : {}),
-    ...(pageSize ? { page_size: pageSize } : {}),
-  };
-  
-  const result = await printHtml(htmlPrintOptions);
-  debugLog(options?.debug, "Print job submitted (HTML).", result);
+
+  // Build a clean, complete HTML document preserving your invoice design
+  const printReadyHtml = buildPrintHtml(html, options?.paperSize);
+
+  try {
+    printInProgress = true;
+    const result = await invoke<string>("print_html_native", {
+      html: printReadyHtml,
+      printerName,
+      copies,
+    });
+
+    debugLog(options?.debug, "Print result:", result);
+    console.info("[tauriPrinter] printHtmlContent result:", result);
+    return result;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("❌ [tauriPrinter] printHtmlContent failed:", msg);
+    throw new Error(msg);
+  } finally {
+    printInProgress = false;
+  }
+}
+
+// ── Text/receipt printing (unchanged logic, uses same native command) ──────
+
+type SilentPrintOptions = {
+  printerName?: string;
+  paperSize?: string;
+  copies?: number;
+  debug?: boolean;
+};
+
+export async function silentPrintText(
+  content: string,
+  options?: SilentPrintOptions
+): Promise<string> {
+  if (!isTauriApp()) {
+    throw new Error("Silent printing is only available in the desktop app.");
+  }
+
+  if (printInProgress) {
+    const msg = "Print already in progress. Skipping duplicate call.";
+    debugLog(options?.debug, msg);
+    return msg;
+  }
+
+  const printerName = options?.printerName ?? "";
+  const copies = Math.max(
+    1,
+    Number.isFinite(options?.copies) ? Number(options?.copies) : 2
+  );
+
+  let paperWidthMm: number | undefined;
+  if (options?.paperSize === "Thermal 58mm") paperWidthMm = 58;
+  else if (options?.paperSize === "Thermal 80mm") paperWidthMm = 80;
+
+  const widthStyle = paperWidthMm ? ` width: ${paperWidthMm}mm;` : "";
+  const escapedContent = content
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  const receiptHtml = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"/>
+<style>
+  * { margin:0; padding:0; }
+  body { font-family: 'Courier New', monospace; font-size: 12px; ${widthStyle} }
+  @page { margin: 0; size: ${paperWidthMm ? `${paperWidthMm}mm` : "auto"} auto; }
+</style>
+</head><body><pre style="white-space: pre-wrap;">${escapedContent}</pre></body></html>`;
+
+  debugLog(options?.debug, "Invoking print_html_native (text)...", {
+    printer: printerName || "SYSTEM_DEFAULT",
+    copies,
+    paperSize: options?.paperSize,
+  });
+
+  try {
+    printInProgress = true;
+    const result = await invoke<string>("print_html_native", {
+      html: receiptHtml,
+      printerName,
+      copies,
+    });
+
+    debugLog(options?.debug, "Print result (text):", result);
+    console.info("[tauriPrinter] silentPrintText result:", result);
+    return result;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("❌ [tauriPrinter] silentPrintText failed:", msg);
+    throw new Error(msg);
+  } finally {
+    printInProgress = false;
+  }
 }

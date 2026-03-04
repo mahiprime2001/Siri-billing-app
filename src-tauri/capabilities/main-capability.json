@@ -9,15 +9,12 @@
     "core:webview:default",
     "shell:default",
     "shell:allow-execute",
-    "shell:allow-spawn", 
+    "shell:allow-spawn",
     "shell:allow-kill",
     "log:default",
     "log:allow-log",
     "dialog:default",
     "updater:default",
-    "printer:allow-get-printers",
-    "printer:allow-print-html",
-    "printer:allow-print-pdf",
     {
       "identifier": "shell:allow-spawn",
       "allow": [
@@ -26,6 +23,8 @@
           "sidecar": true
         }
       ]
-    }
+    },
+    "allow-print-html-native",
+    "allow-list-printers-native"
   ]
 }

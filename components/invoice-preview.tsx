@@ -26,6 +26,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
 import { apiClient } from "@/lib/api-client"
+import { isTauriApp, printHtmlContent } from "@/lib/tauriPrinter"
+import { safePrint } from "@/lib/printUtils"
 
 
 
@@ -335,8 +337,7 @@ export default function InvoicePreview({
   }
 
   /**
-   * ✅ FIXED: Opens print dialog ONCE, but user can set copies in the dialog
-   * Browser's native print dialog has a "copies" field where user can select how many
+   * ✅ Uses native Tauri printing when available; browser dialog otherwise
    */
   const handlePrintAndSave = async () => {
     setIsPrinting(true)
@@ -353,7 +354,7 @@ export default function InvoicePreview({
         return
       }
 
-      console.log('🖨️ Starting native print process...')
+      console.log('🖨️ Starting print process...')
       
       if (!printRef.current) {
         throw new Error('Print reference not found')
@@ -362,62 +363,21 @@ export default function InvoicePreview({
       const printContent = printRef.current.outerHTML
       const html = generatePrintHTML(printContent, paperSize, invoice.id || 'unknown')
 
-      // ✅ Create hidden iframe for printing
-      const printFrame = document.createElement('iframe')
-      printFrame.style.cssText = `
-        position: fixed;
-        top: -9999px;
-        left: -9999px;
-        width: 0;
-        height: 0;
-        border: none;
-        visibility: hidden;
-      `
-      document.body.appendChild(printFrame)
-
-      // Wait for iframe to be ready
-      await new Promise(resolve => setTimeout(resolve, 100))
-
-      const frameDoc = printFrame.contentDocument || printFrame.contentWindow?.document
-      if (!frameDoc) {
-        throw new Error('Failed to access iframe document')
-      }
-
-      // Write HTML to iframe
-      frameDoc.open()
-      frameDoc.write(html)
-      frameDoc.close()
-
-      // Wait for content to load
-      await new Promise(resolve => {
-        if (frameDoc.readyState === 'complete') {
-          resolve(null)
-        } else {
-          printFrame.onload = () => resolve(null)
+      if (isTauriApp()) {
+        const result = await printHtmlContent(html, { paperSize })
+        console.log('✅ Tauri print submitted:', result)
+        toast({
+          title: "Print job queued",
+          description: "Printer: System default",
+          variant: "default",
+        })
+      } else {
+        const result = await safePrint(html, paperSize)
+        if (!result.success) {
+          throw new Error(result.error || 'Browser print failed')
         }
-      })
-
-      console.log('📄 Print content ready')
-
-      // ✅ Call print() ONCE - user sets copies in the dialog
-      const printWindow = printFrame.contentWindow
-      if (!printWindow) {
-        throw new Error('Failed to access iframe window')
+        console.log('✅ Browser print dialog opened')
       }
-
-      console.log('🖨️ Opening print dialog')
-      printWindow.focus()
-      printWindow.print()
-
-      // Clean up iframe after a delay
-      setTimeout(() => {
-        if (document.body.contains(printFrame)) {
-          document.body.removeChild(printFrame)
-          console.log('🧹 Print frame cleaned up')
-        }
-      }, 2000)
-
-      console.log('✅ Print dialog opened successfully')
 
       // Save the invoice after successful print
       if (onPrintAndSave) {
@@ -691,11 +651,22 @@ export default function InvoicePreview({
         <SheetFooter className="flex justify-center sm:justify-center space-x-4 mt-4">
           <Button
             onClick={handlePrintAndSave}
-            className="bg-blue-600 hover:bg-blue-700"
+            className={`bg-blue-600 hover:bg-blue-700 ${isPrinting ? "animate-pulse" : ""}`}
             disabled={isPrinting || isDiscountBlocked}
           >
-            <Printer className="h-4 w-4 mr-2" />
-            {isPrinting ? "Processing..." : "Print & Save"}
+            {isPrinting ? (
+              <span className="inline-flex items-center">
+                <span className="mr-2 inline-flex items-center">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                </span>
+                Printing...
+              </span>
+            ) : (
+              <>
+                <Printer className="h-4 w-4 mr-2" />
+                Print & Save
+              </>
+            )}
           </Button>
 
           {onSave && (
