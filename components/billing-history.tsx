@@ -168,6 +168,8 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
       subtotal: b.subtotal ?? 0,
       taxPercentage: b.taxpercentage ?? b.tax_percentage ?? 0,
       taxAmount: b.taxamount ?? b.tax_amount ?? 0,
+      cgst: b.cgst ?? 0,
+      sgst: b.sgst ?? 0,
       discountPercentage: b.discountpercentage ?? b.discount_percentage ?? 0,
       discountAmount: b.discountamount ?? b.discount_amount ?? 0,
       total: b.total ?? 0,
