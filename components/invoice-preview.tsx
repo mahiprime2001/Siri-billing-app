@@ -26,7 +26,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
 import { apiClient } from "@/lib/api-client"
-import { isTauriApp, printHtmlContent } from "@/lib/tauriPrinter"
+import { isTauriApp, listPrinters, printHtmlContent } from "@/lib/tauriPrinter"
 import { safePrint } from "@/lib/printUtils"
 
 
@@ -56,6 +56,8 @@ export default function InvoicePreview({
   initialCustomerPhone = "",
   initialPaymentMethod = "Cash",
 }: InvoicePreviewProps) {
+  const SYSTEM_DEFAULT_PRINTER_VALUE = "__SYSTEM_DEFAULT__"
+  const PRINTER_STORAGE_KEY = "siri_selected_printer"
   const printRef = useRef<HTMLDivElement>(null)
   const nameInputRef = useRef<HTMLDivElement>(null)
   const phoneInputRef = useRef<HTMLDivElement>(null)
@@ -75,6 +77,9 @@ export default function InvoicePreview({
   const [customerPhone, setCustomerPhone] = useState(initialCustomerPhone)
   const [paymentMethod, setPaymentMethod] = useState(initialPaymentMethod)
   const [paperSize, setPaperSize] = useState(initialPaperSize)
+  const [printers, setPrinters] = useState<string[]>([])
+  const [selectedPrinter, setSelectedPrinter] = useState<string>(SYSTEM_DEFAULT_PRINTER_VALUE)
+  const [isLoadingPrinters, setIsLoadingPrinters] = useState(false)
 
   // Autocomplete states
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -95,6 +100,48 @@ export default function InvoicePreview({
     setDiscountRequestId(invoice.discountRequestId)
     setOtpValue("")
   }, [invoice.discountApprovalStatus, invoice.discountRequestId])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const saved = window.localStorage.getItem(PRINTER_STORAGE_KEY)
+    if (saved?.trim()) {
+      setSelectedPrinter(saved)
+    } else {
+      setSelectedPrinter(SYSTEM_DEFAULT_PRINTER_VALUE)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isOpen || !isTauriApp()) return
+    let cancelled = false
+
+    const fetchPrinters = async () => {
+      setIsLoadingPrinters(true)
+      try {
+        const names = await listPrinters()
+        if (!cancelled) {
+          setPrinters(names)
+          setSelectedPrinter((prev) =>
+            prev !== SYSTEM_DEFAULT_PRINTER_VALUE && prev && !names.includes(prev) ? SYSTEM_DEFAULT_PRINTER_VALUE : prev,
+          )
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingPrinters(false)
+        }
+      }
+    }
+
+    fetchPrinters()
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    window.localStorage.setItem(PRINTER_STORAGE_KEY, selectedPrinter)
+  }, [selectedPrinter])
 
   // Simplified fetch - just get customers directly
   useEffect(() => {
@@ -364,11 +411,12 @@ export default function InvoicePreview({
       const html = generatePrintHTML(printContent, paperSize, invoice.id || 'unknown')
 
       if (isTauriApp()) {
-        const result = await printHtmlContent(html, { paperSize })
+        const printerName = selectedPrinter === SYSTEM_DEFAULT_PRINTER_VALUE ? "" : selectedPrinter
+        const result = await printHtmlContent(html, { paperSize, printerName })
         console.log('✅ Tauri print submitted:', result)
         toast({
           title: "Print job queued",
-          description: "Printer: System default",
+          description: `Printer: ${printerName || "System default"}`,
           variant: "default",
         })
       } else {
@@ -544,6 +592,28 @@ export default function InvoicePreview({
                 </SelectContent>
               </Select>
             </div>
+
+            {isTauriApp() && (
+              <div className="space-y-3">
+                <h3 className="font-semibold text-lg flex items-center">
+                  <Printer className="h-4 w-4 mr-2" />
+                  Printer
+                </h3>
+                <Select value={selectedPrinter} onValueChange={setSelectedPrinter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={isLoadingPrinters ? "Loading printers..." : "Select printer"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={SYSTEM_DEFAULT_PRINTER_VALUE}>System Default</SelectItem>
+                    {printers.map((printer) => (
+                      <SelectItem key={printer} value={printer}>
+                        {printer}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {requiresDiscountApproval && (
               <div className={`rounded-md border px-4 py-3 space-y-3 ${discountStatusClass}`}>

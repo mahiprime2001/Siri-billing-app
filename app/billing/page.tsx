@@ -59,6 +59,7 @@ export default function BillingPage() {
   const [activeTab, setActiveTab] = useState('billing')
   const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false)
   const [isReturnToAdminOpen, setIsReturnToAdminOpen] = useState(false)
+  const [billingCartRefreshKey, setBillingCartRefreshKey] = useState(0)
   const isMobile = useIsMobile()
   const router = useRouter()
   const { toast } = useToast()
@@ -437,7 +438,7 @@ export default function BillingPage() {
         </TabsList>
 
         <TabsContent value="billing" className="flex-1 overflow-auto p-4">
-          <BillingAndCart />
+          <BillingAndCart key={`billing-cart-${billingCartRefreshKey}`} />
         </TabsContent>
 
         <TabsContent value="billing-history" className="flex-1 overflow-auto p-4">
@@ -451,7 +452,11 @@ export default function BillingPage() {
         </TabsContent>
 
       </Tabs>
-      <TransferVerificationDialog open={isTransferDialogOpen} onOpenChange={setIsTransferDialogOpen} />
+      <TransferVerificationDialog
+        open={isTransferDialogOpen}
+        onOpenChange={setIsTransferDialogOpen}
+        onVerificationSaved={() => setBillingCartRefreshKey((prev) => prev + 1)}
+      />
       <ReturnToAdminDialog isOpen={isReturnToAdminOpen} onClose={() => setIsReturnToAdminOpen(false)} />
     </div>
   )

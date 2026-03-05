@@ -10,12 +10,12 @@ CREATE TABLE public.batch (
   CONSTRAINT batch_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.billitems (
-  id bigint NOT NULL DEFAULT nextval('billitems_id_seq'::regclass),
   billid character varying,
   productid character varying,
   quantity integer,
   price numeric,
   total numeric,
+  id bigint NOT NULL DEFAULT nextval('billitems_id_seq'::regclass),
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT billitems_pkey PRIMARY KEY (id),
@@ -23,24 +23,24 @@ CREATE TABLE public.billitems (
 );
 CREATE TABLE public.bills (
   id character varying NOT NULL,
-  storeid character varying,
-  customerid character varying,
-  userid character varying,
   subtotal numeric,
   total numeric,
   paymentmethod character varying,
   timestamp timestamp without time zone,
   status character varying DEFAULT 'completed'::character varying,
-  createdby character varying,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   discount_amount numeric DEFAULT 0,
   discount_percentage numeric DEFAULT 0,
+  storeid character varying,
+  customerid character varying,
+  userid character varying,
+  createdby character varying,
   CONSTRAINT bills_pkey PRIMARY KEY (id),
-  CONSTRAINT bills_ibfk_1 FOREIGN KEY (storeid) REFERENCES public.stores(id),
-  CONSTRAINT bills_ibfk_2 FOREIGN KEY (createdby) REFERENCES public.users(id),
+  CONSTRAINT bills_ibfk_4 FOREIGN KEY (userid) REFERENCES public.users(id),
   CONSTRAINT bills_ibfk_3 FOREIGN KEY (customerid) REFERENCES public.customers(id),
-  CONSTRAINT bills_ibfk_4 FOREIGN KEY (userid) REFERENCES public.users(id)
+  CONSTRAINT bills_ibfk_2 FOREIGN KEY (createdby) REFERENCES public.users(id),
+  CONSTRAINT bills_ibfk_1 FOREIGN KEY (storeid) REFERENCES public.stores(id)
 );
 CREATE TABLE public.customers (
   id character varying NOT NULL,
@@ -54,48 +54,48 @@ CREATE TABLE public.customers (
 );
 CREATE TABLE public.damaged_inventory_events (
   id character varying NOT NULL,
-  store_id character varying,
-  product_id character varying,
-  quantity integer NOT NULL DEFAULT 0,
   source_type character varying NOT NULL,
   source_id character varying,
   reason text,
-  status character varying DEFAULT 'reported'::character varying,
   resolution_type character varying,
   resolution_notes text,
-  reported_by character varying,
-  resolved_by character varying,
+  resolved_at timestamp without time zone,
+  quantity integer NOT NULL DEFAULT 0,
+  status character varying DEFAULT 'reported'::character varying,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-  resolved_at timestamp without time zone,
+  store_id character varying,
+  product_id character varying,
+  reported_by character varying,
+  resolved_by character varying,
   CONSTRAINT damaged_inventory_events_pkey PRIMARY KEY (id),
-  CONSTRAINT damaged_inventory_events_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id),
-  CONSTRAINT damaged_inventory_events_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
+  CONSTRAINT damaged_inventory_events_resolved_by_fkey FOREIGN KEY (resolved_by) REFERENCES public.users(id),
   CONSTRAINT damaged_inventory_events_reported_by_fkey FOREIGN KEY (reported_by) REFERENCES public.users(id),
-  CONSTRAINT damaged_inventory_events_resolved_by_fkey FOREIGN KEY (resolved_by) REFERENCES public.users(id)
+  CONSTRAINT damaged_inventory_events_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
+  CONSTRAINT damaged_inventory_events_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id)
 );
 CREATE TABLE public.discounts (
-  s_no integer NOT NULL DEFAULT nextval('discounts_s_no_seq'::regclass),
   discount_id character varying NOT NULL,
-  user_id character varying,
   discount numeric,
   discount_amount numeric,
-  bill_id character varying,
+  s_no integer NOT NULL DEFAULT nextval('discounts_s_no_seq'::regclass),
   status character varying DEFAULT 'pending'::character varying,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  user_id character varying,
+  bill_id character varying,
   approved_by character varying,
   CONSTRAINT discounts_pkey PRIMARY KEY (s_no),
-  CONSTRAINT discounts_bill_fk FOREIGN KEY (bill_id) REFERENCES public.bills(id),
+  CONSTRAINT discounts_approved_by_fk FOREIGN KEY (approved_by) REFERENCES public.users(id),
   CONSTRAINT discounts_user_fk FOREIGN KEY (user_id) REFERENCES public.users(id),
-  CONSTRAINT discounts_approved_by_fk FOREIGN KEY (approved_by) REFERENCES public.users(id)
+  CONSTRAINT discounts_bill_fk FOREIGN KEY (bill_id) REFERENCES public.bills(id)
 );
 CREATE TABLE public.hsn_codes (
-  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   hsn_code character varying NOT NULL UNIQUE,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   tax numeric DEFAULT 0,
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   CONSTRAINT hsn_codes_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.inventory_transfer_items (
@@ -111,82 +111,82 @@ CREATE TABLE public.inventory_transfer_items (
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT inventory_transfer_items_pkey PRIMARY KEY (id),
-  CONSTRAINT inventory_transfer_items_transfer_order_id_fkey FOREIGN KEY (transfer_order_id) REFERENCES public.inventory_transfer_orders(id),
-  CONSTRAINT inventory_transfer_items_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id)
+  CONSTRAINT inventory_transfer_items_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
+  CONSTRAINT inventory_transfer_items_transfer_order_id_fkey FOREIGN KEY (transfer_order_id) REFERENCES public.inventory_transfer_orders(id)
 );
 CREATE TABLE public.inventory_transfer_orders (
   id character varying NOT NULL,
   store_id character varying NOT NULL,
-  source_type character varying DEFAULT 'manual'::character varying,
   source_store_id character varying,
   source_location_ref text,
   created_by character varying,
-  status character varying DEFAULT 'pending'::character varying,
   notes text,
-  version_number integer DEFAULT 1,
-  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-  updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   verified_at timestamp without time zone,
   cancelled_at timestamp without time zone,
   cancelled_by character varying,
+  source_type character varying DEFAULT 'manual'::character varying,
+  status character varying DEFAULT 'pending'::character varying,
+  version_number integer DEFAULT 1,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT inventory_transfer_orders_pkey PRIMARY KEY (id),
-  CONSTRAINT inventory_transfer_orders_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id),
+  CONSTRAINT inventory_transfer_orders_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
   CONSTRAINT inventory_transfer_orders_source_store_id_fkey FOREIGN KEY (source_store_id) REFERENCES public.stores(id),
-  CONSTRAINT inventory_transfer_orders_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
+  CONSTRAINT inventory_transfer_orders_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id)
 );
 CREATE TABLE public.inventory_transfer_scans (
   id character varying NOT NULL,
   transfer_item_id character varying NOT NULL,
   barcode character varying,
+  entered_by character varying,
   quantity integer NOT NULL DEFAULT 1,
   entry_mode character varying DEFAULT 'manual'::character varying,
   event_type character varying DEFAULT 'verified'::character varying,
-  entered_by character varying,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT inventory_transfer_scans_pkey PRIMARY KEY (id),
-  CONSTRAINT inventory_transfer_scans_transfer_item_id_fkey FOREIGN KEY (transfer_item_id) REFERENCES public.inventory_transfer_items(id),
-  CONSTRAINT inventory_transfer_scans_entered_by_fkey FOREIGN KEY (entered_by) REFERENCES public.users(id)
+  CONSTRAINT inventory_transfer_scans_entered_by_fkey FOREIGN KEY (entered_by) REFERENCES public.users(id),
+  CONSTRAINT inventory_transfer_scans_transfer_item_id_fkey FOREIGN KEY (transfer_item_id) REFERENCES public.inventory_transfer_items(id)
 );
 CREATE TABLE public.inventory_transfer_verifications (
   verification_session_id character varying NOT NULL,
   order_id character varying NOT NULL,
   store_id character varying NOT NULL,
   submitted_by character varying,
-  submitted_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-  status character varying DEFAULT 'pending'::character varying,
   payload_hash character varying,
   error_message text,
+  submitted_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  status character varying DEFAULT 'pending'::character varying,
   CONSTRAINT inventory_transfer_verifications_pkey PRIMARY KEY (verification_session_id),
-  CONSTRAINT inventory_transfer_verifications_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.inventory_transfer_orders(id),
+  CONSTRAINT inventory_transfer_verifications_submitted_by_fkey FOREIGN KEY (submitted_by) REFERENCES public.users(id),
   CONSTRAINT inventory_transfer_verifications_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id),
-  CONSTRAINT inventory_transfer_verifications_submitted_by_fkey FOREIGN KEY (submitted_by) REFERENCES public.users(id)
+  CONSTRAINT inventory_transfer_verifications_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.inventory_transfer_orders(id)
 );
 CREATE TABLE public.notifications (
-  id bigint NOT NULL DEFAULT nextval('notifications_id_seq'::regclass),
   type character varying NOT NULL,
   notification text NOT NULL,
   related_id character varying,
+  id bigint NOT NULL DEFAULT nextval('notifications_id_seq'::regclass),
   is_read boolean DEFAULT false,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT notifications_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.password_change_log (
-  id bigint NOT NULL DEFAULT nextval('password_change_log_id_seq'::regclass),
   user_id character varying NOT NULL,
-  changed_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   ip_address character varying,
   user_agent text,
+  id bigint NOT NULL DEFAULT nextval('password_change_log_id_seq'::regclass),
+  changed_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   change_type USER-DEFINED DEFAULT 'reset'::change_type_enum,
   CONSTRAINT password_change_log_pkey PRIMARY KEY (id),
   CONSTRAINT password_change_log_ibfk_1 FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.password_reset_tokens (
-  id bigint NOT NULL DEFAULT nextval('password_reset_tokens_id_seq'::regclass),
   user_id character varying NOT NULL,
   token_hash character varying NOT NULL,
   expires_at timestamp without time zone NOT NULL,
   used_at timestamp without time zone,
+  id bigint NOT NULL DEFAULT nextval('password_reset_tokens_id_seq'::regclass),
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT password_reset_tokens_pkey PRIMARY KEY (id),
   CONSTRAINT password_reset_tokens_ibfk_1 FOREIGN KEY (user_id) REFERENCES public.users(id)
@@ -196,15 +196,15 @@ CREATE TABLE public.products (
   name character varying,
   price numeric,
   stock integer,
-  batchid character varying,
   selling_price numeric,
   createdat timestamp without time zone,
   updatedat timestamp without time zone,
   barcode character varying,
+  batchid character varying,
   hsn_code_id bigint,
   CONSTRAINT products_pkey PRIMARY KEY (id),
-  CONSTRAINT fk_products_batch FOREIGN KEY (batchid) REFERENCES public.batch(id),
-  CONSTRAINT products_hsn_code_fk FOREIGN KEY (hsn_code_id) REFERENCES public.hsn_codes(id)
+  CONSTRAINT products_hsn_code_fk FOREIGN KEY (hsn_code_id) REFERENCES public.hsn_codes(id),
+  CONSTRAINT fk_products_batch FOREIGN KEY (batchid) REFERENCES public.batch(id)
 );
 CREATE TABLE public.replacements (
   id character varying NOT NULL,
@@ -213,32 +213,27 @@ CREATE TABLE public.replacements (
   replaced_product_id character varying NOT NULL,
   new_product_id character varying NOT NULL,
   quantity integer NOT NULL,
-  price numeric NOT NULL DEFAULT 0,
-  final_amount numeric NOT NULL DEFAULT 0,
   store_id character varying,
   user_id character varying,
+  damage_reason text,
+  price numeric NOT NULL DEFAULT 0,
+  final_amount numeric NOT NULL DEFAULT 0,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   is_damaged boolean DEFAULT false,
   damaged_qty integer DEFAULT 0,
-  damage_reason text,
   CONSTRAINT replacements_pkey PRIMARY KEY (id),
-  CONSTRAINT replacements_bill_fk FOREIGN KEY (bill_id) REFERENCES public.bills(id),
+  CONSTRAINT replacements_new_product_fk FOREIGN KEY (new_product_id) REFERENCES public.products(id),
   CONSTRAINT replacements_replaced_product_fk FOREIGN KEY (replaced_product_id) REFERENCES public.products(id),
-  CONSTRAINT replacements_new_product_fk FOREIGN KEY (new_product_id) REFERENCES public.products(id)
+  CONSTRAINT replacements_bill_fk FOREIGN KEY (bill_id) REFERENCES public.bills(id)
 );
 CREATE TABLE public.returns (
-  s_no integer NOT NULL DEFAULT nextval('returns_s_no_seq'::regclass),
   return_id character varying NOT NULL,
   product_id character varying,
   message text,
-  refund_method USER-DEFINED DEFAULT 'cash'::refund_method_enum,
   bill_id character varying,
   return_amount numeric,
-  status USER-DEFINED DEFAULT 'pending'::return_status_enum,
   created_by character varying,
-  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-  updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   original_quantity integer,
   return_quantity integer,
   customer_id character varying,
@@ -248,26 +243,60 @@ CREATE TABLE public.returns (
   denied_by character varying,
   denied_at timestamp without time zone,
   denial_reason text,
+  damage_reason text,
+  s_no integer NOT NULL DEFAULT nextval('returns_s_no_seq'::regclass),
+  refund_method USER-DEFINED DEFAULT 'cash'::refund_method_enum,
+  status USER-DEFINED DEFAULT 'pending'::return_status_enum,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   is_damaged boolean DEFAULT false,
   damaged_qty integer DEFAULT 0,
-  damage_reason text,
   CONSTRAINT returns_pkey PRIMARY KEY (s_no),
-  CONSTRAINT returns_ibfk_2 FOREIGN KEY (product_id) REFERENCES public.products(id),
+  CONSTRAINT returns_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id),
   CONSTRAINT returns_customer_fk FOREIGN KEY (customer_id) REFERENCES public.customers(id),
-  CONSTRAINT returns_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id)
+  CONSTRAINT returns_ibfk_2 FOREIGN KEY (product_id) REFERENCES public.products(id)
+);
+CREATE TABLE public.store_damage_returns (
+  id character varying NOT NULL,
+  store_id character varying NOT NULL,
+  product_id character varying NOT NULL,
+  reason text,
+  notes text,
+  created_by character varying,
+  repaired_by character varying,
+  repair_notes text,
+  repaired_at timestamp without time zone,
+  quantity integer NOT NULL DEFAULT 0,
+  damage_origin character varying DEFAULT 'store'::character varying,
+  status character varying DEFAULT 'sent_to_admin'::character varying,
+  repaired_qty integer DEFAULT 0,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  reason_type text DEFAULT 'damaged'::text,
+  resolution_status text DEFAULT 'pending'::text,
+  resolution_notes text,
+  resolved_by character varying,
+  resolved_at timestamp without time zone,
+  restock_qty integer DEFAULT 0,
+  restock_action text,
+  CONSTRAINT store_damage_returns_pkey PRIMARY KEY (id),
+  CONSTRAINT store_damage_returns_repaired_by_fkey FOREIGN KEY (repaired_by) REFERENCES public.users(id),
+  CONSTRAINT store_damage_returns_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
+  CONSTRAINT store_damage_returns_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
+  CONSTRAINT store_damage_returns_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id)
 );
 CREATE TABLE public.storeinventory (
   id character varying NOT NULL,
-  storeid character varying NOT NULL,
-  productid character varying NOT NULL,
+  maxstocklevel integer,
   quantity integer NOT NULL DEFAULT 0,
   minstocklevel integer DEFAULT 0,
-  maxstocklevel integer,
   assignedat timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updatedat timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  storeid character varying NOT NULL,
+  productid character varying NOT NULL,
   CONSTRAINT storeinventory_pkey PRIMARY KEY (id),
-  CONSTRAINT storeinventory_ibfk_1 FOREIGN KEY (storeid) REFERENCES public.stores(id),
-  CONSTRAINT storeinventory_ibfk_2 FOREIGN KEY (productid) REFERENCES public.products(id)
+  CONSTRAINT storeinventory_ibfk_2 FOREIGN KEY (productid) REFERENCES public.products(id),
+  CONSTRAINT storeinventory_ibfk_1 FOREIGN KEY (storeid) REFERENCES public.stores(id)
 );
 CREATE TABLE public.stores (
   id character varying NOT NULL,
@@ -279,35 +308,13 @@ CREATE TABLE public.stores (
   updatedat timestamp without time zone,
   CONSTRAINT stores_pkey PRIMARY KEY (id)
 );
-CREATE TABLE public.store_damage_returns (
-  id character varying NOT NULL,
-  store_id character varying NOT NULL,
-  product_id character varying NOT NULL,
-  quantity integer NOT NULL DEFAULT 0,
-  reason text,
-  damage_origin character varying DEFAULT 'store'::character varying,
-  status character varying DEFAULT 'sent_to_admin'::character varying,
-  notes text,
-  created_by character varying,
-  repaired_by character varying,
-  repaired_qty integer DEFAULT 0,
-  repair_notes text,
-  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-  updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-  repaired_at timestamp without time zone,
-  CONSTRAINT store_damage_returns_pkey PRIMARY KEY (id),
-  CONSTRAINT store_damage_returns_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id),
-  CONSTRAINT store_damage_returns_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
-  CONSTRAINT store_damage_returns_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
-  CONSTRAINT store_damage_returns_repaired_by_fkey FOREIGN KEY (repaired_by) REFERENCES public.users(id)
-);
 CREATE TABLE public.systemsettings (
-  id integer NOT NULL DEFAULT nextval('systemsettings_id_seq'::regclass),
   gstin character varying,
   companyname character varying,
   companyaddress text,
   companyphone character varying,
   companyemail character varying,
+  id integer NOT NULL DEFAULT nextval('systemsettings_id_seq'::regclass),
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT systemsettings_pkey PRIMARY KEY (id)
@@ -315,14 +322,14 @@ CREATE TABLE public.systemsettings (
 CREATE TABLE public.two_factor (
   user_id character varying NOT NULL,
   secret character varying NOT NULL,
-  is_enabled boolean DEFAULT false,
   verified_at timestamp with time zone,
+  created_by character varying,
+  is_enabled boolean DEFAULT false,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
-  created_by character varying,
   CONSTRAINT two_factor_pkey PRIMARY KEY (user_id),
-  CONSTRAINT two_factor_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
-  CONSTRAINT two_factor_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id)
+  CONSTRAINT two_factor_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id),
+  CONSTRAINT two_factor_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
 CREATE TABLE public.users (
   id character varying NOT NULL,
@@ -340,11 +347,11 @@ CREATE TABLE public.users (
   CONSTRAINT users_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.userstores (
-  userId character varying NOT NULL,
-  storeId character varying NOT NULL,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  userId character varying NOT NULL,
+  storeId character varying NOT NULL,
   CONSTRAINT userstores_pkey PRIMARY KEY (userId, storeId),
-  CONSTRAINT userstores_ibfk_1 FOREIGN KEY (userId) REFERENCES public.users(id),
-  CONSTRAINT userstores_ibfk_2 FOREIGN KEY (storeId) REFERENCES public.stores(id)
+  CONSTRAINT userstores_storeid_fkey FOREIGN KEY (storeId) REFERENCES public.stores(id),
+  CONSTRAINT userstores_userid_fkey FOREIGN KEY (userId) REFERENCES public.users(id)
 );

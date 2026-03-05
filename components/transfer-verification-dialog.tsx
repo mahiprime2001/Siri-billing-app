@@ -9,6 +9,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
@@ -77,11 +86,12 @@ type ScanLog = {
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onVerificationSaved?: () => void
 }
 
 const normalizeBarcode = (value: string) => value.trim().replace(/^0+/, "")
 
-export default function TransferVerificationDialog({ open, onOpenChange }: Props) {
+export default function TransferVerificationDialog({ open, onOpenChange, onVerificationSaved }: Props) {
   const { toast } = useToast()
   const scanInputRef = useRef<HTMLInputElement | null>(null)
   const timerRefs = useRef<ReturnType<typeof setTimeout>[]>([])
@@ -95,6 +105,7 @@ export default function TransferVerificationDialog({ open, onOpenChange }: Props
   const [scanRows, setScanRows] = useState<ScanRow[]>([])
   const [scanLogs, setScanLogs] = useState<ScanLog[]>([])
   const [confirmDamagedRowId, setConfirmDamagedRowId] = useState<string | null>(null)
+  const [scanErrorDialog, setScanErrorDialog] = useState<{ title: string; description: string } | null>(null)
   const [itemEdits, setItemEdits] = useState<
     Record<string, { verified_qty: number; damaged_qty: number; wrong_store_qty: number; damage_reason?: string }>
   >({})
@@ -234,6 +245,18 @@ export default function TransferVerificationDialog({ open, onOpenChange }: Props
   }
 
   const incrementVerified = (item: TransferItem, barcode: string, entryMode: "scan" | "manual") => {
+    const itemBarcodes = (item.products?.barcode || "")
+      .split(",")
+      .map((code) => normalizeBarcode(code))
+      .filter(Boolean)
+    if (itemBarcodes.length === 0) {
+      setScanErrorDialog({
+        title: "Barcode Missing",
+        description: "This product has no barcode mapped. Contact admin and map the barcode before scanning.",
+      })
+      return
+    }
+
     let didUpdate = false
     setItemEdits((prev) => {
       const current = prev[item.id] || {
@@ -258,9 +281,9 @@ export default function TransferVerificationDialog({ open, onOpenChange }: Props
     })
 
     if (!didUpdate) {
-      toast({
-        title: "Limit Reached",
-        description: "Assigned quantity for this product is already completed.",
+      setScanErrorDialog({
+        title: "Stock Fully Scanned",
+        description: "Assigned quantity for this product is already completed. No more units can be scanned.",
       })
       return
     }
@@ -314,10 +337,9 @@ export default function TransferVerificationDialog({ open, onOpenChange }: Props
     const matchedItem = findMatchingItem(entered)
     if (!matchedItem) {
       setScanInput("")
-      toast({
-        title: "Barcode Not Found",
-        description: "This barcode is not part of the selected transfer order.",
-        variant: "destructive",
+      setScanErrorDialog({
+        title: "Wrong Stock",
+        description: "This barcode does not belong to this transfer order/store.",
       })
       return
     }
@@ -475,6 +497,8 @@ export default function TransferVerificationDialog({ open, onOpenChange }: Props
       // Only verified qty is applied into store inventory by backend.
       await loadOrders()
       await loadOrderDetails(selectedOrderId)
+      onOpenChange(false)
+      onVerificationSaved?.()
     } catch (error) {
       console.error("Error saving transfer verification:", error)
       toast({
@@ -652,6 +676,18 @@ export default function TransferVerificationDialog({ open, onOpenChange }: Props
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!scanErrorDialog} onOpenChange={(nextOpen) => !nextOpen && setScanErrorDialog(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{scanErrorDialog?.title || "Scan Error"}</AlertDialogTitle>
+            <AlertDialogDescription>{scanErrorDialog?.description || "Unable to process this barcode."}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setScanErrorDialog(null)}>OK</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
