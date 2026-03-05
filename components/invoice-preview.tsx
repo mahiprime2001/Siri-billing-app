@@ -711,7 +711,18 @@ export default function InvoicePreview({
             </div>
 
             {/* Hidden Printable Component */}
-            <div style={{ display: "none" }}>
+            {/* FIX Risk 6: position offscreen instead of display:none.
+                display:none causes IE/WebBrowser to capture a zero-height
+                collapsed layout. Moving it offscreen keeps it fully rendered. */}
+            <div style={{
+              position: "fixed",
+              top: 0,
+              left: "-9999px",
+              width: "302px",       // 80mm at 96dpi — matches WebBrowser render width
+              visibility: "hidden",
+              pointerEvents: "none",
+              zIndex: -1,
+            }}>
               <PrintableInvoice ref={printRef} invoice={getUpdatedInvoice()} paperSize={paperSize} />
             </div>
           </div>

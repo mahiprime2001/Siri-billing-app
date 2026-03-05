@@ -119,13 +119,29 @@ async fn install_update(app_handle: tauri::AppHandle) -> Result<String, String> 
 // ============================================================================
 
 #[tauri::command]
-async fn print_html_native(html: String, printer_name: String, copies: u32) -> Result<String, String> {
+async fn print_html_native(html: String, printer_name: String, copies: u32, paper_size: Option<String>) -> Result<String, String> {
     info!("🖨️ [print_html_native] Starting print job...");
     info!("   Printer : {}", printer_name);
     info!("   Copies  : {}", copies);
     info!("   HTML len: {}", html.len());
 
     let copies = copies.max(1);
+
+    // FIX Risk 1 + Risk 5: set WebBrowser pixel width to match the paper.
+    // IE ignores CSS @page width so the WebBrowser control's own Size is what
+    // determines the render width. Wrong width = content squished or cut off.
+    //   Thermal 58mm  →  220px  (58  × 96 ÷ 25.4)
+    //   Thermal 80mm  →  302px  (80  × 96 ÷ 25.4)
+    //   A4            →  794px  (210 × 96 ÷ 25.4)
+    //   Letter        →  816px  (216 × 96 ÷ 25.4)
+    let ps_paper_size = paper_size.as_deref().unwrap_or("Thermal 80mm");
+    let browser_width_px: u32 = match ps_paper_size {
+        s if s.contains("58mm")  =>  220,
+        s if s.contains("80mm")  =>  302,
+        s if s == "A4"           =>  794,
+        s if s == "Letter"       =>  816,
+        _                        =>  302, // safe thermal default
+    };
 
     // ── Step 1: Write HTML to a temp file ──────────────────────────────────
     let temp_dir = std::env::temp_dir();
@@ -179,15 +195,30 @@ if ($printerName -ne '') {{
     }}
 }}
 
-# ── Suppress print headers/footers via registry ──
+# ── Zero out ALL IE page margins and suppress headers/footers via registry ──
+# FIX: IE/WebBrowser ignores CSS @page margin:0. These registry keys are the
+# only way to remove IE's built-in physical page margins (top/bottom/left/right).
 $regPath = 'HKCU:\Software\Microsoft\Internet Explorer\PageSetup'
 $savedHeader = $savedFooter = ''
+$savedMarginTop = $savedMarginBottom = $savedMarginLeft = $savedMarginRight = ''
 try {{
-    $savedHeader = (Get-ItemProperty -Path $regPath -Name 'header' -ErrorAction SilentlyContinue).header
-    $savedFooter = (Get-ItemProperty -Path $regPath -Name 'footer' -ErrorAction SilentlyContinue).footer
-    Set-ItemProperty -Path $regPath -Name 'header' -Value '' -Force
-    Set-ItemProperty -Path $regPath -Name 'footer' -Value '' -Force
-}} catch {{}}
+    $savedHeader      = (Get-ItemProperty -Path $regPath -Name 'header'        -ErrorAction SilentlyContinue).header
+    $savedFooter      = (Get-ItemProperty -Path $regPath -Name 'footer'        -ErrorAction SilentlyContinue).footer
+    $savedMarginTop   = (Get-ItemProperty -Path $regPath -Name 'margin_top'    -ErrorAction SilentlyContinue).margin_top
+    $savedMarginBottom= (Get-ItemProperty -Path $regPath -Name 'margin_bottom' -ErrorAction SilentlyContinue).margin_bottom
+    $savedMarginLeft  = (Get-ItemProperty -Path $regPath -Name 'margin_left'   -ErrorAction SilentlyContinue).margin_left
+    $savedMarginRight = (Get-ItemProperty -Path $regPath -Name 'margin_right'  -ErrorAction SilentlyContinue).margin_right
+
+    Set-ItemProperty -Path $regPath -Name 'header'        -Value '' -Force
+    Set-ItemProperty -Path $regPath -Name 'footer'        -Value '' -Force
+    Set-ItemProperty -Path $regPath -Name 'margin_top'    -Value '0.000000' -Force
+    Set-ItemProperty -Path $regPath -Name 'margin_bottom' -Value '0.000000' -Force
+    Set-ItemProperty -Path $regPath -Name 'margin_left'   -Value '0.000000' -Force
+    Set-ItemProperty -Path $regPath -Name 'margin_right'  -Value '0.000000' -Force
+    Write-Host "Registry: all IE margins zeroed and headers/footers cleared"
+}} catch {{
+    Write-Host "Warning: could not set IE registry margins: $_"
+}}
 
 # ── Print using WebBrowser control ────────────────────────────────────────
 $printed = $false
@@ -197,7 +228,10 @@ try {{
         $wb = New-Object System.Windows.Forms.WebBrowser
         $wb.ScriptErrorsSuppressed = $true
         $wb.ScrollBarsEnabled = $false
-        $wb.Size = New-Object System.Drawing.Size(800, 1200)
+
+        # FIX Risk 1 + Risk 5: use the correct pixel width for the paper type.
+        # IE renders at this pixel width before sending to the printer.
+        $wb.Size = New-Object System.Drawing.Size({browser_width_px}, 4800)
 
         $loaded = $false
         $wb.add_DocumentCompleted({{
@@ -214,11 +248,14 @@ try {{
             Start-Sleep -Milliseconds 100
             $wait += 100
         }}
-        Start-Sleep -Milliseconds 300
+
+        # FIX: Extra settle time so IE finishes layout at the narrow width
+        # before sending to printer. 300ms was too short.
+        Start-Sleep -Milliseconds 800
 
         $wb.Print()
         [System.Windows.Forms.Application]::DoEvents()
-        Start-Sleep -Milliseconds 1500
+        Start-Sleep -Milliseconds 2000
 
         $wb.Dispose()
         $script:loaded = $false
@@ -231,8 +268,12 @@ try {{
 
 # ── Restore registry ──
 try {{
-    if ($savedHeader -ne '') {{ Set-ItemProperty -Path $regPath -Name 'header' -Value $savedHeader -Force }}
-    if ($savedFooter -ne '') {{ Set-ItemProperty -Path $regPath -Name 'footer' -Value $savedFooter -Force }}
+    if ($savedHeader      -ne '') {{ Set-ItemProperty -Path $regPath -Name 'header'        -Value $savedHeader      -Force }}
+    if ($savedFooter      -ne '') {{ Set-ItemProperty -Path $regPath -Name 'footer'        -Value $savedFooter      -Force }}
+    if ($savedMarginTop   -ne '') {{ Set-ItemProperty -Path $regPath -Name 'margin_top'    -Value $savedMarginTop   -Force }}
+    if ($savedMarginBottom-ne '') {{ Set-ItemProperty -Path $regPath -Name 'margin_bottom' -Value $savedMarginBottom-Force }}
+    if ($savedMarginLeft  -ne '') {{ Set-ItemProperty -Path $regPath -Name 'margin_left'   -Value $savedMarginLeft  -Force }}
+    if ($savedMarginRight -ne '') {{ Set-ItemProperty -Path $regPath -Name 'margin_right'  -Value $savedMarginRight -Force }}
 }} catch {{}}
 
 # ── Restore original default printer ──
@@ -256,11 +297,12 @@ if ($printed) {{
     exit 1
 }}
 "#,
-        html_path     = html_path,
-        html_path_win = temp_html.to_string_lossy(),
-        ps_path_win   = temp_ps.to_string_lossy(),
-        printer       = printer_name.replace('\'', "''"),
-        copies        = copies,
+        html_path         = html_path,
+        html_path_win     = temp_html.to_string_lossy(),
+        ps_path_win       = temp_ps.to_string_lossy(),
+        printer           = printer_name.replace('\'', "''"),
+        copies            = copies,
+        browser_width_px  = browser_width_px,
     );
 
     fs::write(&temp_ps, ps_script.as_bytes())

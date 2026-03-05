@@ -47,18 +47,40 @@ export async function listPrinters(): Promise<string[]> {
 type HtmlPrintOptions = {
   printerName?: string;
   paperSize?: string;
+  // FIX Risk 2: copies is now explicitly required at call sites.
+  // If not passed, it safely defaults to 1 (not 2) inside the function.
   copies?: number;
   debug?: boolean;
 };
 
+// FIX Risk 4: printInProgress is now guarded by a timestamp-based stale lock.
+// If the lock has been held for >30 seconds (e.g. app navigated away mid-print,
+// or a crash prevented finally() from running), it auto-resets.
 let printInProgress = false;
+let printLockTimestamp = 0;
+const PRINT_LOCK_TIMEOUT_MS = 30_000;
+
+function acquirePrintLock(): boolean {
+  const now = Date.now();
+  if (printInProgress && now - printLockTimestamp > PRINT_LOCK_TIMEOUT_MS) {
+    console.warn("⚠️ [tauriPrinter] Print lock was stale (>30s), force-resetting.");
+    printInProgress = false;
+  }
+  if (printInProgress) return false;
+  printInProgress = true;
+  printLockTimestamp = now;
+  return true;
+}
+
+function releasePrintLock(): void {
+  printInProgress = false;
+  printLockTimestamp = 0;
+}
 
 // ── Build a complete, self-contained HTML document for printing ────────────
-// This ensures your invoice design is preserved exactly as-is.
 
 function buildPrintHtml(htmlContent: string, paperSize?: string): string {
-  // Determine page width for thermal printers
-  let pageWidth = "210mm"; // A4 default
+  let pageWidth = "210mm";
   let pageHeight = "auto";
 
   if (paperSize === "Thermal 80mm") {
@@ -90,12 +112,10 @@ function buildPrintHtml(htmlContent: string, paperSize?: string): string {
   }
 </style>`;
 
-  // If a full HTML document is provided, preserve it and inject only print sizing CSS.
   if (/<\/head>/i.test(htmlContent)) {
     return htmlContent.replace(/<\/head>/i, `${pageStyle}\n</head>`);
   }
 
-  // If only a fragment/body is provided, wrap it in a minimal document.
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -125,16 +145,19 @@ export async function printHtmlContent(
     throw new Error("HTML printing is only available in the desktop app.");
   }
 
-  if (printInProgress) {
+  // FIX Risk 4: stale-safe lock
+  if (!acquirePrintLock()) {
     const msg = "Print already in progress. Skipping duplicate call.";
     debugLog(options?.debug, msg);
     return msg;
   }
 
   const printerName = options?.printerName ?? "";
+
+  // FIX Risk 2: default is now 1, not 2.
   const copies = Math.max(
     1,
-    Number.isFinite(options?.copies) ? Number(options?.copies) : 2
+    Number.isFinite(options?.copies) ? Number(options?.copies) : 1
   );
 
   debugLog(options?.debug, "Invoking print_html_native...", {
@@ -144,15 +167,17 @@ export async function printHtmlContent(
     htmlLength: html.length,
   });
 
-  // Build a clean, complete HTML document preserving your invoice design
   const printReadyHtml = buildPrintHtml(html, options?.paperSize);
 
   try {
-    printInProgress = true;
+    // FIX Risk 1 + Risk 5: pass paperSize to Rust so it sets the correct
+    // WebBrowser pixel width per paper type:
+    //   Thermal 58mm = 220px, Thermal 80mm = 302px, A4 = 794px, Letter = 816px
     const result = await invoke<string>("print_html_native", {
       html: printReadyHtml,
       printerName,
       copies,
+      paperSize: options?.paperSize ?? "Thermal 80mm",
     });
 
     debugLog(options?.debug, "Print result:", result);
@@ -163,11 +188,11 @@ export async function printHtmlContent(
     console.error("❌ [tauriPrinter] printHtmlContent failed:", msg);
     throw new Error(msg);
   } finally {
-    printInProgress = false;
+    releasePrintLock();
   }
 }
 
-// ── Text/receipt printing (unchanged logic, uses same native command) ──────
+// ── Text/receipt printing ──────────────────────────────────────────────────
 
 type SilentPrintOptions = {
   printerName?: string;
@@ -184,16 +209,19 @@ export async function silentPrintText(
     throw new Error("Silent printing is only available in the desktop app.");
   }
 
-  if (printInProgress) {
+  // FIX Risk 4: stale-safe lock
+  if (!acquirePrintLock()) {
     const msg = "Print already in progress. Skipping duplicate call.";
     debugLog(options?.debug, msg);
     return msg;
   }
 
   const printerName = options?.printerName ?? "";
+
+  // FIX Risk 2: default is now 1, not 2.
   const copies = Math.max(
     1,
-    Number.isFinite(options?.copies) ? Number(options?.copies) : 2
+    Number.isFinite(options?.copies) ? Number(options?.copies) : 1
   );
 
   let paperWidthMm: number | undefined;
@@ -222,11 +250,11 @@ export async function silentPrintText(
   });
 
   try {
-    printInProgress = true;
     const result = await invoke<string>("print_html_native", {
       html: receiptHtml,
       printerName,
       copies,
+      paperSize: options?.paperSize ?? "Thermal 80mm",
     });
 
     debugLog(options?.debug, "Print result (text):", result);
@@ -237,6 +265,6 @@ export async function silentPrintText(
     console.error("❌ [tauriPrinter] silentPrintText failed:", msg);
     throw new Error(msg);
   } finally {
-    printInProgress = false;
+    releasePrintLock();
   }
 }
