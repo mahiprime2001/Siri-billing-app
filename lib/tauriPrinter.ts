@@ -73,55 +73,38 @@ function buildPrintHtml(htmlContent: string, paperSize?: string): string {
     pageHeight = "279mm";
   }
 
-  // Extract body content if a full HTML document was passed in
-  let content = htmlContent;
-  const bodyMatch = htmlContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  if (bodyMatch) {
-    content = bodyMatch[1];
+  const pageStyle = `
+<style data-siri-print-style="true">
+  @page {
+    size: ${pageWidth} ${pageHeight};
+    margin: 0;
+  }
+  @media print {
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    .no-print { display: none !important; }
+  }
+</style>`;
+
+  // If a full HTML document is provided, preserve it and inject only print sizing CSS.
+  if (/<\/head>/i.test(htmlContent)) {
+    return htmlContent.replace(/<\/head>/i, `${pageStyle}\n</head>`);
   }
 
-  // Strip scripts and comments for safety
-  content = content.replace(/<script[\s\S]*?<\/script>/gi, "");
-  content = content.replace(/<!--[\s\S]*?-->/g, "");
-
+  // If only a fragment/body is provided, wrap it in a minimal document.
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Invoice</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body {
-      font-family: Arial, sans-serif;
-      font-size: 12px;
-      line-height: 1.4;
-      background: #fff;
-      width: ${pageWidth};
-      ${pageHeight !== "auto" ? `height: ${pageHeight};` : ""}
-    }
-    @page {
-      size: ${pageWidth} ${pageHeight};
-      margin: 0;
-    }
-    @media print {
-      html, body {
-        margin: 0 !important;
-        padding: 0 !important;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-      }
-      .no-print { display: none !important; }
-    }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 4px 8px; text-align: left; border-bottom: 1px solid #ddd; font-size: 11px; }
-    .text-center { text-align: center; }
-    .text-right { text-align: right; }
-    .font-bold { font-weight: bold; }
-  </style>
+  ${pageStyle}
 </head>
 <body>
-  ${content}
+  ${htmlContent}
 </body>
 </html>`;
 }
