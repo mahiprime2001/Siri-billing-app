@@ -30,7 +30,6 @@ import { isTauriApp, listPrinters, printHtmlContent } from "@/lib/tauriPrinter"
 import { safePrint } from "@/lib/printUtils"
 
 
-
 interface InvoicePreviewProps {
   invoice: Invoice
   isOpen: boolean
@@ -795,8 +794,8 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
           overflow-x: hidden;
         }
         .print-container {
-          width: calc(100% - 6mm);
-          margin: 0 3mm;
+          width: calc(100% - 12mm);
+          margin: 0 6mm;
           padding: 0;
         }
       `
@@ -813,8 +812,8 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
           overflow-x: hidden;
         }
         .print-container {
-          width: calc(100% - 6mm);
-          margin: 0 3mm;
+          width: calc(100% - 12mm);
+          margin: 0 6mm;
           padding: 0;
         }
       `

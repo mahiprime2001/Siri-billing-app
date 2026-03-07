@@ -130,17 +130,17 @@ async fn print_html_native(html: String, printer_name: String, copies: u32, pape
     // FIX Risk 1 + Risk 5: set WebBrowser pixel width to match the paper.
     // IE ignores CSS @page width so the WebBrowser control's own Size is what
     // determines the render width. Wrong width = content squished or cut off.
-    //   Thermal 58mm  →  204px  (extra-safe width; avoids edge clipping)
-    //   Thermal 80mm  →  278px  (extra-safe width; avoids edge clipping)
+    //   Thermal 58mm  →  194px  (more conservative width for narrow printable areas)
+    //   Thermal 80mm  →  264px  (more conservative width for narrow printable areas)
     //   A4            →  794px  (210 × 96 ÷ 25.4)
     //   Letter        →  816px  (216 × 96 ÷ 25.4)
     let ps_paper_size = paper_size.as_deref().unwrap_or("Thermal 80mm");
     let browser_width_px: u32 = match ps_paper_size {
-        s if s.contains("58mm")  =>  204,
-        s if s.contains("80mm")  =>  278,
+        s if s.contains("58mm")  =>  194,
+        s if s.contains("80mm")  =>  264,
         s if s == "A4"           =>  794,
         s if s == "Letter"       =>  816,
-        _                        =>  278, // safe thermal default
+        _                        =>  264, // safe thermal default
     };
 
     // ── Step 1: Write HTML to a temp file ──────────────────────────────────
