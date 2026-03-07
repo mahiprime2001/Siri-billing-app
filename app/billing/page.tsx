@@ -220,28 +220,27 @@ export default function BillingPage() {
     }
   }, [fetchUserData, fetchCurrentStore, fetchNotifications])
 
-  // ✅ UPDATED: Logout with localStorage cleanup
-  const handleLogout = async () => {
-    try {
-      await apiClient('/api/auth/logout', { method: 'POST' })
-      authManager.clearAuth()  // ✅ Clear localStorage
-      
-      toast({
-        title: 'Logout Successful',
-        description: 'You have been successfully logged out.',
-        variant: 'default',
-      })
-      router.push('/login')
-    } catch (error) {
-      console.error('Error during logout:', error)
-      authManager.clearAuth()  // ✅ Clear even on error
-      
-      toast({
-        title: 'Logout Failed',
-        description: 'An error occurred during logout. Please try again.',
-        variant: 'destructive',
-      })
-    }
+  const handleLogout = () => {
+    authManager.clearAuth()
+    toast({
+      title: 'Logout Successful',
+      description: 'You have been successfully logged out.',
+      variant: 'default',
+    })
+    router.replace('/login')
+
+    // Best-effort server logout; do not block UX.
+    void (async () => {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 1500)
+      try {
+        await apiClient('/api/auth/logout', { method: 'POST', signal: controller.signal })
+      } catch (error) {
+        console.warn('Background logout request failed:', error)
+      } finally {
+        clearTimeout(timeoutId)
+      }
+    })()
   }
 
   const handleCheckForUpdates = async () => {

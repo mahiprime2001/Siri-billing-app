@@ -44,6 +44,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { useOnlineStatus } from "@/hooks/use-online-status"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { apiClient } from "@/lib/api-client"
+import { authManager } from "@/lib/auth"
 
 interface User {
   id: string;
@@ -538,24 +539,27 @@ export default function BillingAndCart() {
     }
   }, [currentUser, stores, userStores]);
 
-  const handleLogout = async () => {
-    try {
-      await apiClient("/api/auth/logout", { method: "POST" });
-      localStorage.removeItem("session_token");
-      toast({
-        title: "Logout Successful",
-        description: "You have been successfully logged out.",
-        variant: "default",
-      });
-      router.push("/login");
-    } catch (error) {
-      console.error("Error during logout:", error);
-      toast({
-        title: "Logout Failed",
-        description: "An error occurred during logout. Please try again.",
-        variant: "destructive",
-      });
-    }
+  const handleLogout = () => {
+    authManager.clearAuth();
+    toast({
+      title: "Logout Successful",
+      description: "You have been successfully logged out.",
+      variant: "default",
+    });
+    router.replace("/login");
+
+    // Best-effort server logout; do not block UX.
+    void (async () => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      try {
+        await apiClient("/api/auth/logout", { method: "POST", signal: controller.signal });
+      } catch (error) {
+        console.warn("Background logout request failed:", error);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    })();
   };
 
   const clearReplacementSession = () => {
