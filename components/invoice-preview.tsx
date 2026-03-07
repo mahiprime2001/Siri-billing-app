@@ -780,6 +780,10 @@ export default function InvoicePreview({
  * Note: Not all browsers support CSS copies, so user may need to set in dialog
  */
 function generatePrintHTML(printContent: string, paperSize: string, invoiceId: string): string {
+  const isThermal = paperSize.includes("Thermal")
+  const thermalFitScale = isThermal ? 0.92 : 1
+  const thermalInset = isThermal ? "2.2mm" : "0"
+
   const getPageStyles = (): string => {
     if (paperSize === "Thermal 58mm") {
       return `
@@ -794,8 +798,8 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
           overflow-x: hidden;
         }
         .print-container {
-          width: calc(100% - 12mm);
-          margin: 0 6mm;
+          width: 100%;
+          margin: 0;
           padding: 0;
         }
       `
@@ -812,8 +816,8 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
           overflow-x: hidden;
         }
         .print-container {
-          width: calc(100% - 12mm);
-          margin: 0 6mm;
+          width: 100%;
+          margin: 0;
           padding: 0;
         }
       `
@@ -901,6 +905,18 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
             max-width: 100%;
             padding: 0;
             margin: 0 auto;
+            overflow: hidden;
+          }
+
+          .print-fit {
+            width: calc(100% - (2 * ${thermalInset}));
+            margin: 0 ${thermalInset};
+            transform: scale(${thermalFitScale});
+            transform-origin: top left;
+          }
+
+          .print-fit-inner {
+            width: ${thermalFitScale === 1 ? "100%" : `${(100 / thermalFitScale).toFixed(4)}%`};
           }
 
           .invoice-wrapper {
@@ -911,7 +927,11 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
       </head>
       <body>
         <div class="print-container">
-          ${printContent}
+          <div class="print-fit">
+            <div class="print-fit-inner">
+              ${printContent}
+            </div>
+          </div>
         </div>
       </body>
     </html>
