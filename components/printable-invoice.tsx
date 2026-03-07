@@ -165,7 +165,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(({ in
           className="invoice-content"
           style={{
             width: "100%",
-            padding: "0 2mm",
+            padding: "0 1mm",
             boxSizing: "border-box",
             fontSize: 13,
             lineHeight: 1.5,
@@ -419,7 +419,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(({ in
           }
 
           .invoice-content {
-            padding: 0 2mm;
+            padding: 0 1mm;
             color: #000 !important;
             font-weight: 700 !important;
           }

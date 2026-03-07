@@ -791,8 +791,13 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
         body {
           width: 100%;
           margin: 0;
-          padding: 0 1mm;
+          padding: 0;
           overflow-x: hidden;
+        }
+        .print-container {
+          width: calc(100% - 6mm);
+          margin: 0 3mm;
+          padding: 0;
         }
       `
     } else if (paperSize === "Thermal 80mm") {
@@ -804,8 +809,13 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
         body {
           width: 100%;
           margin: 0;
-          padding: 0 1mm;
+          padding: 0;
           overflow-x: hidden;
+        }
+        .print-container {
+          width: calc(100% - 6mm);
+          margin: 0 3mm;
+          padding: 0;
         }
       `
     } else if (paperSize === "A4") {
