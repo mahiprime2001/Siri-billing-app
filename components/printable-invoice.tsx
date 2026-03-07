@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { forwardRef } from "react";
 
@@ -154,7 +154,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(({ in
         ref={ref}
         style={{
           width: "100%",
-          maxWidth: "80mm",
+          maxWidth: "100%",
           margin: "0 auto",
           padding: "0",
           boxSizing: "border-box",
@@ -165,7 +165,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(({ in
           className="invoice-content"
           style={{
             width: "100%",
-            padding: "0 3mm",
+            padding: "0 2mm",
             boxSizing: "border-box",
             fontSize: 13,
             lineHeight: 1.5,
@@ -187,7 +187,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(({ in
           <div style={{ fontSize: 12, marginBottom: 7 }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span>Invoice #{safeInvoice.id}</span>
-              <span>{printedAt.toLocaleDateString()}</span>
+              <span>Date: {printedAt.toLocaleDateString()}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span>Time: {printedAt.toLocaleTimeString()}</span>
@@ -356,7 +356,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(({ in
                 fontSize: 17,
               }}
             >
-              <span>Grand Total</span>
+              <span>Grand Total: </span>
               <span>₹{formatNumber(safeInvoice.total)}</span>
             </div>
           </div>
@@ -413,13 +413,13 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(({ in
           }
 
           .invoice-wrapper {
-            width: 80mm;
+            width: 100%;
             margin: 0;
             padding: 0;
           }
 
           .invoice-content {
-            padding: 0 3mm;
+            padding: 0 2mm;
             color: #000 !important;
             font-weight: 700 !important;
           }

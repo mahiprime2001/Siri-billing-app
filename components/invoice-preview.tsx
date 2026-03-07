@@ -789,9 +789,9 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
           margin: 0;
         }
         body {
-          width: 58mm;
+          width: 100%;
           margin: 0;
-          padding: 0;
+          padding: 0 1mm;
           overflow-x: hidden;
         }
       `
@@ -802,9 +802,9 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
           margin: 0;
         }
         body {
-          width: 80mm;
+          width: 100%;
           margin: 0;
-          padding: 0;
+          padding: 0 1mm;
           overflow-x: hidden;
         }
       `
