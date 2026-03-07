@@ -866,9 +866,9 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
             })}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="sticky bottom-0 z-20 border-t bg-background pt-3">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Close
+              Cancel
             </Button>
             <Button onClick={handleSubmit} disabled={!canSubmit}>
               {saving ? "Saving..." : "Submit Verification"}

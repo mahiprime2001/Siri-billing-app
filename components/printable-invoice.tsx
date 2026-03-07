@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { forwardRef } from "react";
 
@@ -368,12 +368,6 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(({ in
             <div style={{ paddingLeft: 4 }}>* NO GURANTEE, NO RETURN</div>
             <div style={{ paddingLeft: 4 }}>* GOODS Once Sold Cannot be exchanged</div>
             <div style={{ paddingLeft: 4 }}>* Total amount Inclusive of GST</div>
-            <div>For any queries, please contact our customer service team.</div>
-            <div>
-              Customer care number: {safeInvoice.companyPhone || "Store Number"} (please feel free to contact us using
-              the same number in WhatsApp)
-            </div>
-            <div>Email.id: {safeInvoice.companyEmail || "-"}</div>
           </div>
 
           <div style={{ borderTop: "1px dashed #000", margin: "5px 0" }} />
