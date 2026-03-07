@@ -412,7 +412,7 @@ export default function InvoicePreview({
 
       if (isTauriApp()) {
         const printerName = selectedPrinter === SYSTEM_DEFAULT_PRINTER_VALUE ? "" : selectedPrinter
-        const result = await printHtmlContent(html, { paperSize, printerName })
+        const result = await printHtmlContent(html, { paperSize, printerName, copies: 2 }) // this is place where to put the no of copies required for the print.
         console.log('✅ Tauri print submitted:', result)
         toast({
           title: "Print job queued",

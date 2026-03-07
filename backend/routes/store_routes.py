@@ -248,229 +248,316 @@ def get_transfer_order(order_id):
         return jsonify({"message": "An error occurred", "error": str(e)}), 500
 
 
+def _apply_transfer_order_verification(supabase, current_user_id: str, store_id: str, order_id: str, data: dict):
+    session_id = data.get("verification_session_id")
+    item_updates = data.get("items", []) or []
+    scans = data.get("scans", []) or []
+    if not session_id:
+        return {"message": "verification_session_id is required"}, 400
+
+    order_response = supabase.table("inventory_transfer_orders").select("*").eq("id", order_id).limit(1).execute()
+    if not order_response.data:
+        return {"message": "Transfer order not found"}, 404
+    order = order_response.data[0]
+    if order.get("store_id") != store_id:
+        return {"message": "Transfer order not assigned to your store"}, 403
+    if order.get("status") in ["completed", "closed_with_issues", "cancelled"]:
+        return {"message": "Transfer order already closed"}, 409
+
+    payload_hash = hashlib.sha256(str(data).encode("utf-8")).hexdigest()
+    verification_row = {
+        "verification_session_id": session_id,
+        "order_id": order_id,
+        "store_id": store_id,
+        "submitted_by": current_user_id,
+        "submitted_at": datetime.now(timezone.utc).isoformat(),
+        "status": "pending",
+        "payload_hash": payload_hash,
+    }
+    try:
+        supabase.table("inventory_transfer_verifications").insert(verification_row).execute()
+    except Exception:
+        existing = supabase.table("inventory_transfer_verifications").select("*").eq(
+            "verification_session_id", session_id
+        ).limit(1).execute()
+        if existing.data:
+            return {
+                "message": "Duplicate verification ignored",
+                "status": "duplicate_ignored",
+                "verification_session_id": session_id,
+            }, 200
+        raise
+
+    items_response = supabase.table("inventory_transfer_items").select("*").eq("transfer_order_id", order_id).execute()
+    items = items_response.data or []
+    if not items:
+        return {"message": "No transfer items found"}, 400
+
+    items_by_id = {item.get("id"): item for item in items if item.get("id")}
+    items_by_product = {item.get("product_id"): item for item in items if item.get("product_id")}
+    now_iso = datetime.now(timezone.utc).isoformat()
+    updated_items = []
+    damaged_event_rows = []
+
+    for update in item_updates:
+        item_id = update.get("transfer_item_id") or update.get("transferItemId")
+        product_id = update.get("product_id") or update.get("productId")
+        item = items_by_id.get(item_id) if item_id else None
+        if item is None and product_id:
+            item = items_by_product.get(product_id)
+        if not item:
+            continue
+
+        assigned_qty = int(item.get("assigned_qty") or 0)
+        old_verified = int(item.get("verified_qty") or 0)
+        old_damaged = int(item.get("damaged_qty") or 0)
+        old_wrong = int(item.get("wrong_store_qty") or 0)
+        old_applied_verified = int(item.get("applied_verified_qty") or 0)
+
+        new_verified = int(update.get("verified_qty", old_verified) or 0)
+        new_damaged = int(update.get("damaged_qty", old_damaged) or 0)
+        new_wrong = int(update.get("wrong_store_qty", old_wrong) or 0)
+        if new_verified < 0:
+            new_verified = 0
+        if new_damaged < 0:
+            new_damaged = 0
+        if new_wrong < 0:
+            new_wrong = 0
+        total_processed = new_verified + new_damaged + new_wrong
+        if total_processed > assigned_qty:
+            overflow = total_processed - assigned_qty
+            if new_wrong >= overflow:
+                new_wrong -= overflow
+            elif new_damaged >= overflow - new_wrong:
+                new_damaged -= (overflow - new_wrong)
+                new_wrong = 0
+            else:
+                remainder = overflow - new_wrong - new_damaged
+                new_wrong = 0
+                new_damaged = 0
+                new_verified = max(0, new_verified - remainder)
+
+        delta_verified = max(0, new_verified - old_applied_verified)
+        if delta_verified > 0:
+            inv_response = supabase.table("storeinventory").select("*").eq("storeid", store_id).eq(
+                "productid", item.get("product_id")
+            ).limit(1).execute()
+            if inv_response.data:
+                inv = inv_response.data[0]
+                new_qty = int(inv.get("quantity") or 0) + delta_verified
+                supabase.table("storeinventory").update({"quantity": new_qty, "updatedat": now_iso}).eq(
+                    "id", inv.get("id")
+                ).execute()
+            else:
+                supabase.table("storeinventory").insert(
+                    {
+                        "id": f"INV-{datetime.now(timezone.utc).timestamp()}-{item.get('product_id')}",
+                        "storeid": store_id,
+                        "productid": item.get("product_id"),
+                        "quantity": delta_verified,
+                        "assignedat": now_iso,
+                        "updatedat": now_iso,
+                    }
+                ).execute()
+
+        damaged_delta = max(0, new_damaged - old_damaged)
+        if damaged_delta > 0:
+            damaged_event_rows.append(
+                {
+                    "id": f"DMG-{datetime.now(timezone.utc).timestamp()}-{item.get('id')}",
+                    "store_id": store_id,
+                    "product_id": item.get("product_id"),
+                    "quantity": damaged_delta,
+                    "source_type": "transfer_verification",
+                    "source_id": item.get("id"),
+                    "reason": update.get("damage_reason") or "Damaged during transfer verification",
+                    "status": "reported",
+                    "reported_by": current_user_id,
+                    "created_at": now_iso,
+                    "updated_at": now_iso,
+                }
+            )
+
+        item_payload = {
+            "verified_qty": new_verified,
+            "damaged_qty": new_damaged,
+            "wrong_store_qty": new_wrong,
+            "applied_verified_qty": old_applied_verified + delta_verified,
+            "status": _derive_transfer_item_state(
+                {
+                    "assigned_qty": assigned_qty,
+                    "verified_qty": new_verified,
+                    "damaged_qty": new_damaged,
+                    "wrong_store_qty": new_wrong,
+                }
+            ),
+            "updated_at": now_iso,
+        }
+        supabase.table("inventory_transfer_items").update(item_payload).eq("id", item.get("id")).execute()
+        updated_items.append({"item_id": item.get("id"), **item_payload, "delta_verified_applied": delta_verified})
+
+    if scans:
+        scan_rows = []
+        for scan in scans:
+            scan_rows.append(
+                {
+                    "id": f"SCAN-{datetime.now(timezone.utc).timestamp()}",
+                    "transfer_item_id": scan.get("transfer_item_id") or scan.get("transferItemId"),
+                    "barcode": scan.get("barcode"),
+                    "quantity": int(scan.get("quantity") or 1),
+                    "entry_mode": scan.get("entry_mode") or scan.get("entryMode") or "manual",
+                    "event_type": scan.get("event_type") or scan.get("eventType") or "verified",
+                    "entered_by": current_user_id,
+                    "created_at": now_iso,
+                }
+            )
+        if scan_rows:
+            supabase.table("inventory_transfer_scans").insert(scan_rows).execute()
+
+    if damaged_event_rows:
+        supabase.table("damaged_inventory_events").insert(damaged_event_rows).execute()
+
+    refreshed_items_response = supabase.table("inventory_transfer_items").select("*").eq(
+        "transfer_order_id", order_id
+    ).execute()
+    refreshed_items = refreshed_items_response.data or []
+    assigned_total = sum(int(i.get("assigned_qty") or 0) for i in refreshed_items)
+    verified_total = sum(int(i.get("verified_qty") or 0) for i in refreshed_items)
+    damaged_total = sum(int(i.get("damaged_qty") or 0) for i in refreshed_items)
+    wrong_total = sum(int(i.get("wrong_store_qty") or 0) for i in refreshed_items)
+    missing_total = max(0, assigned_total - verified_total - damaged_total - wrong_total)
+    order_status = "pending"
+    if missing_total == 0 and assigned_total > 0:
+        order_status = "closed_with_issues" if (damaged_total > 0 or wrong_total > 0) else "completed"
+    elif verified_total > 0 or damaged_total > 0 or wrong_total > 0:
+        order_status = "in_progress"
+
+    order_update = {
+        "status": order_status,
+        "version_number": int(order.get("version_number") or 1) + 1,
+        "updated_at": now_iso,
+        "verified_at": now_iso if order_status in ["completed", "closed_with_issues"] else None,
+    }
+    supabase.table("inventory_transfer_orders").update(order_update).eq("id", order_id).execute()
+    supabase.table("inventory_transfer_verifications").update(
+        {"status": "applied", "error_message": None}
+    ).eq("verification_session_id", session_id).execute()
+
+    return {
+        "message": "Verification applied successfully",
+        "verification_session_id": session_id,
+        "order_status": order_status,
+        "summary": {
+            "assigned_qty_total": assigned_total,
+            "verified_qty_total": verified_total,
+            "damaged_qty_total": damaged_total,
+            "wrong_store_qty_total": wrong_total,
+            "missing_qty_total": missing_total,
+        },
+        "updated_items": updated_items,
+    }, 200
+
+
 @store_bp.route('/transfer-orders/<order_id>/verify', methods=['POST'])
 @require_auth
 def verify_transfer_order(order_id):
-    """Verify transfer items with idempotent session and delta application to storeinventory."""
+    """Verify one transfer order with idempotent session and delta application to inventory."""
     try:
         current_user_id = get_jwt_identity()
         data = request.get_json() or {}
-        session_id = data.get("verification_session_id")
-        item_updates = data.get("items", []) or []
-        scans = data.get("scans", []) or []
-        if not session_id:
+        supabase = get_supabase_client()
+        store_id = _get_current_store_id(supabase, current_user_id)
+        if not store_id:
+            return jsonify({"message": "No store assigned to this user"}), 404
+
+        result, status_code = _apply_transfer_order_verification(
+            supabase=supabase,
+            current_user_id=current_user_id,
+            store_id=store_id,
+            order_id=order_id,
+            data=data,
+        )
+        return jsonify(result), status_code
+    except Exception as e:
+        app.logger.error(f"❌ Error verifying transfer order {order_id}: {str(e)}")
+        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+
+
+@store_bp.route('/transfer-orders/verify-batch', methods=['POST'])
+@require_auth
+def verify_transfer_orders_batch():
+    """Verify multiple transfer orders in one request."""
+    try:
+        current_user_id = get_jwt_identity()
+        data = request.get_json() or {}
+        verifications = data.get("verifications") or []
+        batch_session_id = data.get("verification_session_id")
+        if not batch_session_id:
             return jsonify({"message": "verification_session_id is required"}), 400
+        if not verifications:
+            return jsonify({"message": "verifications array is required"}), 400
 
         supabase = get_supabase_client()
         store_id = _get_current_store_id(supabase, current_user_id)
         if not store_id:
             return jsonify({"message": "No store assigned to this user"}), 404
 
-        order_response = supabase.table("inventory_transfer_orders").select("*").eq("id", order_id).limit(1).execute()
-        if not order_response.data:
-            return jsonify({"message": "Transfer order not found"}), 404
-        order = order_response.data[0]
-        if order.get("store_id") != store_id:
-            return jsonify({"message": "Transfer order not assigned to your store"}), 403
-        if order.get("status") in ["completed", "closed_with_issues", "cancelled"]:
-            return jsonify({"message": "Transfer order already closed"}), 409
+        results = []
+        success_count = 0
+        failed_count = 0
+        duplicate_count = 0
 
-        payload_hash = hashlib.sha256(str(data).encode("utf-8")).hexdigest()
-        verification_row = {
-            "verification_session_id": session_id,
-            "order_id": order_id,
-            "store_id": store_id,
-            "submitted_by": current_user_id,
-            "submitted_at": datetime.now(timezone.utc).isoformat(),
-            "status": "pending",
-            "payload_hash": payload_hash,
-        }
-        try:
-            supabase.table("inventory_transfer_verifications").insert(verification_row).execute()
-        except Exception:
-            existing = supabase.table("inventory_transfer_verifications").select("*").eq(
-                "verification_session_id", session_id
-            ).limit(1).execute()
-            if existing.data:
-                return jsonify(
-                    {
-                        "message": "Duplicate verification ignored",
-                        "status": "duplicate_ignored",
-                        "verification_session_id": session_id,
-                    }
-                ), 200
-            raise
-
-        items_response = supabase.table("inventory_transfer_items").select("*").eq("transfer_order_id", order_id).execute()
-        items = items_response.data or []
-        if not items:
-            return jsonify({"message": "No transfer items found"}), 400
-
-        items_by_id = {item.get("id"): item for item in items if item.get("id")}
-        items_by_product = {item.get("product_id"): item for item in items if item.get("product_id")}
-        now_iso = datetime.now(timezone.utc).isoformat()
-        updated_items = []
-        damaged_event_rows = []
-
-        for update in item_updates:
-            item_id = update.get("transfer_item_id") or update.get("transferItemId")
-            product_id = update.get("product_id") or update.get("productId")
-            item = items_by_id.get(item_id) if item_id else None
-            if item is None and product_id:
-                item = items_by_product.get(product_id)
-            if not item:
+        for index, verification in enumerate(verifications):
+            order_id = verification.get("order_id") or verification.get("orderId")
+            if not order_id:
+                failed_count += 1
+                results.append(
+                    {"index": index, "status": "failed", "message": "order_id is required", "status_code": 400}
+                )
                 continue
 
-            assigned_qty = int(item.get("assigned_qty") or 0)
-            old_verified = int(item.get("verified_qty") or 0)
-            old_damaged = int(item.get("damaged_qty") or 0)
-            old_wrong = int(item.get("wrong_store_qty") or 0)
-            old_applied_verified = int(item.get("applied_verified_qty") or 0)
-
-            new_verified = int(update.get("verified_qty", old_verified) or 0)
-            new_damaged = int(update.get("damaged_qty", old_damaged) or 0)
-            new_wrong = int(update.get("wrong_store_qty", old_wrong) or 0)
-            if new_verified < 0:
-                new_verified = 0
-            if new_damaged < 0:
-                new_damaged = 0
-            if new_wrong < 0:
-                new_wrong = 0
-            total_processed = new_verified + new_damaged + new_wrong
-            if total_processed > assigned_qty:
-                overflow = total_processed - assigned_qty
-                if new_wrong >= overflow:
-                    new_wrong -= overflow
-                elif new_damaged >= overflow - new_wrong:
-                    new_damaged -= (overflow - new_wrong)
-                    new_wrong = 0
-                else:
-                    remainder = overflow - new_wrong - new_damaged
-                    new_wrong = 0
-                    new_damaged = 0
-                    new_verified = max(0, new_verified - remainder)
-
-            delta_verified = max(0, new_verified - old_applied_verified)
-            if delta_verified > 0:
-                inv_response = supabase.table("storeinventory").select("*").eq("storeid", store_id).eq(
-                    "productid", item.get("product_id")
-                ).limit(1).execute()
-                if inv_response.data:
-                    inv = inv_response.data[0]
-                    new_qty = int(inv.get("quantity") or 0) + delta_verified
-                    supabase.table("storeinventory").update({"quantity": new_qty, "updatedat": now_iso}).eq(
-                        "id", inv.get("id")
-                    ).execute()
-                else:
-                    supabase.table("storeinventory").insert(
-                        {
-                            "id": f"INV-{datetime.now(timezone.utc).timestamp()}-{item.get('product_id')}",
-                            "storeid": store_id,
-                            "productid": item.get("product_id"),
-                            "quantity": delta_verified,
-                            "assignedat": now_iso,
-                            "updatedat": now_iso,
-                        }
-                    ).execute()
-
-            damaged_delta = max(0, new_damaged - old_damaged)
-            if damaged_delta > 0:
-                damaged_event_rows.append(
-                    {
-                        "id": f"DMG-{datetime.now(timezone.utc).timestamp()}-{item.get('id')}",
-                        "store_id": store_id,
-                        "product_id": item.get("product_id"),
-                        "quantity": damaged_delta,
-                        "source_type": "transfer_verification",
-                        "source_id": item.get("id"),
-                        "reason": update.get("damage_reason") or "Damaged during transfer verification",
-                        "status": "reported",
-                        "reported_by": current_user_id,
-                        "created_at": now_iso,
-                        "updated_at": now_iso,
-                    }
-                )
-
-            item_payload = {
-                "verified_qty": new_verified,
-                "damaged_qty": new_damaged,
-                "wrong_store_qty": new_wrong,
-                "applied_verified_qty": old_applied_verified + delta_verified,
-                "status": _derive_transfer_item_state(
-                    {
-                        "assigned_qty": assigned_qty,
-                        "verified_qty": new_verified,
-                        "damaged_qty": new_damaged,
-                        "wrong_store_qty": new_wrong,
-                    }
-                ),
-                "updated_at": now_iso,
+            order_payload = {
+                "verification_session_id": f"{batch_session_id}-{order_id}",
+                "items": verification.get("items", []) or [],
+                "scans": verification.get("scans", []) or [],
             }
-            supabase.table("inventory_transfer_items").update(item_payload).eq("id", item.get("id")).execute()
-            updated_items.append({"item_id": item.get("id"), **item_payload, "delta_verified_applied": delta_verified})
+            result, status_code = _apply_transfer_order_verification(
+                supabase=supabase,
+                current_user_id=current_user_id,
+                store_id=store_id,
+                order_id=order_id,
+                data=order_payload,
+            )
+            row_status = "success" if status_code < 300 else "failed"
+            if result.get("status") == "duplicate_ignored":
+                row_status = "duplicate_ignored"
+                duplicate_count += 1
+            elif row_status == "success":
+                success_count += 1
+            else:
+                failed_count += 1
 
-        if scans:
-            scan_rows = []
-            for scan in scans:
-                scan_rows.append(
-                    {
-                        "id": f"SCAN-{datetime.now(timezone.utc).timestamp()}",
-                        "transfer_item_id": scan.get("transfer_item_id") or scan.get("transferItemId"),
-                        "barcode": scan.get("barcode"),
-                        "quantity": int(scan.get("quantity") or 1),
-                        "entry_mode": scan.get("entry_mode") or scan.get("entryMode") or "manual",
-                        "event_type": scan.get("event_type") or scan.get("eventType") or "verified",
-                        "entered_by": current_user_id,
-                        "created_at": now_iso,
-                    }
-                )
-            if scan_rows:
-                supabase.table("inventory_transfer_scans").insert(scan_rows).execute()
+            results.append(
+                {
+                    "index": index,
+                    "order_id": order_id,
+                    "status": row_status,
+                    "status_code": status_code,
+                    **result,
+                }
+            )
 
-        if damaged_event_rows:
-            supabase.table("damaged_inventory_events").insert(damaged_event_rows).execute()
-
-        refreshed_items_response = supabase.table("inventory_transfer_items").select("*").eq(
-            "transfer_order_id", order_id
-        ).execute()
-        refreshed_items = refreshed_items_response.data or []
-        assigned_total = sum(int(i.get("assigned_qty") or 0) for i in refreshed_items)
-        verified_total = sum(int(i.get("verified_qty") or 0) for i in refreshed_items)
-        damaged_total = sum(int(i.get("damaged_qty") or 0) for i in refreshed_items)
-        wrong_total = sum(int(i.get("wrong_store_qty") or 0) for i in refreshed_items)
-        missing_total = max(0, assigned_total - verified_total - damaged_total - wrong_total)
-        order_status = "pending"
-        if missing_total == 0 and assigned_total > 0:
-            order_status = "closed_with_issues" if (damaged_total > 0 or wrong_total > 0) else "completed"
-        elif verified_total > 0 or damaged_total > 0 or wrong_total > 0:
-            order_status = "in_progress"
-
-        order_update = {
-            "status": order_status,
-            "version_number": int(order.get("version_number") or 1) + 1,
-            "updated_at": now_iso,
-            "verified_at": now_iso if order_status in ["completed", "closed_with_issues"] else None,
-        }
-        supabase.table("inventory_transfer_orders").update(order_update).eq("id", order_id).execute()
-        supabase.table("inventory_transfer_verifications").update(
-            {"status": "applied", "error_message": None}
-        ).eq("verification_session_id", session_id).execute()
-
+        response_status = 200 if failed_count == 0 else (207 if success_count > 0 or duplicate_count > 0 else 400)
         return jsonify(
             {
-                "message": "Verification applied successfully",
-                "verification_session_id": session_id,
-                "order_status": order_status,
-                "summary": {
-                    "assigned_qty_total": assigned_total,
-                    "verified_qty_total": verified_total,
-                    "damaged_qty_total": damaged_total,
-                    "wrong_store_qty_total": wrong_total,
-                    "missing_qty_total": missing_total,
-                },
-                "updated_items": updated_items,
+                "message": "Batch verification processed",
+                "verification_session_id": batch_session_id,
+                "success_count": success_count,
+                "failed_count": failed_count,
+                "duplicate_count": duplicate_count,
+                "results": results,
             }
-        ), 200
+        ), response_status
     except Exception as e:
-        app.logger.error(f"❌ Error verifying transfer order {order_id}: {str(e)}")
+        app.logger.error(f"❌ Error verifying transfer orders in batch: {str(e)}")
         return jsonify({"message": "An error occurred", "error": str(e)}), 500

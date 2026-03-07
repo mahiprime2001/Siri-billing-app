@@ -67,6 +67,7 @@ type TransferOrderDetails = {
 
 type ScanRow = {
   id: string
+  order_id: string
   transfer_item_id: string
   barcode: string
   product_name: string
@@ -76,11 +77,19 @@ type ScanRow = {
 }
 
 type ScanLog = {
+  order_id: string
   transfer_item_id: string
   barcode: string
   quantity: number
   entry_mode: "scan" | "manual"
   event_type: "verified" | "damaged"
+}
+
+type ItemEdit = {
+  verified_qty: number
+  damaged_qty: number
+  wrong_store_qty: number
+  damage_reason?: string
 }
 
 interface Props {
@@ -89,6 +98,7 @@ interface Props {
   onVerificationSaved?: () => void
 }
 
+const AUTO_SCOPE = "__all"
 const normalizeBarcode = (value: string) => value.trim().replace(/^0+/, "")
 
 export default function TransferVerificationDialog({ open, onOpenChange, onVerificationSaved }: Props) {
@@ -97,22 +107,71 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   const timerRefs = useRef<ReturnType<typeof setTimeout>[]>([])
 
   const [loadingOrders, setLoadingOrders] = useState(false)
+  const [loadingOrderDetails, setLoadingOrderDetails] = useState(false)
   const [orders, setOrders] = useState<TransferOrder[]>([])
   const [selectedOrderId, setSelectedOrderId] = useState<string>("")
-  const [orderDetails, setOrderDetails] = useState<TransferOrderDetails | null>(null)
+  const [orderDetailsById, setOrderDetailsById] = useState<Record<string, TransferOrderDetails>>({})
+  const [itemEditsByOrder, setItemEditsByOrder] = useState<Record<string, Record<string, ItemEdit>>>({})
   const [saving, setSaving] = useState(false)
   const [scanInput, setScanInput] = useState("")
   const [scanRows, setScanRows] = useState<ScanRow[]>([])
   const [scanLogs, setScanLogs] = useState<ScanLog[]>([])
+  const [touchedOrderIds, setTouchedOrderIds] = useState<string[]>([])
   const [confirmDamagedRowId, setConfirmDamagedRowId] = useState<string | null>(null)
   const [scanErrorDialog, setScanErrorDialog] = useState<{ title: string; description: string } | null>(null)
-  const [itemEdits, setItemEdits] = useState<
-    Record<string, { verified_qty: number; damaged_qty: number; wrong_store_qty: number; damage_reason?: string }>
-  >({})
 
   const clearAnimationTimers = () => {
     timerRefs.current.forEach((id) => clearTimeout(id))
     timerRefs.current = []
+  }
+
+  const createInitialEdits = (details: TransferOrderDetails): Record<string, ItemEdit> => {
+    const initialEdits: Record<string, ItemEdit> = {}
+    details.items.forEach((item) => {
+      initialEdits[item.id] = {
+        verified_qty: Number(item.verified_qty || 0),
+        damaged_qty: Number(item.damaged_qty || 0),
+        wrong_store_qty: Number(item.wrong_store_qty || 0),
+        damage_reason: "",
+      }
+    })
+    return initialEdits
+  }
+
+  const loadOrderDetails = async (orderId: string) => {
+    const response = await apiClient(`/api/transfer-orders/${orderId}`)
+    if (!response.ok) throw new Error(`Failed to fetch order ${orderId}`)
+    return (await response.json()) as TransferOrderDetails
+  }
+
+  const preloadOrderDetails = async (orderList: TransferOrder[]) => {
+    if (!orderList.length) {
+      setOrderDetailsById({})
+      setItemEditsByOrder({})
+      return
+    }
+
+    setLoadingOrderDetails(true)
+    try {
+      const detailResults = await Promise.allSettled(orderList.map((order) => loadOrderDetails(order.id)))
+      const detailMap: Record<string, TransferOrderDetails> = {}
+      const editsMap: Record<string, Record<string, ItemEdit>> = {}
+
+      detailResults.forEach((result, idx) => {
+        if (result.status === "fulfilled") {
+          const details = result.value
+          detailMap[details.id] = details
+          editsMap[details.id] = createInitialEdits(details)
+        } else {
+          console.error("Error loading transfer order details:", orderList[idx]?.id, result.reason)
+        }
+      })
+
+      setOrderDetailsById(detailMap)
+      setItemEditsByOrder(editsMap)
+    } finally {
+      setLoadingOrderDetails(false)
+    }
   }
 
   const loadOrders = async () => {
@@ -122,6 +181,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       if (!response.ok) throw new Error("Failed to fetch transfer orders")
       const data = (await response.json()) as TransferOrder[]
       setOrders(data)
+      await preloadOrderDetails(data)
     } catch (error) {
       console.error("Error loading transfer orders:", error)
       toast({
@@ -134,46 +194,14 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     }
   }
 
-  const loadOrderDetails = async (orderId: string) => {
-    try {
-      const response = await apiClient(`/api/transfer-orders/${orderId}`)
-      if (!response.ok) throw new Error("Failed to fetch order details")
-      const data = (await response.json()) as TransferOrderDetails
-      setOrderDetails(data)
-      const initialEdits: Record<
-        string,
-        { verified_qty: number; damaged_qty: number; wrong_store_qty: number; damage_reason?: string }
-      > = {}
-      data.items.forEach((item) => {
-        initialEdits[item.id] = {
-          verified_qty: Number(item.verified_qty || 0),
-          damaged_qty: Number(item.damaged_qty || 0),
-          wrong_store_qty: Number(item.wrong_store_qty || 0),
-          damage_reason: "",
-        }
-      })
-      setItemEdits(initialEdits)
-      setScanRows([])
-      setScanLogs([])
-      setScanInput("")
-      setConfirmDamagedRowId(null)
-    } catch (error) {
-      console.error("Error loading transfer order details:", error)
-      toast({
-        title: "Load Failed",
-        description: "Could not fetch selected order details.",
-        variant: "destructive",
-      })
-    }
-  }
-
   useEffect(() => {
     if (open) {
       setSelectedOrderId("")
-      setOrderDetails(null)
-      setItemEdits({})
+      setOrderDetailsById({})
+      setItemEditsByOrder({})
       setScanRows([])
       setScanLogs([])
+      setTouchedOrderIds([])
       setScanInput("")
       setConfirmDamagedRowId(null)
       clearAnimationTimers()
@@ -185,56 +213,62 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   }, [open])
 
   useEffect(() => {
-    if (selectedOrderId) {
-      loadOrderDetails(selectedOrderId)
-    } else {
-      setOrderDetails(null)
-      setItemEdits({})
-      setScanRows([])
-      setScanLogs([])
-      setScanInput("")
-      setConfirmDamagedRowId(null)
-      clearAnimationTimers()
-    }
-  }, [selectedOrderId])
-
-  useEffect(() => {
-    if (orderDetails) {
+    if (!open) return
+    const focusTimer = setTimeout(() => {
       scanInputRef.current?.focus()
-    }
-  }, [orderDetails])
+    }, 120)
+    return () => clearTimeout(focusTimer)
+  }, [open, loadingOrderDetails])
+
+  const selectedOrderIds = useMemo(() => {
+    if (selectedOrderId) return [selectedOrderId]
+    return Object.keys(orderDetailsById)
+  }, [selectedOrderId, orderDetailsById])
 
   const summary = useMemo(() => {
-    if (!orderDetails) {
-      return { assigned: 0, verified: 0, damaged: 0, wrong: 0, missing: 0 }
-    }
     let assigned = 0
     let verified = 0
     let damaged = 0
     let wrong = 0
-    orderDetails.items.forEach((item) => {
-      const edit = itemEdits[item.id]
-      assigned += Number(item.assigned_qty || 0)
-      verified += Number(edit?.verified_qty ?? item.verified_qty ?? 0)
-      damaged += Number(edit?.damaged_qty ?? item.damaged_qty ?? 0)
-      wrong += Number(edit?.wrong_store_qty ?? item.wrong_store_qty ?? 0)
+
+    selectedOrderIds.forEach((orderId) => {
+      const details = orderDetailsById[orderId]
+      if (!details) return
+      details.items.forEach((item) => {
+        const edit = itemEditsByOrder[orderId]?.[item.id]
+        assigned += Number(item.assigned_qty || 0)
+        verified += Number(edit?.verified_qty ?? item.verified_qty ?? 0)
+        damaged += Number(edit?.damaged_qty ?? item.damaged_qty ?? 0)
+        wrong += Number(edit?.wrong_store_qty ?? item.wrong_store_qty ?? 0)
+      })
     })
+
     const missing = Math.max(0, assigned - verified - damaged - wrong)
     return { assigned, verified, damaged, wrong, missing }
-  }, [orderDetails, itemEdits])
+  }, [selectedOrderIds, orderDetailsById, itemEditsByOrder])
 
-  const findMatchingItem = (enteredBarcode: string): TransferItem | null => {
-    if (!orderDetails) return null
+  const findMatchingItem = (enteredBarcode: string): { orderId: string; item: TransferItem } | "ambiguous" | null => {
     const normalized = normalizeBarcode(enteredBarcode)
-    return (
-      orderDetails.items.find((item) => {
+    const matches: { orderId: string; item: TransferItem }[] = []
+
+    selectedOrderIds.forEach((orderId) => {
+      const details = orderDetailsById[orderId]
+      if (!details) return
+
+      details.items.forEach((item) => {
         const barcodes = (item.products?.barcode || "")
           .split(",")
           .map((code) => normalizeBarcode(code))
           .filter(Boolean)
-        return barcodes.includes(normalized)
-      }) || null
-    )
+        if (barcodes.includes(normalized)) {
+          matches.push({ orderId, item })
+        }
+      })
+    })
+
+    if (matches.length === 0) return null
+    if (matches.length > 1 && !selectedOrderId) return "ambiguous"
+    return matches[0]
   }
 
   const scheduleStatusToVerified = (rowId: string) => {
@@ -244,7 +278,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     timerRefs.current.push(timerId)
   }
 
-  const incrementVerified = (item: TransferItem, barcode: string, entryMode: "scan" | "manual") => {
+  const incrementVerified = (orderId: string, item: TransferItem, barcode: string, entryMode: "scan" | "manual") => {
     const itemBarcodes = (item.products?.barcode || "")
       .split(",")
       .map((code) => normalizeBarcode(code))
@@ -258,8 +292,9 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     }
 
     let didUpdate = false
-    setItemEdits((prev) => {
-      const current = prev[item.id] || {
+    setItemEditsByOrder((prev) => {
+      const orderEdits = prev[orderId] || {}
+      const current = orderEdits[item.id] || {
         verified_qty: Number(item.verified_qty || 0),
         damaged_qty: Number(item.damaged_qty || 0),
         wrong_store_qty: Number(item.wrong_store_qty || 0),
@@ -270,12 +305,16 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       if (processed >= assigned) {
         return prev
       }
+
       didUpdate = true
       return {
         ...prev,
-        [item.id]: {
-          ...current,
-          verified_qty: current.verified_qty + 1,
+        [orderId]: {
+          ...orderEdits,
+          [item.id]: {
+            ...current,
+            verified_qty: current.verified_qty + 1,
+          },
         },
       }
     })
@@ -288,7 +327,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       return
     }
 
-    const rowId = `verified-${item.id}`
+    const rowId = `verified-${orderId}-${item.id}`
     setScanRows((prev) => {
       const existingIndex = prev.findIndex((row) => row.id === rowId)
       if (existingIndex >= 0) {
@@ -305,6 +344,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       return [
         {
           id: rowId,
+          order_id: orderId,
           transfer_item_id: item.id,
           barcode: item.products?.barcode || barcode,
           product_name: item.products?.name || item.product_id,
@@ -319,6 +359,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     setScanLogs((prev) => [
       ...prev,
       {
+        order_id: orderId,
         transfer_item_id: item.id,
         barcode,
         quantity: 1,
@@ -327,6 +368,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       },
     ])
 
+    setTouchedOrderIds((prev) => (prev.includes(orderId) ? prev : [...prev, orderId]))
     scheduleStatusToVerified(rowId)
   }
 
@@ -334,17 +376,26 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     const entered = scanInput.trim()
     if (!entered) return
 
-    const matchedItem = findMatchingItem(entered)
-    if (!matchedItem) {
+    const match = findMatchingItem(entered)
+    if (match === "ambiguous") {
       setScanInput("")
       setScanErrorDialog({
-        title: "Wrong Stock",
-        description: "This barcode does not belong to this transfer order/store.",
+        title: "Multiple Orders Matched",
+        description: "This barcode exists in multiple pending orders. Select a specific order and scan again.",
       })
       return
     }
 
-    incrementVerified(matchedItem, entered, entryMode)
+    if (!match) {
+      setScanInput("")
+      setScanErrorDialog({
+        title: "Wrong Stock",
+        description: "This barcode does not belong to your active transfer orders.",
+      })
+      return
+    }
+
+    incrementVerified(match.orderId, match.item, entered, entryMode)
     setScanInput("")
     scanInputRef.current?.focus()
   }
@@ -354,7 +405,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   }
 
   const confirmDamagedProduct = () => {
-    if (!confirmDamagedRowId || !orderDetails) return
+    if (!confirmDamagedRowId) return
 
     const row = scanRows.find((entry) => entry.id === confirmDamagedRowId)
     if (!row || row.quantity <= 0 || row.status === "damaged") {
@@ -362,14 +413,16 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       return
     }
 
-    const item = orderDetails.items.find((entry) => entry.id === row.transfer_item_id)
-    if (!item) {
+    const details = orderDetailsById[row.order_id]
+    const item = details?.items.find((entry) => entry.id === row.transfer_item_id)
+    if (!details || !item) {
       setConfirmDamagedRowId(null)
       return
     }
 
-    setItemEdits((prev) => {
-      const current = prev[item.id] || {
+    setItemEditsByOrder((prev) => {
+      const orderEdits = prev[row.order_id] || {}
+      const current = orderEdits[item.id] || {
         verified_qty: Number(item.verified_qty || 0),
         damaged_qty: Number(item.damaged_qty || 0),
         wrong_store_qty: Number(item.wrong_store_qty || 0),
@@ -377,11 +430,14 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       }
       return {
         ...prev,
-        [item.id]: {
-          ...current,
-          verified_qty: Math.max(0, current.verified_qty - 1),
-          damaged_qty: current.damaged_qty + 1,
-          damage_reason: "Marked damaged during receive scan",
+        [row.order_id]: {
+          ...orderEdits,
+          [item.id]: {
+            ...current,
+            verified_qty: Math.max(0, current.verified_qty - 1),
+            damaged_qty: current.damaged_qty + 1,
+            damage_reason: "Marked damaged during receive scan",
+          },
         },
       }
     })
@@ -395,7 +451,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
         )
         .filter((entry) => entry.quantity > 0)
 
-      const damagedRowId = `damaged-${row.transfer_item_id}`
+      const damagedRowId = `damaged-${row.order_id}-${row.transfer_item_id}`
       const damagedIndex = nextRows.findIndex((entry) => entry.id === damagedRowId)
       if (damagedIndex >= 0) {
         nextRows[damagedIndex] = {
@@ -406,6 +462,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       } else {
         nextRows.unshift({
           id: damagedRowId,
+          order_id: row.order_id,
           transfer_item_id: row.transfer_item_id,
           barcode: row.barcode,
           product_name: row.product_name,
@@ -420,6 +477,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     setScanLogs((prev) => [
       ...prev,
       {
+        order_id: row.order_id,
         transfer_item_id: row.transfer_item_id,
         barcode: row.barcode,
         quantity: 1,
@@ -428,6 +486,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       },
     ])
 
+    setTouchedOrderIds((prev) => (prev.includes(row.order_id) ? prev : [...prev, row.order_id]))
     setConfirmDamagedRowId(null)
   }
 
@@ -447,69 +506,222 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   }
 
   const handleSubmit = async () => {
-    if (!selectedOrderId || !orderDetails) return
+    const orderIdsToSubmit = selectedOrderId
+      ? touchedOrderIds.includes(selectedOrderId)
+        ? [selectedOrderId]
+        : []
+      : touchedOrderIds
+
+    if (!orderIdsToSubmit.length) {
+      toast({
+        title: "Nothing to Submit",
+        description: "Scan at least one product before submitting verification.",
+      })
+      return
+    }
+
     const verificationSessionId =
       typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
         ? crypto.randomUUID()
         : `ver-${Date.now()}`
 
-    const payloadItems = orderDetails.items.map((item) => {
-      const edit = itemEdits[item.id] || {
-        verified_qty: Number(item.verified_qty || 0),
-        damaged_qty: Number(item.damaged_qty || 0),
-        wrong_store_qty: Number(item.wrong_store_qty || 0),
-        damage_reason: "",
-      }
-      return {
-        transfer_item_id: item.id,
-        product_id: item.product_id,
-        verified_qty: edit.verified_qty,
-        damaged_qty: edit.damaged_qty,
-        wrong_store_qty: edit.wrong_store_qty,
-        damage_reason: edit.damage_reason,
-      }
-    })
-
     setSaving(true)
-    try {
-      const response = await apiClient(`/api/transfer-orders/${selectedOrderId}/verify`, {
-        method: "POST",
-        body: JSON.stringify({
-          verification_session_id: verificationSessionId,
-          items: payloadItems,
-          scans: scanLogs,
-        }),
-      })
+    const failures: { orderId: string; message: string }[] = []
+    const verifications: {
+      order_id: string
+      items: {
+        transfer_item_id: string
+        product_id: string
+        verified_qty: number
+        damaged_qty: number
+        wrong_store_qty: number
+        damage_reason?: string
+      }[]
+      scans: {
+        transfer_item_id: string
+        barcode: string
+        quantity: number
+        entry_mode: "scan" | "manual"
+        event_type: "verified" | "damaged"
+      }[]
+    }[] = []
 
-      const result = await response.json()
-      if (!response.ok) {
-        throw new Error(result?.message || "Failed to submit verification")
+    try {
+      for (const orderId of orderIdsToSubmit) {
+        const details = orderDetailsById[orderId]
+        if (!details) {
+          failures.push({ orderId, message: "Order details not loaded" })
+          continue
+        }
+
+        const orderEdits = itemEditsByOrder[orderId] || {}
+        const payloadItems = details.items.map((item) => {
+          const edit = orderEdits[item.id] || {
+            verified_qty: Number(item.verified_qty || 0),
+            damaged_qty: Number(item.damaged_qty || 0),
+            wrong_store_qty: Number(item.wrong_store_qty || 0),
+            damage_reason: "",
+          }
+          return {
+            transfer_item_id: item.id,
+            product_id: item.product_id,
+            verified_qty: edit.verified_qty,
+            damaged_qty: edit.damaged_qty,
+            wrong_store_qty: edit.wrong_store_qty,
+            damage_reason: edit.damage_reason,
+          }
+        })
+
+        const payloadScans = scanLogs
+          .filter((scan) => scan.order_id === orderId)
+          .map(({ transfer_item_id, barcode, quantity, entry_mode, event_type }) => ({
+            transfer_item_id,
+            barcode,
+            quantity,
+            entry_mode,
+            event_type,
+          }))
+
+        verifications.push({
+          order_id: orderId,
+          items: payloadItems,
+          scans: payloadScans,
+        })
       }
 
-      toast({
-        title: "Verification Saved",
-        description:
-          result?.status === "duplicate_ignored"
-            ? "Duplicate session ignored safely."
-            : `Order updated (${result?.order_status || "in_progress"}).`,
-      })
+      if (!verifications.length) {
+        toast({
+          title: "Save Failed",
+          description: failures[0]?.message || "Could not prepare verification payload.",
+          variant: "destructive",
+        })
+        return
+      }
 
-      // Only verified qty is applied into store inventory by backend.
-      await loadOrders()
-      await loadOrderDetails(selectedOrderId)
-      onOpenChange(false)
-      onVerificationSaved?.()
-    } catch (error) {
-      console.error("Error saving transfer verification:", error)
+      // Prefer batch endpoint; fallback to legacy per-order endpoint for older backend.
+      let usedLegacyFallback = false
+      let successCount = 0
+      try {
+        const batchResponse = await apiClient(`/api/transfer-orders/verify-batch`, {
+          method: "POST",
+          body: JSON.stringify({
+            verification_session_id: verificationSessionId,
+            verifications,
+          }),
+        })
+
+        if (!batchResponse.ok && batchResponse.status !== 404 && batchResponse.status !== 405) {
+          const errorPayload = await batchResponse.json().catch(() => ({}))
+          throw new Error(errorPayload?.message || "Batch verification failed")
+        }
+
+        if (batchResponse.ok) {
+          const batchResult = await batchResponse.json().catch(() => null)
+          successCount = Number(batchResult?.success_count || 0)
+          const failedCount = Number(batchResult?.failed_count || 0)
+
+          if (successCount > 0 && failedCount === 0) {
+            toast({
+              title: "Verification Saved",
+              description: `Updated ${successCount} order${successCount > 1 ? "s" : ""}.`,
+            })
+            await loadOrders()
+            onOpenChange(false)
+            onVerificationSaved?.()
+            return
+          }
+
+          if (successCount > 0 && failedCount > 0) {
+            toast({
+              title: "Partially Saved",
+              description: `Saved ${successCount} order(s). Failed ${failedCount} order(s).`,
+              variant: "destructive",
+            })
+            await loadOrders()
+            return
+          }
+
+          toast({
+            title: "Save Failed",
+            description: batchResult?.message || "Could not save verification.",
+            variant: "destructive",
+          })
+          return
+        }
+
+        usedLegacyFallback = true
+      } catch (error) {
+        // If batch endpoint exists but fails, do not silently fallback.
+        toast({
+          title: "Save Failed",
+          description: (error as Error).message || "Could not save verification.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      if (usedLegacyFallback) {
+        for (const verification of verifications) {
+          try {
+            const response = await apiClient(`/api/transfer-orders/${verification.order_id}/verify`, {
+              method: "POST",
+              body: JSON.stringify({
+                verification_session_id: `${verificationSessionId}-${verification.order_id}`,
+                items: verification.items,
+                scans: verification.scans,
+              }),
+            })
+            const result = await response.json()
+            if (!response.ok) {
+              throw new Error(result?.message || "Failed to submit verification")
+            }
+            successCount += 1
+          } catch (error) {
+            failures.push({
+              orderId: verification.order_id,
+              message: (error as Error).message || "Submission failed",
+            })
+          }
+        }
+      }
+
+      if (successCount > 0 && failures.length === 0) {
+        toast({
+          title: "Verification Saved",
+          description: `Updated ${successCount} order${successCount > 1 ? "s" : ""}.`,
+        })
+        await loadOrders()
+        onOpenChange(false)
+        onVerificationSaved?.()
+        return
+      }
+
+      if (successCount > 0 && failures.length > 0) {
+        toast({
+          title: "Partially Saved",
+          description: `Saved ${successCount} order(s). Failed ${failures.length} order(s).`,
+          variant: "destructive",
+        })
+        await loadOrders()
+        return
+      }
+
       toast({
         title: "Save Failed",
-        description: (error as Error).message || "Could not save verification.",
+        description: failures[0]?.message || "Could not save verification.",
         variant: "destructive",
       })
     } finally {
       setSaving(false)
     }
   }
+
+  const visibleScanRows = useMemo(
+    () => (selectedOrderId ? scanRows.filter((row) => row.order_id === selectedOrderId) : scanRows),
+    [scanRows, selectedOrderId],
+  )
+
+  const canSubmit = touchedOrderIds.length > 0 && !saving
 
   return (
     <>
@@ -518,18 +730,19 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
           <DialogHeader>
             <DialogTitle>Receive Assigned Products</DialogTitle>
             <DialogDescription>
-              Select order, scan or type product barcode, then submit verification.
+              Scan first and verify. You can focus one order, or keep auto mode and scan across multiple orders.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Select Transfer Order</Label>
-              <Select value={selectedOrderId} onValueChange={setSelectedOrderId}>
+              <Label>Order Scope (Optional)</Label>
+              <Select value={selectedOrderId || AUTO_SCOPE} onValueChange={(value) => setSelectedOrderId(value === AUTO_SCOPE ? "" : value)}>
                 <SelectTrigger>
-                  <SelectValue placeholder={loadingOrders ? "Loading orders..." : "Select pending order"} />
+                  <SelectValue placeholder={loadingOrders ? "Loading orders..." : "All active orders (auto)"} />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value={AUTO_SCOPE}>All active orders (auto)</SelectItem>
                   {orders.map((order) => (
                     <SelectItem key={order.id} value={order.id}>
                       {order.id} • {order.status} • Missing {order.missing_qty_total ?? 0}
@@ -539,94 +752,98 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
               </Select>
             </div>
 
-            {orderDetails && (
-              <>
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Order Summary</CardTitle>
-                  </CardHeader>
-                  <CardContent className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                    <Badge variant="secondary">Assigned: {summary.assigned}</Badge>
-                    <Badge variant="secondary">Verified: {summary.verified}</Badge>
-                    <Badge variant="secondary">Damaged: {summary.damaged}</Badge>
-                    <Badge variant="secondary">Wrong Store: {summary.wrong}</Badge>
-                    <Badge variant="secondary">Missing: {summary.missing}</Badge>
-                  </CardContent>
-                </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Order Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <Badge variant="secondary">Assigned: {summary.assigned}</Badge>
+                <Badge variant="secondary">Verified: {summary.verified}</Badge>
+                <Badge variant="secondary">Damaged: {summary.damaged}</Badge>
+                <Badge variant="secondary">Wrong Store: {summary.wrong}</Badge>
+                <Badge variant="secondary">Missing: {summary.missing}</Badge>
+              </CardContent>
+            </Card>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Scan / Enter Barcode</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex gap-2">
-                      <Input
-                        ref={scanInputRef}
-                        value={scanInput}
-                        onChange={(e) => setScanInput(e.target.value)}
-                        placeholder="Scan barcode or type manually"
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault()
-                            handleBarcodeSubmit("scan")
-                          }
-                        }}
-                      />
-                      <Button type="button" variant="outline" onClick={() => handleBarcodeSubmit("manual")}>
-                        Add
-                      </Button>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Scan / Enter Barcode</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex gap-2">
+                  <Input
+                    ref={scanInputRef}
+                    value={scanInput}
+                    onChange={(e) => setScanInput(e.target.value)}
+                    placeholder="Scan barcode or type manually"
+                    disabled={loadingOrderDetails || orders.length === 0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault()
+                        handleBarcodeSubmit("scan")
+                      }
+                    }}
+                  />
+                  <Button type="button" variant="outline" disabled={loadingOrderDetails || orders.length === 0} onClick={() => handleBarcodeSubmit("manual")}>
+                    Add
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Press Enter after scanner input. In auto mode, barcode is matched to the correct order.
+                </p>
+
+                <div className="border rounded-lg p-3 min-h-[180px] space-y-2 bg-slate-50/60">
+                  {visibleScanRows.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                      No scanned products yet.
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Press Enter after scanner input. For manual entry, type barcode and click Add.
-                    </p>
-
-                    <div className="border rounded-lg p-3 min-h-[180px] space-y-2 bg-slate-50/60">
-                      {scanRows.length === 0 ? (
-                        <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-                          No scanned products yet.
-                        </div>
-                      ) : (
-                        scanRows.map((row) => (
-                          <div key={row.id} className="bg-white border rounded-md p-2 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <ScanLine className={`h-4 w-4 ${row.status === "pending" ? "animate-pulse text-blue-600" : "text-slate-700"}`} />
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium truncate">{row.product_name}</p>
-                                <p className="text-xs text-muted-foreground truncate">{row.barcode}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <Badge variant="outline">Qty {row.quantity}</Badge>
-                              {getStatusBadge(row.status)}
-                              {row.status !== "damaged" && (
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                                      <MoreVertical className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onClick={() => openDamagedConfirm(row.id)}>
-                                      Damaged Product
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              )}
-                            </div>
+                  ) : (
+                    visibleScanRows.map((row) => (
+                      <div key={row.id} className="bg-white border rounded-md p-2 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <ScanLine className={`h-4 w-4 ${row.status === "pending" ? "animate-pulse text-blue-600" : "text-slate-700"}`} />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">{row.product_name}</p>
+                            <p className="text-xs text-muted-foreground truncate">{row.barcode}</p>
+                            <p className="text-[11px] text-muted-foreground">Order: {row.order_id}</p>
                           </div>
-                        ))
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Badge variant="outline">Qty {row.quantity}</Badge>
+                          {getStatusBadge(row.status)}
+                          {row.status !== "damaged" && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => openDamagedConfirm(row.id)}>
+                                  Damaged Product
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
 
-                <Card>
+            {selectedOrderIds.map((orderId) => {
+              const details = orderDetailsById[orderId]
+              if (!details) return null
+              return (
+                <Card key={orderId}>
                   <CardHeader>
-                    <CardTitle className="text-base">Assigned Items (Reference)</CardTitle>
+                    <CardTitle className="text-base">Assigned Items (Order: {orderId})</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2">
-                    {orderDetails.items.map((item) => {
-                      const edit = itemEdits[item.id]
+                    {details.items.map((item) => {
+                      const edit = itemEditsByOrder[orderId]?.[item.id]
                       const verifiedQty = Number(edit?.verified_qty ?? item.verified_qty ?? 0)
                       const damagedQty = Number(edit?.damaged_qty ?? item.damaged_qty ?? 0)
                       return (
@@ -645,15 +862,15 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
                     })}
                   </CardContent>
                 </Card>
-              </>
-            )}
+              )
+            })}
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Close
             </Button>
-            <Button onClick={handleSubmit} disabled={!orderDetails || saving}>
+            <Button onClick={handleSubmit} disabled={!canSubmit}>
               {saving ? "Saving..." : "Submit Verification"}
             </Button>
           </DialogFooter>
