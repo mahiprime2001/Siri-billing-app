@@ -11,7 +11,8 @@ use std::thread;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
-use tauri::{Manager, RunEvent, WindowEvent};
+use tauri::{Manager, RunEvent, WindowEvent, WebviewWindowBuilder, WebviewUrl};
+use tauri::webview::{PageLoadEvent, Url as TauriUrl};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_log::{Builder as LogBuilder, Target, TargetKind};
@@ -19,6 +20,20 @@ use tauri_plugin_updater::UpdaterExt;
 use log::{info, error, warn, debug};
 use serde::{Serialize, Deserialize};
 use reqwest::blocking::Client;
+
+#[cfg(target_os = "windows")]
+use webview2_com::{
+    Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2_16, ICoreWebView2Environment6, ICoreWebView2PrintSettings2,
+        COREWEBVIEW2_PRINT_STATUS_SUCCEEDED,
+        COREWEBVIEW2_PRINT_STATUS_PRINTER_UNAVAILABLE, COREWEBVIEW2_PRINT_STATUS_OTHER_ERROR,
+    },
+    PrintCompletedHandler,
+};
+#[cfg(target_os = "windows")]
+use windows_core::Interface;
+#[cfg(target_os = "windows")]
+use windows::core::PCWSTR;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct UpdateInfo {
@@ -106,249 +121,301 @@ async fn install_update(app_handle: tauri::AppHandle) -> Result<String, String> 
 }
 
 // ============================================================================
-// ✅ CUSTOM PRINT COMMAND — No wkhtmltopdf, No PDF, Pure HTML → Printer
+// ? PRINT COMMAND ? WebView2 Native ICoreWebView2_16::Print()
 // ============================================================================
 //
-// Strategy:
-//   1. Write HTML to a temp .html file
-//   2. Write a PowerShell script that uses System.Windows.Forms.WebBrowser
-//      (built into all Windows .NET installs) to render and print silently
-//   3. Loops N times for copy count, no dialog, no PDF
-//   4. Works on Windows 10/11 with any printer including thermal printers
+// HOW THIS WORKS (Windows only):
+//   1. Write HTML to a temp file
+//   2. Create a hidden WebView2 window and load that file
+//   3. After render, call ICoreWebView2_16::Print() with print settings:
+//      - Exact printer name
+//      - Exact copy count
+//   4. Close the window silently
 //
+// This uses the exact same Blink engine as the app preview and does not show
+// any dialog or require extra tools.
 // ============================================================================
 
 #[tauri::command]
-async fn print_html_native(html: String, printer_name: String, copies: u32, paper_size: Option<String>) -> Result<String, String> {
-    info!("🖨️ [print_html_native] Starting print job...");
-    info!("   Printer : {}", printer_name);
-    info!("   Copies  : {}", copies);
-    info!("   HTML len: {}", html.len());
+async fn print_html_native(
+    app_handle: tauri::AppHandle,
+    html: String,
+    printer_name: String,
+    copies: u32,
+    paper_size: Option<String>,
+) -> Result<String, String> {
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (html, printer_name, copies, paper_size);
+        return Err("print_html_native is only supported on Windows.".to_string());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+    info!("??? [print_html_native] Starting WebView2 native print job...");
+    info!("   Printer   : {}", if printer_name.is_empty() { "System Default" } else { &printer_name });
+    info!("   Copies    : {}", copies);
+    info!("   Paper     : {}", paper_size.as_deref().unwrap_or("Thermal 80mm"));
+    info!("   HTML len  : {}", html.len());
 
     let copies = copies.max(1);
 
-    // FIX Risk 1 + Risk 5: set WebBrowser pixel width to match the paper.
-    // IE ignores CSS @page width so the WebBrowser control's own Size is what
-    // determines the render width. Wrong width = content squished or cut off.
-    //   Thermal 58mm  →  194px  (more conservative width for narrow printable areas)
-    //   Thermal 80mm  →  264px  (more conservative width for narrow printable areas)
-    //   A4            →  794px  (210 × 96 ÷ 25.4)
-    //   Letter        →  816px  (216 × 96 ÷ 25.4)
-    let ps_paper_size = paper_size.as_deref().unwrap_or("Thermal 80mm");
-    let browser_width_px: u32 = match ps_paper_size {
-        s if s.contains("58mm")  =>  194,
-        s if s.contains("80mm")  =>  264,
-        s if s == "A4"           =>  794,
-        s if s == "Letter"       =>  816,
-        _                        =>  264, // safe thermal default
-    };
-
-    // ── Step 1: Write HTML to a temp file ──────────────────────────────────
+    // ?? Step 1: Write HTML to temp file ?????????????????????????????????????
     let temp_dir = std::env::temp_dir();
-    let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis();
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
     let temp_html = temp_dir.join(format!("siri_invoice_{}.html", ts));
-    let temp_ps   = temp_dir.join(format!("siri_print_{}.ps1",  ts));
 
     fs::write(&temp_html, html.as_bytes())
         .map_err(|e| format!("Failed to write temp HTML: {}", e))?;
 
-    let html_path = temp_html.to_string_lossy().replace('\\', "/");
-    info!("📄 Temp HTML: {}", html_path);
+    let html_url = TauriUrl::from_file_path(&temp_html)
+        .map_err(|_| "Failed to convert temp file path to URL".to_string())?;
+    info!("?? Temp HTML: {}", html_url.as_str());
 
-    // ── Step 2: Write PowerShell script to disk ────────────────────────────
-    //
-    // Uses System.Windows.Forms.WebBrowser which:
-    //   - Is built into ALL Windows 10/11 systems (.NET Framework)
-    //   - Renders HTML faithfully (IE engine / Trident)
-    //   - Supports silent printing via .Print() method
-    //   - Targets a specific printer by temporarily setting it as default
-    //
-    let ps_script = format!(
-        r#"
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
+    // ?? Step 2: Resolve printer name ???????????????????????????????????????
+    // If no printer specified, get the system default via PowerShell so we
+    // can pass it explicitly to WebView2.
+    let resolved_printer = if printer_name.is_empty() {
+        info!("?? No printer specified ? resolving system default...");
+        let ps_out = Command::new("powershell")
+            .args(&[
+                "-NonInteractive",
+                "-ExecutionPolicy", "Bypass",
+                "-Command",
+                "(Get-CimInstance -ClassName Win32_Printer -Filter 'Default=True').Name",
+            ])
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_default();
 
-$htmlPath  = '{html_path}'
-$printerName = '{printer}'
-$copies    = {copies}
+        if ps_out.is_empty() {
+            return Err("Could not determine system default printer. Please select a printer manually.".to_string());
+        }
+        info!("? System default printer: {}", ps_out);
+        ps_out
+    } else {
+        printer_name.clone()
+    };
 
-# ── Temporarily set target printer as default ──
-$currentDefault = ''
-try {{
-    $currentDefault = (Get-CimInstance -ClassName Win32_Printer -Filter 'Default=True').Name
-    Write-Host "Current default printer: $currentDefault"
-}} catch {{
-    Write-Host "Could not get current default printer"
-}}
+    // Keep a copy of the system default for fallback attempts.
+    let system_default_printer = {
+        let ps_out = Command::new("powershell")
+            .args(&[
+                "-NonInteractive",
+                "-ExecutionPolicy", "Bypass",
+                "-Command",
+                "(Get-CimInstance -ClassName Win32_Printer -Filter 'Default=True').Name",
+            ])
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_default();
+        ps_out
+    };
 
-if ($printerName -ne '') {{
-    try {{
-        $p = Get-CimInstance -ClassName Win32_Printer -Filter "Name='$printerName'"
-        if ($p) {{
-            Invoke-CimMethod -InputObject $p -MethodName SetDefaultPrinter | Out-Null
-            Write-Host "Set default printer to: $printerName"
-        }} else {{
-            Write-Host "Printer not found: $printerName - using system default"
-        }}
-    }} catch {{
-        Write-Host "Warning: could not set printer: $_"
-    }}
-}}
+    let printer_candidates: Vec<String> = if !system_default_printer.is_empty()
+        && system_default_printer != resolved_printer
+    {
+        vec![resolved_printer.clone(), system_default_printer.clone()]
+    } else {
+        vec![resolved_printer.clone()]
+    };
 
-# ── Zero out ALL IE page margins and suppress headers/footers via registry ──
-# FIX: IE/WebBrowser ignores CSS @page margin:0. These registry keys are the
-# only way to remove IE's built-in physical page margins (top/bottom/left/right).
-$regPath = 'HKCU:\Software\Microsoft\Internet Explorer\PageSetup'
-$savedHeader = $savedFooter = ''
-$savedMarginTop = $savedMarginBottom = $savedMarginLeft = $savedMarginRight = ''
-try {{
-    $savedHeader      = (Get-ItemProperty -Path $regPath -Name 'header'        -ErrorAction SilentlyContinue).header
-    $savedFooter      = (Get-ItemProperty -Path $regPath -Name 'footer'        -ErrorAction SilentlyContinue).footer
-    $savedMarginTop   = (Get-ItemProperty -Path $regPath -Name 'margin_top'    -ErrorAction SilentlyContinue).margin_top
-    $savedMarginBottom= (Get-ItemProperty -Path $regPath -Name 'margin_bottom' -ErrorAction SilentlyContinue).margin_bottom
-    $savedMarginLeft  = (Get-ItemProperty -Path $regPath -Name 'margin_left'   -ErrorAction SilentlyContinue).margin_left
-    $savedMarginRight = (Get-ItemProperty -Path $regPath -Name 'margin_right'  -ErrorAction SilentlyContinue).margin_right
+    // ?? Step 3: Open hidden WebView2 window and wait for load ???????????????
+    let (page_tx, page_rx) = std::sync::mpsc::channel::<()>();
+    let window_label = format!("print-{}", ts);
+    let print_window = WebviewWindowBuilder::new(
+        &app_handle,
+        window_label,
+        WebviewUrl::External(html_url),
+    )
+    .title("print")
+    .visible(false)
+    .focused(false)
+    .focusable(false)
+    .resizable(false)
+    .decorations(false)
+    .on_page_load(move |_window, payload| {
+        if payload.event() == PageLoadEvent::Finished {
+            let _ = page_tx.send(());
+        }
+    })
+    .build()
+    .map_err(|e| format!("Failed to create print webview: {}", e))?;
 
-    Set-ItemProperty -Path $regPath -Name 'header'        -Value '' -Force
-    Set-ItemProperty -Path $regPath -Name 'footer'        -Value '' -Force
-    Set-ItemProperty -Path $regPath -Name 'margin_top'    -Value '0.000000' -Force
-    Set-ItemProperty -Path $regPath -Name 'margin_bottom' -Value '0.000000' -Force
-    Set-ItemProperty -Path $regPath -Name 'margin_left'   -Value '0.000000' -Force
-    Set-ItemProperty -Path $regPath -Name 'margin_right'  -Value '0.000000' -Force
-    Write-Host "Registry: all IE margins zeroed and headers/footers cleared"
-}} catch {{
-    Write-Host "Warning: could not set IE registry margins: $_"
-}}
+    let page_loaded = tauri::async_runtime::spawn_blocking(move || {
+        page_rx.recv_timeout(Duration::from_secs(10))
+    })
+    .await
+    .map_err(|e| format!("Print webview load wait failed: {}", e))?;
 
-# ── Print using WebBrowser control ────────────────────────────────────────
-$printed = $false
-try {{
-    for ($i = 1; $i -le $copies; $i++) {{
-        Write-Host "Printing copy $i of $copies..."
-        $wb = New-Object System.Windows.Forms.WebBrowser
-        $wb.ScriptErrorsSuppressed = $true
-        $wb.ScrollBarsEnabled = $false
-
-        # FIX Risk 1 + Risk 5: use the correct pixel width for the paper type.
-        # IE renders at this pixel width before sending to the printer.
-        $wb.Size = New-Object System.Drawing.Size({browser_width_px}, 4800)
-
-        $loaded = $false
-        $wb.add_DocumentCompleted({{
-            param($s, $e)
-            $script:loaded = $true
-        }})
-
-        $wb.Navigate("file:///$htmlPath")
-
-        # Wait for page load (max 10 seconds)
-        $wait = 0
-        while (-not $script:loaded -and $wait -lt 10000) {{
-            [System.Windows.Forms.Application]::DoEvents()
-            Start-Sleep -Milliseconds 100
-            $wait += 100
-        }}
-
-        # FIX: Extra settle time so IE finishes layout at the narrow width
-        # before sending to printer. 300ms was too short.
-        Start-Sleep -Milliseconds 800
-
-        $wb.Print()
-        [System.Windows.Forms.Application]::DoEvents()
-        Start-Sleep -Milliseconds 2000
-
-        $wb.Dispose()
-        $script:loaded = $false
-        Write-Host "Copy $i sent to printer"
-    }}
-    $printed = $true
-}} catch {{
-    Write-Host "Print error: $_"
-}}
-
-# ── Restore registry ──
-try {{
-    if ($savedHeader      -ne '') {{ Set-ItemProperty -Path $regPath -Name 'header'        -Value $savedHeader      -Force }}
-    if ($savedFooter      -ne '') {{ Set-ItemProperty -Path $regPath -Name 'footer'        -Value $savedFooter      -Force }}
-    if ($savedMarginTop   -ne '') {{ Set-ItemProperty -Path $regPath -Name 'margin_top'    -Value $savedMarginTop   -Force }}
-    if ($savedMarginBottom-ne '') {{ Set-ItemProperty -Path $regPath -Name 'margin_bottom' -Value $savedMarginBottom-Force }}
-    if ($savedMarginLeft  -ne '') {{ Set-ItemProperty -Path $regPath -Name 'margin_left'   -Value $savedMarginLeft  -Force }}
-    if ($savedMarginRight -ne '') {{ Set-ItemProperty -Path $regPath -Name 'margin_right'  -Value $savedMarginRight -Force }}
-}} catch {{}}
-
-# ── Restore original default printer ──
-if ($currentDefault -and $currentDefault -ne $printerName) {{
-    try {{
-        $orig = Get-CimInstance -ClassName Win32_Printer -Filter "Name='$currentDefault'"
-        if ($orig) {{ Invoke-CimMethod -InputObject $orig -MethodName SetDefaultPrinter | Out-Null }}
-        Write-Host "Restored default printer: $currentDefault"
-    }} catch {{}}
-}}
-
-# ── Cleanup ──
-Remove-Item -Path '{html_path_win}' -Force -ErrorAction SilentlyContinue
-Remove-Item -Path '{ps_path_win}' -Force -ErrorAction SilentlyContinue
-
-if ($printed) {{
-    Write-Host "SUCCESS: Print job complete"
-    exit 0
-}} else {{
-    Write-Host "FAILED: Print job did not complete"
-    exit 1
-}}
-"#,
-        html_path         = html_path,
-        html_path_win     = temp_html.to_string_lossy(),
-        ps_path_win       = temp_ps.to_string_lossy(),
-        printer           = printer_name.replace('\'', "''"),
-        copies            = copies,
-        browser_width_px  = browser_width_px,
-    );
-
-    fs::write(&temp_ps, ps_script.as_bytes())
-        .map_err(|e| format!("Failed to write PS script: {}", e))?;
-
-    // ── Step 3: Run the PowerShell script ─────────────────────────────────
-    let mut cmd = Command::new("powershell");
-    cmd.args(&[
-        "-NonInteractive",
-        "-ExecutionPolicy", "Bypass",
-        "-File",
-        &temp_ps.to_string_lossy(),
-    ]);
-    #[cfg(target_os = "windows")]
-    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-
-    let output = cmd.output()
-        .map_err(|e| format!("Failed to spawn PowerShell: {}", e))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-
-    info!("📤 PS stdout: {}", stdout.trim());
-    if !stderr.is_empty() {
-        warn!("⚠️ PS stderr: {}", stderr.trim());
+    if page_loaded.is_err() {
+        let _ = print_window.close();
+        let _ = fs::remove_file(&temp_html);
+        return Err("Print webview did not finish loading in time.".to_string());
     }
 
-    // Cleanup fallback
-    let _ = fs::remove_file(&temp_html);
-    let _ = fs::remove_file(&temp_ps);
+    // Small delay for fonts/layout to settle
+    thread::sleep(Duration::from_millis(250));
 
-    if output.status.success() && stdout.contains("SUCCESS") {
-        info!("✅ Print job complete");
-        Ok(format!("Printed {} cop{} to '{}'",
-            copies,
-            if copies == 1 { "y" } else { "ies" },
-            printer_name
-        ))
-    } else {
-        let err = if !stderr.is_empty() { stderr.trim().to_string() } else { stdout.trim().to_string() };
-        error!("❌ Print failed: {}", err);
-        Err(format!("Print failed: {}", err))
+    // ?? Step 4: Call ICoreWebView2_16::Print() with exact settings ??????????
+    let (print_tx, print_rx) = std::sync::mpsc::channel::<Result<String, String>>();
+    let printer_for_settings = resolved_printer.clone();
+    let printer_candidates = printer_candidates.clone();
+
+    let with_webview_result = print_window.with_webview(move |webview| {
+        let result: Result<String, String> = (|| unsafe {
+            let controller = webview.controller();
+            let core = controller
+                .CoreWebView2()
+                .map_err(|e| format!("CoreWebView2() failed: {}", e))?;
+            let core16: ICoreWebView2_16 = core
+                .cast()
+                .map_err(|e| format!("ICoreWebView2_16 not available: {}", e))?;
+
+            let env6: ICoreWebView2Environment6 = webview
+                .environment()
+                .cast()
+                .map_err(|e| format!("ICoreWebView2Environment6 not available: {}", e))?;
+            let print_settings = env6
+                .CreatePrintSettings()
+                .map_err(|e| format!("CreatePrintSettings failed: {}", e))?;
+
+            // Base print settings
+            let _ = print_settings.SetShouldPrintBackgrounds(true);
+            let _ = print_settings.SetShouldPrintHeaderAndFooter(false);
+
+            // Extended print settings (required for printer + copies)
+            let settings2: ICoreWebView2PrintSettings2 = print_settings
+                .cast()
+                .map_err(|e| format!("ICoreWebView2PrintSettings2 not available: {}", e))?;
+            // WebView2 Print sometimes ignores Copies; we loop prints per copy
+            // and keep Copies = 1 to ensure consistent behavior.
+            settings2
+                .SetCopies(1)
+                .map_err(|e| format!("SetCopies failed: {}", e))?;
+
+            for candidate_printer in printer_candidates.iter() {
+                let printer_wide = Arc::new(
+                    candidate_printer
+                        .encode_utf16()
+                        .chain(std::iter::once(0))
+                        .collect::<Vec<u16>>(),
+                );
+                let printer_pcw = PCWSTR::from_raw(printer_wide.as_ptr());
+                settings2
+                    .SetPrinterName(printer_pcw)
+                    .map_err(|e| format!("SetPrinterName failed: {}", e))?;
+
+                let mut success_count = 0u32;
+                for copy_num in 1..=copies {
+                    let status_cell = Arc::new(Mutex::new(COREWEBVIEW2_PRINT_STATUS_OTHER_ERROR));
+                    let printer_wide_keepalive = Arc::clone(&printer_wide);
+                    let status_cell_inner = Arc::clone(&status_cell);
+                    let core16_inner = core16.clone();
+                    let print_settings_inner = print_settings.clone();
+
+                    let print_result = PrintCompletedHandler::wait_for_async_operation(
+                        Box::new(move |handler| {
+                            unsafe {
+                                core16_inner
+                                    .Print(&print_settings_inner, &handler)
+                                    .map_err(webview2_com::Error::from)?;
+                            }
+                            Ok(())
+                        }),
+                        Box::new(move |result, status| {
+                            let _keepalive = printer_wide_keepalive;
+                            if let Ok(mut guard) = status_cell_inner.lock() {
+                                *guard = status;
+                            }
+                            result
+                        }),
+                    );
+
+                    match print_result {
+                        Ok(()) if *status_cell.lock().unwrap() == COREWEBVIEW2_PRINT_STATUS_SUCCEEDED => {
+                            success_count += 1;
+                        }
+                        Ok(()) if *status_cell.lock().unwrap() == COREWEBVIEW2_PRINT_STATUS_PRINTER_UNAVAILABLE => {
+                            // Try next printer candidate (system default fallback)
+                            success_count = 0;
+                            break;
+                        }
+                        Ok(()) => {
+                            return Err(format!(
+                                "Print failed with status {:?} on copy {}/{}.",
+                                *status_cell.lock().unwrap(),
+                                copy_num,
+                                copies
+                            ));
+                        }
+                        Err(e) => {
+                            return Err(format!("Print failed on copy {}/{}: {}", copy_num, copies, e));
+                        }
+                    }
+
+                    if copy_num < copies {
+                        thread::sleep(Duration::from_millis(1000));
+                    }
+                }
+
+                if success_count == copies {
+                    return Ok(candidate_printer.clone());
+                }
+            }
+
+            Err(format!(
+                "Printer unavailable: '{}'",
+                printer_for_settings
+            ))
+        })();
+
+        let _ = print_tx.send(result);
+    });
+
+    if let Err(e) = with_webview_result {
+        let _ = print_window.close();
+        let _ = fs::remove_file(&temp_html);
+        return Err(format!("Failed to access WebView2: {}", e));
+    }
+
+    let print_status = tauri::async_runtime::spawn_blocking(move || {
+        print_rx.recv_timeout(Duration::from_secs(15))
+    })
+    .await
+    .map_err(|e| format!("Print completion wait failed: {}", e))?;
+
+    // ?? Step 5: Cleanup temp file + close window ???????????????????????????
+    let _ = print_window.close();
+    let _ = fs::remove_file(&temp_html);
+
+    // ?? Step 6: Return result ??????????????????????????????????????????????
+    match print_status {
+        Ok(Ok(used_printer)) => {
+            let msg = format!(
+                "Printed {} cop{} to '{}'",
+                copies,
+                if copies == 1 { "y" } else { "ies" },
+                used_printer
+            );
+            info!("? {}", msg);
+            Ok(msg)
+        }
+        Ok(Err(err)) => {
+            error!("? {}", err);
+            Err(err)
+        }
+        Err(_) => {
+            let msg = "Print did not complete in time.".to_string();
+            error!("? {}", msg);
+            Err(msg)
+        }
+    }
     }
 }
-
-// ── List printers via PowerShell (no plugin needed) ───────────────────────
 
 #[tauri::command]
 async fn list_printers_native() -> Result<Vec<String>, String> {

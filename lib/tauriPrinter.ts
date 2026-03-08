@@ -133,9 +133,9 @@ function buildPrintHtml(htmlContent: string, paperSize?: string): string {
 //
 // Calls the Rust `print_html_native` command which:
 //   1. Writes HTML to a temp file
-//   2. Uses PowerShell + IE COM automation to print silently
-//   3. No dialog, no PDF, no wkhtmltopdf required
-//   4. Supports exact copy count
+//   2. Loads it in a hidden WebView2 window
+//   3. Calls ICoreWebView2_16::Print() with exact printer + copies
+//   4. No dialog, no PDF, no extra tools required
 //
 export async function printHtmlContent(
   html: string,
@@ -170,9 +170,7 @@ export async function printHtmlContent(
   const printReadyHtml = buildPrintHtml(html, options?.paperSize);
 
   try {
-    // FIX Risk 1 + Risk 5: pass paperSize to Rust so it sets the correct
-    // WebBrowser pixel width per paper type:
-    //   Thermal 58mm = 220px, Thermal 80mm = 302px, A4 = 794px, Letter = 816px
+    // Pass paperSize for logging and future print settings alignment.
     const result = await invoke<string>("print_html_native", {
       html: printReadyHtml,
       printerName,

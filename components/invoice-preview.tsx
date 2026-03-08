@@ -592,27 +592,37 @@ export default function InvoicePreview({
               </Select>
             </div>
 
-            {isTauriApp() && (
-              <div className="space-y-3">
-                <h3 className="font-semibold text-lg flex items-center">
-                  <Printer className="h-4 w-4 mr-2" />
-                  Printer
-                </h3>
-                <Select value={selectedPrinter} onValueChange={setSelectedPrinter}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={isLoadingPrinters ? "Loading printers..." : "Select printer"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={SYSTEM_DEFAULT_PRINTER_VALUE}>System Default</SelectItem>
-                    {printers.map((printer) => (
-                      <SelectItem key={printer} value={printer}>
-                        {printer}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <div className="space-y-3">
+              <h3 className="font-semibold text-lg flex items-center">
+                <Printer className="h-4 w-4 mr-2" />
+                Printer
+              </h3>
+              <Select
+                value={selectedPrinter}
+                onValueChange={setSelectedPrinter}
+                disabled={!isTauriApp() || isLoadingPrinters}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      !isTauriApp()
+                        ? "Available in desktop app"
+                        : isLoadingPrinters
+                        ? "Loading printers..."
+                        : "Select printer"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={SYSTEM_DEFAULT_PRINTER_VALUE}>System Default</SelectItem>
+                  {printers.map((printer) => (
+                    <SelectItem key={printer} value={printer}>
+                      {printer}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
             {requiresDiscountApproval && (
               <div className={`rounded-md border px-4 py-3 space-y-3 ${discountStatusClass}`}>
