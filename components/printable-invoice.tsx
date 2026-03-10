@@ -317,14 +317,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
             <div>* NO GURANTEE, NO RETURN</div>
             <div>* GOODS Once Sold Cannot be exchanged</div>
             <div>* Total amount Inclusive of GST</div>
-            <div style={{ marginTop: "3px" }}>
-              For any queries, please contact our customer service team.
-            </div>
-            <div>
-              Customer care: {safeInvoice.companyPhone || "Store Number"}
-              {" "}(WhatsApp available)
-            </div>
-            <div>Email: {safeInvoice.companyEmail || "-"}</div>
+        
           </div>
 
           {divider}
