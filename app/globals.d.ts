@@ -29,6 +29,12 @@ interface Invoice {
   gstin: string;
   billFormat: string;
   items: any[];
+  canEdit?: boolean;
+  canCancel?: boolean;
+  editExpiresAt?: string;
+  secondsRemaining?: number;
+  cancelledAt?: string;
+  cancelReason?: string;
 
   // Optional fields from billing-history
   customerName?: string;

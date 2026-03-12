@@ -2,15 +2,91 @@ from flask import Blueprint, request, jsonify, current_app as app
 from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
 from utils.connection_pool import get_supabase_client
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import traceback
 from helpers.utils import read_json_file
 from config.config import BILLS_FILE
 
 from services.billing_service import create_bill_transaction
 from utils.offline_bill_queue import enqueue_bill_create
+from data_access.data_access import update_both_inventory_and_product_stock
 
 billing_bp = Blueprint('billing', __name__)
+EDIT_WINDOW_HOURS = 24
+EDITABLE_STATUSES = {"completed", "paid", "pending"}
+
+
+def _parse_iso_datetime(raw_value):
+    if not raw_value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(raw_value).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _get_bill_created_at_utc(bill):
+    return _parse_iso_datetime(
+        bill.get("created_at") or bill.get("timestamp") or bill.get("createdAt")
+    )
+
+
+def _build_edit_window_meta(bill):
+    now_utc = datetime.now(timezone.utc)
+    created_at_utc = _get_bill_created_at_utc(bill)
+    status = str(bill.get("status") or "").lower()
+    eligible_status = status in EDITABLE_STATUSES
+
+    if not created_at_utc:
+        return {
+            "can_edit": False,
+            "can_cancel": False,
+            "edit_expires_at": None,
+            "seconds_remaining": 0,
+        }
+
+    edit_expires_at = created_at_utc + timedelta(hours=EDIT_WINDOW_HOURS)
+    seconds_remaining = max(0, int((edit_expires_at - now_utc).total_seconds()))
+    in_window = seconds_remaining > 0
+    can_mutate = in_window and eligible_status
+
+    return {
+        "can_edit": can_mutate,
+        "can_cancel": can_mutate,
+        "edit_expires_at": edit_expires_at.isoformat(),
+        "seconds_remaining": seconds_remaining,
+    }
+
+
+def _fetch_bill_by_id(supabase, bill_id):
+    response = (
+        supabase.table("bills")
+        .select("*")
+        .eq("id", bill_id)
+        .limit(1)
+        .execute()
+    )
+    return response.data[0] if response.data else None
+
+
+def _log_bill_event(supabase, event_type, bill_id, message):
+    """Best-effort bill event logger using notifications table."""
+    try:
+        supabase.table("notifications").insert(
+            {
+                "type": event_type,
+                "notification": message,
+                "related_id": bill_id,
+                "is_read": False,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ).execute()
+    except Exception:
+        # Optional logging should never break billing flow.
+        pass
 
 
 @billing_bp.route('/bills', methods=['GET'])
@@ -42,6 +118,8 @@ def get_bills():
         
         response = query.limit(limit).order('created_at', desc=True).execute()
         bills = response.data if response.data else []
+        for bill in bills:
+            bill.update(_build_edit_window_meta(bill))
         
         app.logger.info(f"✅ Fetched {len(bills)} bills")
         return jsonify(bills), 200
@@ -75,6 +153,7 @@ def get_bill(bill_id):
             return jsonify({"message": "Bill not found"}), 404
         
         bill = response.data[0]
+        bill.update(_build_edit_window_meta(bill))
         app.logger.info(f"✅ Bill found: {bill_id}")
         return jsonify(bill), 200
         
@@ -285,6 +364,286 @@ def get_bill_items(bill_id):
         return jsonify([]), 200
 
 
+@billing_bp.route('/bills/<bill_id>/edit-payload', methods=['GET'])
+@require_auth
+def get_bill_edit_payload(bill_id):
+    """Get bill + items payload for invoice edit mode."""
+    try:
+        current_user_id = get_jwt_identity()
+        app.logger.info(f"User {current_user_id} fetching edit payload for bill {bill_id}")
+
+        supabase = get_supabase_client()
+        bill_response = (
+            supabase.table("bills")
+            .select("*, customers(name, phone, email, address), stores(name, address, phone)")
+            .eq("id", bill_id)
+            .limit(1)
+            .execute()
+        )
+        if not bill_response.data:
+            return jsonify({"message": "Bill not found"}), 404
+
+        bill = bill_response.data[0]
+        edit_meta = _build_edit_window_meta(bill)
+        if not edit_meta["can_edit"]:
+            return jsonify(
+                {
+                    "message": "Invoice edit window expired or bill status is not editable",
+                    **edit_meta,
+                }
+            ), 409
+
+        items_response = (
+            supabase.table("billitems")
+            .select("*, products(name, barcode, selling_price, hsn_codes(tax, hsn_code))")
+            .eq("billid", bill_id)
+            .execute()
+        )
+        raw_items = items_response.data if items_response.data else []
+
+        items = []
+        for item in raw_items:
+            product = item.get("products") or {}
+            hsn_ref = product.get("hsn_codes")
+            if isinstance(hsn_ref, list):
+                hsn_ref = hsn_ref[0] if hsn_ref else {}
+            if not isinstance(hsn_ref, dict):
+                hsn_ref = {}
+
+            items.append(
+                {
+                    "id": item.get("id"),
+                    "productId": item.get("productid"),
+                    "name": product.get("name") or item.get("name") or "Unknown Item",
+                    "quantity": item.get("quantity") or 0,
+                    "price": float(item.get("price") or 0),
+                    "total": float(item.get("total") or 0),
+                    "barcodes": product.get("barcode") or "",
+                    "taxPercentage": float(hsn_ref.get("tax") or 0),
+                    "hsnCode": hsn_ref.get("hsn_code") or "",
+                }
+            )
+
+        app.logger.info(f"✅ Edit payload fetched for bill {bill_id} with {len(items)} items")
+        return jsonify({"bill": {**bill, **edit_meta}, "items": items, **edit_meta}), 200
+    except Exception as e:
+        app.logger.error(f"❌ Error fetching edit payload for {bill_id}: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+
+
+@billing_bp.route('/bills/<bill_id>/revise', methods=['PUT'])
+@require_auth
+def revise_bill(bill_id):
+    """Revise an existing bill within the 24-hour edit window."""
+    try:
+        current_user_id = get_jwt_identity()
+        payload = request.get_json() or {}
+        app.logger.info(f"User {current_user_id} revising bill {bill_id}")
+
+        supabase = get_supabase_client()
+        existing_bill = _fetch_bill_by_id(supabase, bill_id)
+        if not existing_bill:
+            return jsonify({"message": "Bill not found"}), 404
+
+        edit_meta = _build_edit_window_meta(existing_bill)
+        if not edit_meta["can_edit"]:
+            return jsonify(
+                {"message": "Invoice edit window expired or bill status is not editable", **edit_meta}
+            ), 409
+
+        store_id = payload.get("store_id") or existing_bill.get("storeid")
+        if not store_id:
+            return jsonify({"message": "Store ID is required"}), 400
+
+        new_items = payload.get("items") or []
+        if not isinstance(new_items, list) or len(new_items) == 0:
+            return jsonify({"message": "At least one item is required for revision"}), 400
+
+        old_items_response = (
+            supabase.table("billitems")
+            .select("*")
+            .eq("billid", bill_id)
+            .execute()
+        )
+        old_items = old_items_response.data if old_items_response.data else []
+
+        stock_errors = []
+        # Restock previous bill quantities first.
+        for old_item in old_items:
+            product_id = old_item.get("productid")
+            qty = int(old_item.get("quantity") or 0)
+            if not product_id or qty <= 0:
+                continue
+            try:
+                ok = update_both_inventory_and_product_stock(
+                    store_id=store_id,
+                    product_id=product_id,
+                    quantity_sold=-qty,
+                )
+                if not ok:
+                    stock_errors.append(f"restock failed for {product_id}")
+            except Exception:
+                stock_errors.append(f"restock error for {product_id}")
+
+        # Apply stock deduction for revised items.
+        for item in new_items:
+            product_id = item.get("product_id") or item.get("productId")
+            qty = int(item.get("quantity") or 0)
+            if not product_id or qty <= 0:
+                continue
+            try:
+                ok = update_both_inventory_and_product_stock(
+                    store_id=store_id,
+                    product_id=product_id,
+                    quantity_sold=qty,
+                )
+                if not ok:
+                    stock_errors.append(f"deduct failed for {product_id}")
+            except Exception:
+                stock_errors.append(f"deduct error for {product_id}")
+
+        # Replace bill items rows.
+        supabase.table("billitems").delete().eq("billid", bill_id).execute()
+
+        now = datetime.now(timezone.utc).isoformat()
+        insert_rows = []
+        for item in new_items:
+            product_id = item.get("product_id") or item.get("productId")
+            quantity = int(item.get("quantity") or 0)
+            unit_price = float(item.get("unit_price") or item.get("unitPrice") or item.get("price") or 0)
+            item_total = float(item.get("item_total") or item.get("itemTotal") or item.get("total") or (unit_price * quantity))
+            if not product_id or quantity <= 0:
+                continue
+            insert_rows.append(
+                {
+                    "billid": bill_id,
+                    "productid": product_id,
+                    "quantity": quantity,
+                    "price": unit_price,
+                    "total": item_total,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+            )
+
+        if not insert_rows:
+            return jsonify({"message": "No valid items found for revision"}), 400
+
+        supabase.table("billitems").insert(insert_rows).execute()
+
+        update_data = {
+            "subtotal": float(payload.get("subtotal") or existing_bill.get("subtotal") or 0),
+            "tax_amount": float(payload.get("tax_amount") or existing_bill.get("tax_amount") or 0),
+            "discount_percentage": float(payload.get("discount_percentage") or 0),
+            "discount_amount": float(payload.get("discount_amount") or 0),
+            "total": float(payload.get("total_amount") or payload.get("total") or existing_bill.get("total") or 0),
+            "paymentmethod": payload.get("payment_method") or payload.get("paymentMethod") or existing_bill.get("paymentmethod") or "Cash",
+            "status": existing_bill.get("status") or "completed",
+            "updated_at": now,
+        }
+        bill_update_response = supabase.table("bills").update(update_data).eq("id", bill_id).execute()
+        updated_bill = bill_update_response.data[0] if bill_update_response.data else None
+        _log_bill_event(
+            supabase=supabase,
+            event_type="invoice_revised",
+            bill_id=bill_id,
+            message=f"Invoice {bill_id} revised by user {current_user_id}",
+        )
+
+        response_payload = {
+            "message": "Invoice revised successfully",
+            "bill_id": bill_id,
+            "bill": updated_bill,
+            "items_updated": len(insert_rows),
+        }
+        if stock_errors:
+            response_payload["stock_update_errors"] = stock_errors
+
+        return jsonify(response_payload), 200
+    except Exception as e:
+        app.logger.error(f"❌ Error revising bill {bill_id}: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+
+
+@billing_bp.route('/bills/<bill_id>/cancel', methods=['POST'])
+@require_auth
+def cancel_bill(bill_id):
+    """Cancel bill within edit window and restock all items."""
+    try:
+        current_user_id = get_jwt_identity()
+        payload = request.get_json() or {}
+        cancel_reason = str(payload.get("cancel_reason") or "").strip()
+        app.logger.info(f"User {current_user_id} cancelling bill {bill_id}")
+
+        supabase = get_supabase_client()
+        bill = _fetch_bill_by_id(supabase, bill_id)
+        if not bill:
+            return jsonify({"message": "Bill not found"}), 404
+
+        if str(bill.get("status") or "").lower() == "cancelled":
+            return jsonify({"message": "Bill already cancelled"}), 409
+
+        edit_meta = _build_edit_window_meta(bill)
+        if not edit_meta["can_cancel"]:
+            return jsonify(
+                {"message": "Invoice cancel window expired or bill status is not cancellable", **edit_meta}
+            ), 409
+
+        store_id = bill.get("storeid")
+        if not store_id:
+            return jsonify({"message": "Store ID missing on bill"}), 400
+
+        items_response = supabase.table("billitems").select("*").eq("billid", bill_id).execute()
+        items = items_response.data if items_response.data else []
+
+        stock_errors = []
+        for item in items:
+            product_id = item.get("productid")
+            quantity = int(item.get("quantity") or 0)
+            if not product_id or quantity <= 0:
+                continue
+            try:
+                ok = update_both_inventory_and_product_stock(
+                    store_id=store_id,
+                    product_id=product_id,
+                    quantity_sold=-quantity,
+                )
+                if not ok:
+                    stock_errors.append(product_id)
+            except Exception:
+                stock_errors.append(product_id)
+
+        now = datetime.now(timezone.utc).isoformat()
+        update_data = {
+            "status": "cancelled",
+            "updated_at": now,
+        }
+        supabase.table("bills").update(update_data).eq("id", bill_id).execute()
+        reason_suffix = f" (Reason: {cancel_reason})" if cancel_reason else ""
+        _log_bill_event(
+            supabase=supabase,
+            event_type="invoice_cancelled",
+            bill_id=bill_id,
+            message=f"Invoice {bill_id} cancelled by user {current_user_id}{reason_suffix}",
+        )
+
+        response_payload = {
+            "message": "Invoice cancelled successfully",
+            "bill_id": bill_id,
+            "cancel_reason": cancel_reason or None,
+        }
+        if stock_errors:
+            response_payload["stock_update_errors"] = stock_errors
+
+        return jsonify(response_payload), 200
+    except Exception as e:
+        app.logger.error(f"❌ Error cancelling bill {bill_id}: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+
+
 @billing_bp.route('/bills/<bill_id>/replacements', methods=['GET'])
 @require_auth
 def get_bill_replacements(bill_id):
@@ -304,5 +663,59 @@ def get_bill_replacements(bill_id):
         return jsonify(replacements), 200
     except Exception as e:
         app.logger.error(f"❌ Error fetching bill replacements: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify([]), 200
+
+
+@billing_bp.route('/bills/<bill_id>/events', methods=['GET'])
+@require_auth
+def get_bill_events(bill_id):
+    """Get bill audit events (revision/cancellation) from notifications table."""
+    try:
+        current_user_id = get_jwt_identity()
+        app.logger.info(f"User {current_user_id} fetching bill events for {bill_id}")
+
+        supabase = get_supabase_client()
+        event_type = request.args.get("type", "").strip().lower()
+        limit = request.args.get("limit", 50, type=int)
+        offset = request.args.get("offset", 0, type=int)
+        if limit is None or limit <= 0:
+            limit = 50
+        if limit > 200:
+            limit = 200
+        if offset is None or offset < 0:
+            offset = 0
+
+        query = (
+            supabase.table("notifications")
+            .select("id, type, notification, related_id, created_at")
+            .eq("related_id", bill_id)
+        )
+
+        allowed_types = ["invoice_revised", "invoice_cancelled"]
+        if event_type in allowed_types:
+            query = query.eq("type", event_type)
+        else:
+            query = query.in_("type", allowed_types)
+
+        response = (
+            query.order("created_at", desc=True)
+            .range(offset, offset + limit - 1)
+            .execute()
+        )
+
+        events = response.data if response.data else []
+        has_more = len(events) == limit
+        return jsonify(
+            {
+                "events": events,
+                "offset": offset,
+                "limit": limit,
+                "next_offset": offset + len(events),
+                "has_more": has_more,
+            }
+        ), 200
+    except Exception as e:
+        app.logger.error(f"❌ Error fetching bill events for {bill_id}: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify([]), 200

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -120,6 +121,13 @@ interface ReplacementSession {
   entries: ReplacementSessionEntry[];
 }
 
+interface InvoiceEditSession {
+  billId: string
+  editExpiresAt?: string | null
+  startedAt?: string
+  tabId?: string
+}
+
 interface Settings {
   id: number;
   gstin: string;
@@ -190,7 +198,11 @@ export default function BillingAndCart() {
     type: "clear" | "remove"
     itemId?: string
   } | null>(null)
+  const [pendingInvoiceEditCloseId, setPendingInvoiceEditCloseId] = useState<string | null>(null)
   const [isReplacementDialogOpen, setIsReplacementDialogOpen] = useState(false)
+  const [invoiceEditSession, setInvoiceEditSession] = useState<InvoiceEditSession | null>(null)
+  const [isCancelInvoiceDialogOpen, setIsCancelInvoiceDialogOpen] = useState(false)
+  const [cancelInvoiceReason, setCancelInvoiceReason] = useState("")
 
   const barcodeInputRef = useRef<HTMLInputElement>(null)
   const idleFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -262,6 +274,7 @@ export default function BillingAndCart() {
   }, [resetIdleFocusTimer])
 
   const activeBillingInstance = billingTabs.find((tab) => tab.id === activeTab)
+  const isInvoiceEditMode = !!invoiceEditSession && invoiceEditSession.tabId === activeTab
   const isReplacementActive = !!replacementSession && replacementTabId === activeTab
   const getProductById = useCallback((productId: string) => products.find((p) => p.id === productId), [products])
   const getAvailableStock = useCallback((productId: string) => getProductById(productId)?.stock ?? null, [getProductById])
@@ -391,6 +404,130 @@ export default function BillingAndCart() {
       window.removeEventListener("start-replacement-session", hydrateReplacementSession as EventListener)
     }
   }, [hydrateReplacementSession])
+
+  const hydrateInvoiceEditSession = useCallback(async () => {
+    if (typeof window === "undefined") return
+    const raw = window.sessionStorage.getItem("invoice-edit-session")
+    if (!raw) return
+
+    let parsed: InvoiceEditSession | null = null
+    try {
+      parsed = JSON.parse(raw)
+    } catch (error) {
+      console.error("Failed to parse invoice edit session:", error)
+      return
+    }
+
+    if (!parsed?.billId) return
+
+    try {
+      const response = await apiClient(`/api/bills/${parsed.billId}/edit-payload`, { method: "GET" })
+      const payload = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        toast({
+          title: "Edit unavailable",
+          description: payload?.message || "Invoice edit is not available.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const bill = payload?.bill || {}
+      const items = Array.isArray(payload?.items) ? payload.items : []
+      const targetTabId = activeTabRef.current || "bill-1"
+
+      const mappedItems: CartItem[] = items.map((item: any) => {
+        const taxPercentage = Number(item.taxPercentage || 0)
+        const basePrice = Number(item.price || 0)
+        const quantity = Number(item.quantity || 0)
+        const sellingPrice = Math.round((basePrice * (1 + taxPercentage / 100)) * 100) / 100
+        return {
+          id: generateCartItemId(),
+          productId: item.productId || "",
+          name: item.name || "Unknown Item",
+          quantity,
+          price: basePrice,
+          sellingPrice,
+          total: Math.round(basePrice * quantity * 100) / 100,
+          barcodes: item.barcodes || "",
+          taxPercentage,
+          hsnCode: item.hsnCode || "",
+          hsn_code_id: undefined,
+          lineType: "sale",
+          replacementLinkId: undefined,
+          replacementMeta: null,
+        }
+      })
+
+      setBillingTabs((prevTabs) => {
+        const tabs = prevTabs.some((tab) => tab.id === targetTabId)
+          ? prevTabs
+          : [...prevTabs, createNewBillingInstance(targetTabId)]
+
+        return tabs.map((tab) => {
+          if (tab.id !== targetTabId) return tab
+          return {
+            ...tab,
+            cartItems: mappedItems,
+            customerName: bill?.customers?.name || bill?.customerName || tab.customerName || "Walk-in Customer",
+            customerPhone: bill?.customers?.phone || bill?.customerPhone || "",
+            discount: Number(bill?.discount_percentage || bill?.discountPercentage || 0),
+            paymentMethod: bill?.paymentmethod || bill?.paymentMethod || tab.paymentMethod || "Cash",
+            discountRequestId: null,
+            discountApprovalStatus: "not_required",
+            editableTotal: Number(bill?.total || 0),
+            isEditingTotal: false,
+          }
+        })
+      })
+
+      if (activeTabRef.current !== targetTabId) {
+        setActiveTab(targetTabId)
+      }
+      setInvoiceEditSession({
+        billId: parsed.billId,
+        editExpiresAt: parsed.editExpiresAt || null,
+        startedAt: parsed.startedAt,
+        tabId: targetTabId,
+      })
+
+      toast({
+        title: "Invoice loaded",
+        description: `Invoice ${parsed.billId} is loaded in Billing Cart for editing.`,
+      })
+    } catch (error: any) {
+      console.error("Failed to hydrate invoice edit session:", error)
+      toast({
+        title: "Edit load failed",
+        description: error?.message || "Could not load invoice edit data.",
+        variant: "destructive",
+      })
+    }
+  }, [generateCartItemId, toast])
+
+  useEffect(() => {
+    void hydrateInvoiceEditSession()
+    const listener = () => {
+      void hydrateInvoiceEditSession()
+    }
+    window.addEventListener("start-invoice-edit-session", listener)
+    return () => {
+      window.removeEventListener("start-invoice-edit-session", listener)
+    }
+  }, [hydrateInvoiceEditSession])
+
+  useEffect(() => {
+    if (!isInvoiceEditMode) return
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = "Closing this tab will discard invoice update progress."
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload)
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload)
+    }
+  }, [isInvoiceEditMode])
 
   // ✅ Calculate base price from selling price (reverse calculation)
   const calculateBasePrice = (sellingPrice: number, taxPercentage: number): number => {
@@ -569,6 +706,14 @@ export default function BillingAndCart() {
     setReplacementSession(null)
     setReplacementTabId(null)
     lastReplacementSessionIdRef.current = null
+  }
+
+  const clearInvoiceEditSession = () => {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem("invoice-edit-session")
+    }
+    setInvoiceEditSession(null)
+    setIsCancelInvoiceDialogOpen(false)
   }
 
   const sortProductsByName = useCallback((items: Product[]) => {
@@ -1100,9 +1245,13 @@ export default function BillingAndCart() {
     }
 
     const tax = calculateTotalTax()
+    const previewInvoiceId =
+      isInvoiceEditMode && invoiceEditSession?.billId
+        ? invoiceEditSession.billId
+        : generateInvoiceId()
 
     const invoice: Invoice = {
-      id: generateInvoiceId(),
+      id: previewInvoiceId,
       storeId: currentStore?.id || "",
       storeName: currentStore?.name || "N/A",
       storeAddress: currentStore?.address || "N/A",
@@ -1169,6 +1318,7 @@ export default function BillingAndCart() {
       console.log("💾 Saving invoice:", invoiceToSave);
 
       const isReplacementInvoice = replacementTabId === activeTab && !!replacementSession
+      const isRevisingExistingInvoice = isInvoiceEditMode && !!invoiceEditSession?.billId
       const allItems = (invoiceToSave.items || []) as CartItem[]
       const saleItems = allItems.filter((item) => item.lineType !== "replacement_credit")
       const replacementItemsPayload = isReplacementInvoice
@@ -1230,8 +1380,13 @@ export default function BillingAndCart() {
 
       console.log("📤 Sending bill data to backend:", billData);
 
-      const response = await apiClient("/api/bills", {
-        method: "POST",
+      const endpoint = isRevisingExistingInvoice
+        ? `/api/bills/${invoiceEditSession?.billId}/revise`
+        : "/api/bills"
+      const method = isRevisingExistingInvoice ? "PUT" : "POST"
+
+      const response = await apiClient(endpoint, {
+        method,
         body: JSON.stringify(billData),
       });
 
@@ -1243,14 +1398,29 @@ export default function BillingAndCart() {
         const wasQueued = response.status === 202 || result?.queued;
 
         toast({
-          title: wasQueued ? "Queued" : "Success",
+          title: isRevisingExistingInvoice ? "Invoice Updated" : wasQueued ? "Queued" : "Success",
           description: wasQueued
             ? "Internet is offline. Invoice is saved locally and will auto-sync when online."
+            : isRevisingExistingInvoice
+            ? `Invoice ${invoiceEditSession?.billId} updated successfully!`
             : `Invoice ${isReplay ? "synced" : "saved"} successfully!`,
           variant: "default",
         });
 
-        if (!isReplay) {
+        if (isRevisingExistingInvoice) {
+          clearInvoiceEditSession()
+          updateBillingInstance(activeTab, {
+            cartItems: [],
+            customerName: "Walk-in Customer",
+            customerPhone: "",
+            discount: 0,
+            discountRequestId: null,
+            discountApprovalStatus: "not_required",
+            editableTotal: 0,
+            isEditingTotal: false,
+            paymentMethod: "Cash",
+          })
+        } else if (!isReplay) {
           const newId = `bill-${Date.now()}`;
           const newTabs = billingTabs.map((tab) =>
             tab.id === activeTab ? createNewBillingInstance(newId) : tab
@@ -1329,6 +1499,51 @@ export default function BillingAndCart() {
     }
   }
 
+  const handleCancelInvoice = async () => {
+    if (!isInvoiceEditMode || !invoiceEditSession?.billId) return
+    try {
+      const response = await apiClient(`/api/bills/${invoiceEditSession.billId}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({
+          cancel_reason: cancelInvoiceReason.trim() || undefined,
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to cancel invoice")
+      }
+
+      toast({
+        title: "Invoice Cancelled",
+        description: `Invoice ${invoiceEditSession.billId} cancelled and stock restored.`,
+      })
+
+      clearInvoiceEditSession()
+      setCancelInvoiceReason("")
+      updateBillingInstance(activeTab, {
+        cartItems: [],
+        customerName: "Walk-in Customer",
+        customerPhone: "",
+        discount: 0,
+        discountRequestId: null,
+        discountApprovalStatus: "not_required",
+        editableTotal: 0,
+        isEditingTotal: false,
+        paymentMethod: "Cash",
+      })
+
+      await fetchProducts()
+    } catch (error: any) {
+      toast({
+        title: "Cancel Failed",
+        description: error?.message || "Could not cancel invoice.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsCancelInvoiceDialogOpen(false)
+    }
+  }
+
   const handlePreviewInvoiceUpdate = (updatedInvoice: Invoice) => {
     setCurrentInvoice(updatedInvoice)
     if (activeBillingInstance) {
@@ -1371,6 +1586,10 @@ export default function BillingAndCart() {
       setPendingReplacementCloseId(tabId)
       return
     }
+    if (tabId === invoiceEditSession?.tabId) {
+      setPendingInvoiceEditCloseId(tabId)
+      return
+    }
 
     const tabIndex = billingTabs.findIndex((tab) => tab.id === tabId)
     const newTabs = billingTabs.filter((tab) => tab.id !== tabId)
@@ -1399,6 +1618,25 @@ export default function BillingAndCart() {
     })
 
     clearReplacementSession()
+  }
+
+  const confirmCloseInvoiceEditTab = () => {
+    if (!pendingInvoiceEditCloseId) return
+    const tabId = pendingInvoiceEditCloseId
+    setPendingInvoiceEditCloseId(null)
+
+    setBillingTabs((prevTabs) => {
+      if (prevTabs.length === 1) return prevTabs
+      const tabIndex = prevTabs.findIndex((tab) => tab.id === tabId)
+      const newTabs = prevTabs.filter((tab) => tab.id !== tabId)
+      if (activeTab === tabId && newTabs.length > 0) {
+        const newActiveIndex = Math.max(0, tabIndex - 1)
+        setActiveTab(newTabs[newActiveIndex].id)
+      }
+      return newTabs
+    })
+
+    clearInvoiceEditSession()
   }
 
   const confirmReplacementAction = () => {
@@ -1551,6 +1789,7 @@ export default function BillingAndCart() {
               </div>
             </div>
             {billingTabs.map((tab) => {
+              const isEditingInvoiceTab = !!invoiceEditSession && invoiceEditSession.tabId === tab.id
               const isReplacementTab = !!replacementSession && replacementTabId === tab.id
               const usageMap = isReplacementTab ? getUsageByReplacementEntry(tab.cartItems) : new Map<string, string>()
               const replacementStatus = isReplacementTab
@@ -1574,6 +1813,13 @@ export default function BillingAndCart() {
 
               return (
               <TabsContent key={tab.id} value={tab.id} className="mt-4">
+                {isEditingInvoiceTab && (
+                  <Alert className="mb-4 border-blue-200 bg-blue-50">
+                    <AlertDescription>
+                      Editing invoice <span className="font-semibold">{invoiceEditSession?.billId}</span>. You can update or cancel this bill within the 24-hour window.
+                    </AlertDescription>
+                  </Alert>
+                )}
                 {isReplacementTab && replacementSession && (
                   <Card className="mb-6 border-orange-300 bg-orange-50/50">
                     <CardHeader>
@@ -1881,8 +2127,18 @@ export default function BillingAndCart() {
                             size="lg"
                           >
                             <FileText className="h-4 w-4 mr-2" />
-                            Generate Invoice
+                            {isEditingInvoiceTab ? "Update Invoice" : "Generate Invoice"}
                           </Button>
+                          {isEditingInvoiceTab && (
+                            <Button
+                              onClick={() => setIsCancelInvoiceDialogOpen(true)}
+                              variant="destructive"
+                              className="w-full"
+                              size="lg"
+                            >
+                              Cancel Invoice
+                            </Button>
+                          )}
                         </div>
 
                         {tab.discount > 10 && (
@@ -1952,6 +2208,51 @@ export default function BillingAndCart() {
           <AlertDialogFooter>
             <AlertDialogCancel onClick={cancelReplacementAction}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={confirmReplacementAction}>Confirm</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!pendingInvoiceEditCloseId}
+        onOpenChange={(open) => {
+          if (!open) setPendingInvoiceEditCloseId(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Close invoice edit tab?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will close the updating invoice tab and discard unsaved invoice changes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmCloseInvoiceEditTab}>Close Tab</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isCancelInvoiceDialogOpen} onOpenChange={setIsCancelInvoiceDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel this invoice?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will mark the invoice as cancelled and restore all stock quantities back to inventory.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="cancelInvoiceReason">Reason (optional)</Label>
+            <Textarea
+              id="cancelInvoiceReason"
+              value={cancelInvoiceReason}
+              onChange={(e) => setCancelInvoiceReason(e.target.value)}
+              placeholder="Example: Customer requested cancellation"
+              rows={3}
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction onClick={handleCancelInvoice}>Yes, Cancel Invoice</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

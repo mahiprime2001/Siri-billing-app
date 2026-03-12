@@ -307,6 +307,10 @@ export default function BillingPage() {
     setIsReturnToAdminOpen(true)
   }
 
+  const handleEditInvoiceFromHistory = () => {
+    setActiveTab('billing')
+  }
+
   if (!user) {
     return <div className="flex items-center justify-center h-screen">Loading...</div>
   }
@@ -442,7 +446,7 @@ export default function BillingPage() {
 
         <TabsContent value="billing-history" className="flex-1 overflow-auto p-4">
           {currentStore ? (
-            <BillingHistory currentStore={currentStore} />
+            <BillingHistory currentStore={currentStore} onEditInvoice={handleEditInvoiceFromHistory} />
           ) : (
             <div className="flex items-center justify-center h-full">
               <p className="text-muted-foreground">Loading store information...</p>

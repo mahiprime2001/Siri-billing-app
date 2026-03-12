@@ -10,14 +10,63 @@ from config.config import STORES_FILE, USER_STORES_FILE
 store_bp = Blueprint('store', __name__)
 
 
-def _get_current_store_id(supabase, user_id: str):
-    user_stores_response = supabase.table('userstores') \
-        .select('storeId') \
-        .eq('userId', user_id) \
-        .execute()
-    if not user_stores_response.data:
+def _extract_store_id_from_row(row: dict):
+    if not isinstance(row, dict):
         return None
-    return user_stores_response.data[0].get('storeId')
+    return row.get("storeId") or row.get("storeid")
+
+
+def _normalize_user_store_row(row: dict):
+    if not isinstance(row, dict):
+        return None
+    return {
+        "userId": row.get("userId") or row.get("userid"),
+        "storeId": row.get("storeId") or row.get("storeid"),
+        "created_at": row.get("created_at") or row.get("createdat"),
+        "updated_at": row.get("updated_at") or row.get("updatedat"),
+    }
+
+
+def _fetch_user_store_rows(supabase, user_id: str):
+    """
+    Read user-store mappings with compatibility for column variants:
+    - userId/storeId (camelCase)
+    - userid/storeid (lowercase)
+    """
+    # Primary expected columns.
+    try:
+        response = (
+            supabase.table("userstores")
+            .select("*")
+            .eq("userId", user_id)
+            .execute()
+        )
+        if response.data:
+            return response.data
+    except Exception as e:
+        app.logger.warning(f"⚠️ userstores camelCase lookup failed: {e}")
+
+    # Fallback lowercase columns.
+    try:
+        response = (
+            supabase.table("userstores")
+            .select("*")
+            .eq("userid", user_id)
+            .execute()
+        )
+        if response.data:
+            return response.data
+    except Exception as e:
+        app.logger.warning(f"⚠️ userstores lowercase lookup failed: {e}")
+
+    return []
+
+
+def _get_current_store_id(supabase, user_id: str):
+    rows = _fetch_user_store_rows(supabase, user_id)
+    if not rows:
+        return None
+    return _extract_store_id_from_row(rows[0])
 
 
 def _derive_transfer_item_state(item: dict) -> str:
@@ -64,13 +113,10 @@ def get_user_stores():
         
         supabase = get_supabase_client()
         
-        # ✅ Query userstores table with correct column names
-        response = supabase.table('userstores') \
-            .select('userId, storeId, created_at, updated_at') \
-            .eq('userId', current_user_id) \
-            .execute()
-        
-        user_stores = response.data if response.data else []
+        user_store_rows = _fetch_user_store_rows(supabase, current_user_id)
+        user_stores = [
+            normalized for normalized in (_normalize_user_store_row(row) for row in user_store_rows) if normalized
+        ]
         
         app.logger.info(f"✅ Found {len(user_stores)} user-store associations for user {current_user_id}")
         app.logger.debug(f"User-stores data: {user_stores}")
@@ -82,7 +128,12 @@ def get_user_stores():
         import traceback
         app.logger.error(traceback.format_exc())
         user_stores = read_json_file(USER_STORES_FILE, [])
-        user_stores = [u for u in user_stores if str(u.get("userId")) == str(current_user_id)]
+        user_stores = [
+            _normalize_user_store_row(u)
+            for u in user_stores
+            if str(u.get("userId") or u.get("userid")) == str(current_user_id)
+        ]
+        user_stores = [u for u in user_stores if u]
         return jsonify(user_stores), 200
 
 
@@ -96,17 +147,15 @@ def get_current_user_store():
         
         supabase = get_supabase_client()
         
-        # Get user's store ID
-        user_stores_response = supabase.table('userstores') \
-            .select('storeId') \
-            .eq('userId', current_user_id) \
-            .execute()
-        
-        if not user_stores_response.data or len(user_stores_response.data) == 0:
+        user_store_rows = _fetch_user_store_rows(supabase, current_user_id)
+        if not user_store_rows or len(user_store_rows) == 0:
             app.logger.warning(f"⚠️ No store assigned to user {current_user_id}")
             return jsonify({"message": "No store assigned to this user"}), 404
-        
-        store_id = user_stores_response.data[0]['storeId']
+
+        store_id = _extract_store_id_from_row(user_store_rows[0])
+        if not store_id:
+            app.logger.warning(f"⚠️ Store mapping row found without store ID for user {current_user_id}")
+            return jsonify({"message": "No store assigned to this user"}), 404
         app.logger.info(f"📍 User {current_user_id} is assigned to store {store_id}")
         
         # Get store details
@@ -129,11 +178,18 @@ def get_current_user_store():
         import traceback
         app.logger.error(traceback.format_exc())
         user_stores = read_json_file(USER_STORES_FILE, [])
-        assigned = next((u for u in user_stores if str(u.get("userId")) == str(current_user_id)), None)
+        assigned = next(
+            (
+                _normalize_user_store_row(u)
+                for u in user_stores
+                if str(u.get("userId") or u.get("userid")) == str(current_user_id)
+            ),
+            None,
+        )
         if not assigned:
             return jsonify({"message": "No store assigned to this user"}), 404
         stores = read_json_file(STORES_FILE, [])
-        store = next((s for s in stores if str(s.get("id")) == str(assigned.get("storeId"))), None)
+        store = next((s for s in stores if str(s.get("id")) == str(assigned.get("storeId") or assigned.get("storeid"))), None)
         if not store:
             return jsonify({"message": "Store not found"}), 404
         return jsonify(store), 200

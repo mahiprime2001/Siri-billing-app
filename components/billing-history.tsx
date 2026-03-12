@@ -6,8 +6,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 // Printing in history is now identical to billing-cart: direct print (no dialog)
-import { Eye, Search, Printer } from "lucide-react"
+import { Eye, Search, Printer, Pencil, History } from "lucide-react"
 import InvoicePreview from "./invoice-preview"
 import PrintableInvoice from "./printable-invoice"
 import { apiClient } from "@/lib/api-client"
@@ -31,11 +32,20 @@ interface BillReplacement {
   final_amount?: number
 }
 
-interface BillingHistoryProps {
-  currentStore: { id: string; name: string } | null
+interface BillEvent {
+  id: number
+  type: string
+  notification: string
+  related_id: string
+  created_at: string
 }
 
-export function BillingHistory({ currentStore }: BillingHistoryProps) {
+interface BillingHistoryProps {
+  currentStore: { id: string; name: string } | null
+  onEditInvoice?: (invoiceId: string) => void
+}
+
+export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryProps) {
   const { toast } = useToast()
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [filteredInvoices, setFilteredInvoices] = useState<Invoice[]>([])
@@ -53,9 +63,27 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
   const printRef = useRef<HTMLDivElement>(null)
   const [isTauriRuntime, setIsTauriRuntime] = useState(false)
   const [printingInvoiceId, setPrintingInvoiceId] = useState<string | null>(null)
+  const [clockNowMs, setClockNowMs] = useState(() => Date.now())
+  const [showAuditDialog, setShowAuditDialog] = useState(false)
+  const [auditEvents, setAuditEvents] = useState<BillEvent[]>([])
+  const [auditInvoiceId, setAuditInvoiceId] = useState<string>("")
+  const [isAuditLoading, setIsAuditLoading] = useState(false)
+  const [isAuditLoadingMore, setIsAuditLoadingMore] = useState(false)
+  const [auditSearchTerm, setAuditSearchTerm] = useState("")
+  const [auditTypeFilter, setAuditTypeFilter] = useState<"all" | "invoice_revised" | "invoice_cancelled">("all")
+  const [auditPage, setAuditPage] = useState(1)
+  const [auditHasMore, setAuditHasMore] = useState(false)
+  const [auditNextOffset, setAuditNextOffset] = useState(0)
+  const auditFetchLimit = 50
+  const auditPageSize = 10
 
   useEffect(() => {
     setIsTauriRuntime(isTauriApp())
+  }, [])
+
+  useEffect(() => {
+    const ticker = setInterval(() => setClockNowMs(Date.now()), 1000)
+    return () => clearInterval(ticker)
   }, [])
 
   const fetchSettings = useCallback(async () => {
@@ -187,6 +215,11 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
       companyEmail: b.companyEmail || "",
       billFormat: b.billFormat || b.bill_format || "Thermal 80mm",
       items: b.items || [],
+      canEdit: b.can_edit ?? b.canEdit ?? false,
+      canCancel: b.can_cancel ?? b.canCancel ?? false,
+      editExpiresAt: b.edit_expires_at || b.editExpiresAt || "",
+      secondsRemaining: b.seconds_remaining ?? b.secondsRemaining ?? 0,
+      cancelReason: b.cancel_reason || b.cancelReason || "",
     }))
 
     normalized.sort(
@@ -479,6 +512,197 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
     }
   }
 
+  const getSecondsRemaining = (invoice: Invoice): number => {
+    if (typeof invoice.secondsRemaining === "number" && invoice.secondsRemaining >= 0) {
+      if (!invoice.editExpiresAt) return invoice.secondsRemaining
+      const expiresMs = new Date(invoice.editExpiresAt).getTime()
+      if (Number.isNaN(expiresMs)) return invoice.secondsRemaining
+      return Math.max(0, Math.floor((expiresMs - clockNowMs) / 1000))
+    }
+    if (!invoice.editExpiresAt) return 0
+    const expiresMs = new Date(invoice.editExpiresAt).getTime()
+    if (Number.isNaN(expiresMs)) return 0
+    return Math.max(0, Math.floor((expiresMs - clockNowMs) / 1000))
+  }
+
+  const canEditInvoice = (invoice: Invoice) => {
+    if (typeof invoice.canEdit === "boolean") {
+      return invoice.canEdit && getSecondsRemaining(invoice) > 0
+    }
+    const status = String(invoice.status || "").toLowerCase()
+    if (!["completed", "paid", "pending"].includes(status)) return false
+    const createdAtMs = new Date(invoice.createdAt || invoice.timestamp).getTime()
+    if (Number.isNaN(createdAtMs)) return false
+    return createdAtMs + 24 * 60 * 60 * 1000 > clockNowMs
+  }
+
+  const formatRemaining = (totalSeconds: number): string => {
+    const hours = Math.floor(totalSeconds / 3600)
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+    const seconds = totalSeconds % 60
+    if (hours > 0) return `${hours}h ${minutes}m`
+    if (minutes > 0) return `${minutes}m ${seconds}s`
+    return `${seconds}s`
+  }
+
+  const isInvoiceEdited = (invoice: Invoice): boolean => {
+    const status = String(invoice.status || "").toLowerCase()
+    if (status === "cancelled") return false
+    const createdMs = new Date(invoice.createdAt || invoice.timestamp).getTime()
+    const updatedMs = new Date(invoice.updatedAt || "").getTime()
+    if (Number.isNaN(createdMs) || Number.isNaN(updatedMs)) return false
+    return updatedMs - createdMs > 1000
+  }
+
+  const handleEditInvoice = (invoice: Invoice) => {
+    const secondsRemaining = getSecondsRemaining(invoice)
+    if (!canEditInvoice(invoice) || secondsRemaining <= 0) {
+      toast({
+        title: "Edit window closed",
+        description: "This invoice is no longer editable.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (typeof window !== "undefined") {
+      const payload = {
+        billId: invoice.id,
+        editExpiresAt: invoice.editExpiresAt || null,
+        startedAt: new Date().toISOString(),
+      }
+      window.sessionStorage.setItem("invoice-edit-session", JSON.stringify(payload))
+      window.dispatchEvent(new CustomEvent("start-invoice-edit-session"))
+    }
+
+    onEditInvoice?.(invoice.id)
+  }
+
+  const handleOpenAudit = async (invoice: Invoice) => {
+    setAuditInvoiceId(invoice.id)
+    setShowAuditDialog(true)
+    setIsAuditLoading(true)
+    setAuditSearchTerm("")
+    setAuditTypeFilter("all")
+    setAuditPage(1)
+    setAuditHasMore(false)
+    setAuditNextOffset(0)
+    try {
+      const response = await apiClient(
+        `/api/bills/${invoice.id}/events?limit=${auditFetchLimit}&offset=0`,
+        { method: "GET" },
+      )
+      if (!response.ok) {
+        setAuditEvents([])
+        return
+      }
+      const data = await response.json()
+      if (Array.isArray(data)) {
+        setAuditEvents(data)
+        setAuditHasMore(false)
+        setAuditNextOffset(data.length)
+      } else {
+        const events = Array.isArray(data?.events) ? data.events : []
+        setAuditEvents(events)
+        setAuditHasMore(Boolean(data?.has_more))
+        setAuditNextOffset(Number(data?.next_offset || events.length || 0))
+      }
+    } catch (error) {
+      console.error("Failed to fetch bill audit events:", error)
+      setAuditEvents([])
+    } finally {
+      setIsAuditLoading(false)
+    }
+  }
+
+  const handleLoadMoreAudit = async () => {
+    if (!auditInvoiceId || !auditHasMore || isAuditLoadingMore) return
+    setIsAuditLoadingMore(true)
+    try {
+      const response = await apiClient(
+        `/api/bills/${auditInvoiceId}/events?limit=${auditFetchLimit}&offset=${auditNextOffset}`,
+        { method: "GET" },
+      )
+      if (!response.ok) return
+      const data = await response.json()
+      const events = Array.isArray(data?.events) ? data.events : []
+      setAuditEvents((prev) => [...prev, ...events])
+      setAuditHasMore(Boolean(data?.has_more))
+      setAuditNextOffset(Number(data?.next_offset || (auditNextOffset + events.length)))
+    } catch (error) {
+      console.error("Failed to load more audit events:", error)
+    } finally {
+      setIsAuditLoadingMore(false)
+    }
+  }
+
+  const getAuditTypeLabel = (type: string) => {
+    if (type === "invoice_revised") return "Revised"
+    if (type === "invoice_cancelled") return "Cancelled"
+    return type
+  }
+
+  const getAuditTypeClass = (type: string) => {
+    if (type === "invoice_revised") return "bg-blue-100 text-blue-800"
+    if (type === "invoice_cancelled") return "bg-red-100 text-red-800"
+    return "bg-gray-100 text-gray-800"
+  }
+
+  const filteredAuditEvents = auditEvents.filter((event) => {
+    const matchesType = auditTypeFilter === "all" || event.type === auditTypeFilter
+    if (!matchesType) return false
+    if (!auditSearchTerm.trim()) return true
+    const q = auditSearchTerm.toLowerCase()
+    return (
+      String(event.notification || "").toLowerCase().includes(q) ||
+      String(event.type || "").toLowerCase().includes(q)
+    )
+  })
+
+  useEffect(() => {
+    setAuditPage(1)
+  }, [auditSearchTerm, auditTypeFilter])
+
+  const totalAuditPages = Math.max(1, Math.ceil(filteredAuditEvents.length / auditPageSize))
+  const currentAuditPage = Math.min(auditPage, totalAuditPages)
+  const pagedAuditEvents = filteredAuditEvents.slice(
+    (currentAuditPage - 1) * auditPageSize,
+    currentAuditPage * auditPageSize,
+  )
+
+  const exportAuditCsv = () => {
+    if (!filteredAuditEvents.length) {
+      toast({
+        title: "No audit data",
+        description: "There are no audit events to export for current filters.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const escapeCsv = (value: string) => `"${String(value ?? "").replace(/"/g, '""')}"`
+    const header = ["invoice_id", "event_type", "event_label", "message", "created_at_iso", "created_at_local"]
+    const rows = filteredAuditEvents.map((event) => [
+      auditInvoiceId,
+      event.type,
+      getAuditTypeLabel(event.type),
+      event.notification || "",
+      event.created_at || "",
+      new Date(event.created_at).toLocaleString(),
+    ])
+    const csv = [header, ...rows].map((row) => row.map((cell) => escapeCsv(String(cell))).join(",")).join("\n")
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `invoice-audit-${auditInvoiceId}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  }
+
   if (!currentStore) {
     return (
       <Card>
@@ -546,15 +770,38 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
                     <TableCell>{new Date(invoice.timestamp).toLocaleString()}</TableCell>
                     <TableCell>₹{invoice.total.toLocaleString()}</TableCell>
                     <TableCell>
-                      <Badge className={getStatusColor(invoice.status || "completed")}>
-                        {invoice.status || "Completed"}
-                      </Badge>
+                      <div className="flex flex-col gap-1">
+                        <Badge className={getStatusColor(invoice.status || "completed")}>
+                          {invoice.status || "Completed"}
+                        </Badge>
+                        {isInvoiceEdited(invoice) && (
+                          <span className="text-xs text-blue-700">Edited</span>
+                        )}
+                        {String(invoice.status || "").toLowerCase() === "cancelled" && invoice.cancelReason && (
+                          <span className="text-xs text-red-700">Reason: {invoice.cancelReason}</span>
+                        )}
+                        {canEditInvoice(invoice) && getSecondsRemaining(invoice) > 0 && (
+                          <span className="text-xs text-muted-foreground">
+                            Editable for {formatRemaining(getSecondsRemaining(invoice))}
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex space-x-2">
+                        {canEditInvoice(invoice) && (
+                          <Button variant="outline" size="sm" onClick={() => handleEditInvoice(invoice)}>
+                            <Pencil className="h-4 w-4 mr-1" />
+                            Edit
+                          </Button>
+                        )}
                         <Button variant="outline" size="sm" onClick={() => handleViewInvoice(invoice)}>
                           <Eye className="h-4 w-4 mr-1" />
                           View
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => handleOpenAudit(invoice)}>
+                          <History className="h-4 w-4 mr-1" />
+                          Audit
                         </Button>
                         <Button
                           variant="outline"
@@ -602,6 +849,104 @@ export function BillingHistory({ currentStore }: BillingHistoryProps) {
           <PrintableInvoice ref={printRef} invoice={selectedInvoice} paperSize={printPaperSize} />
         )}
       </div>
+
+      <Dialog open={showAuditDialog} onOpenChange={setShowAuditDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Invoice Audit Trail</DialogTitle>
+            <DialogDescription>Invoice: {auditInvoiceId}</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Input
+              placeholder="Search audit message..."
+              value={auditSearchTerm}
+              onChange={(e) => setAuditSearchTerm(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant={auditTypeFilter === "all" ? "default" : "outline"}
+                onClick={() => setAuditTypeFilter("all")}
+              >
+                All
+              </Button>
+              <Button
+                size="sm"
+                variant={auditTypeFilter === "invoice_revised" ? "default" : "outline"}
+                onClick={() => setAuditTypeFilter("invoice_revised")}
+              >
+                Revised
+              </Button>
+              <Button
+                size="sm"
+                variant={auditTypeFilter === "invoice_cancelled" ? "default" : "outline"}
+                onClick={() => setAuditTypeFilter("invoice_cancelled")}
+              >
+                Cancelled
+              </Button>
+              <Button size="sm" variant="outline" onClick={exportAuditCsv}>
+                Export CSV
+              </Button>
+            </div>
+          </div>
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {isAuditLoading ? (
+              <p className="text-sm text-muted-foreground">Loading audit events...</p>
+            ) : filteredAuditEvents.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No audit events found for this invoice.</p>
+            ) : (
+              pagedAuditEvents.map((event) => (
+                <div key={event.id} className="rounded border p-3">
+                  <div className="mb-1">
+                    <Badge className={getAuditTypeClass(event.type)}>{getAuditTypeLabel(event.type)}</Badge>
+                  </div>
+                  <p className="text-sm font-medium">{event.notification}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(event.created_at).toLocaleString()}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+          {!isAuditLoading && filteredAuditEvents.length > 0 && (
+            <div className="flex items-center justify-between pt-1">
+              <p className="text-xs text-muted-foreground">
+                Page {currentAuditPage} of {totalAuditPages} ({filteredAuditEvents.length} events)
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={currentAuditPage <= 1}
+                  onClick={() => setAuditPage((prev) => Math.max(1, prev - 1))}
+                >
+                  Previous
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={currentAuditPage >= totalAuditPages}
+                  onClick={() => setAuditPage((prev) => Math.min(totalAuditPages, prev + 1))}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+          {!isAuditLoading && (
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleLoadMoreAudit}
+                disabled={!auditHasMore || isAuditLoadingMore}
+              >
+                {isAuditLoadingMore ? "Loading..." : auditHasMore ? "Load More" : "No More Events"}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
