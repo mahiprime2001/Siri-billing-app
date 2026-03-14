@@ -150,6 +150,27 @@ interface BillingInstance {
   paymentMethod: string
 }
 
+interface BillingAndCartProps {
+  onRequestTransferVerification?: (payload: { orderId: string; barcode: string; productName?: string }) => void
+}
+
+type TransferOrderSummary = {
+  id: string
+  missing_qty_total?: number
+}
+
+type TransferOrderDetails = {
+  items?: Array<{
+    id: string
+    assigned_qty?: number
+    verified_qty?: number
+    products?: {
+      name?: string
+      barcode?: string
+    }
+  }>
+}
+
 const SUGGESTED_DISCOUNTS = [10]
 const MAX_BILL_TABS = 7
 
@@ -166,7 +187,7 @@ const createNewBillingInstance = (id: string): BillingInstance => ({
   paymentMethod: "Cash",
 })
 
-export default function BillingAndCart() {
+export default function BillingAndCart({ onRequestTransferVerification }: BillingAndCartProps) {
   const router = useRouter()
   const { toast } = useToast()
   const isOnline = useOnlineStatus()
@@ -203,6 +224,11 @@ export default function BillingAndCart() {
   const [invoiceEditSession, setInvoiceEditSession] = useState<InvoiceEditSession | null>(null)
   const [isCancelInvoiceDialogOpen, setIsCancelInvoiceDialogOpen] = useState(false)
   const [cancelInvoiceReason, setCancelInvoiceReason] = useState("")
+  const [pendingVerificationPrompt, setPendingVerificationPrompt] = useState<{
+    orderId: string
+    barcode: string
+    productName?: string
+  } | null>(null)
 
   const barcodeInputRef = useRef<HTMLInputElement>(null)
   const idleFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -896,7 +922,7 @@ export default function BillingAndCart() {
     if (!product) {
       toast({
         title: "Product Unavailable",
-        description: "The scanned product is not available in this store.",
+        description: "This product is not available for this store.",
         variant: "destructive",
       })
       return false
@@ -985,7 +1011,46 @@ export default function BillingAndCart() {
     return code.trim().replace(/^0+/, "")
   }
 
-  const handleBarcodeSearch = () => {
+  const findPendingTransferForBarcode = async (barcode: string) => {
+    try {
+      const normalizedBarcode = normalizeBarcode(barcode)
+      const ordersRes = await apiClient("/api/stores/current/transfer-orders")
+      if (!ordersRes.ok) return null
+
+      const orders = (await ordersRes.json()) as TransferOrderSummary[]
+      const candidateOrders = (orders || []).filter((order) => (order.missing_qty_total ?? 0) > 0)
+
+      for (const order of candidateOrders) {
+        const detailsRes = await apiClient(`/api/transfer-orders/${order.id}`)
+        if (!detailsRes.ok) continue
+        const details = (await detailsRes.json()) as TransferOrderDetails
+        const items = details.items || []
+
+        for (const item of items) {
+          const barcodes = (item.products?.barcode || "")
+            .split(",")
+            .map((entry) => normalizeBarcode(entry))
+            .filter(Boolean)
+          if (!barcodes.includes(normalizedBarcode)) continue
+
+          const assigned = Number(item.assigned_qty || 0)
+          const verified = Number(item.verified_qty || 0)
+          if (verified < assigned) {
+            return {
+              orderId: order.id,
+              productName: item.products?.name || "This product",
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error checking pending transfer verification:", error)
+    }
+
+    return null
+  }
+
+  const handleBarcodeSearch = async () => {
     const rawInput = barcodeInput.trim()
     if (!rawInput) return
 
@@ -1012,17 +1077,37 @@ export default function BillingAndCart() {
         barcodeInputRef.current?.focus()
       }, 0)
     } else {
+      const pendingTransferMatch = await findPendingTransferForBarcode(input)
       setBarcodeInput("")
-      toast({
-        title: "Not Found",
-        description: `No product found for barcode: ${rawInput}`,
-        variant: "destructive",
-      })
+      if (pendingTransferMatch) {
+        setPendingVerificationPrompt({
+          orderId: pendingTransferMatch.orderId,
+          barcode: rawInput,
+          productName: pendingTransferMatch.productName,
+        })
+      } else {
+        toast({
+          title: "Product Unavailable",
+          description: "This product is not available for this store.",
+          variant: "destructive",
+        })
+      }
 
       setTimeout(() => {
         barcodeInputRef.current?.focus()
       }, 0)
     }
+  }
+
+  const handlePendingVerificationConfirm = () => {
+    if (!pendingVerificationPrompt) return
+    const payload = pendingVerificationPrompt
+    setPendingVerificationPrompt(null)
+    onRequestTransferVerification?.({
+      orderId: payload.orderId,
+      barcode: payload.barcode,
+      productName: payload.productName,
+    })
   }
 
   const handleBarcodeKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -2253,6 +2338,21 @@ export default function BillingAndCart() {
           <AlertDialogFooter>
             <AlertDialogCancel>No</AlertDialogCancel>
             <AlertDialogAction onClick={handleCancelInvoice}>Yes, Cancel Invoice</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!pendingVerificationPrompt} onOpenChange={(nextOpen) => !nextOpen && setPendingVerificationPrompt(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Product Not Verified</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingVerificationPrompt?.productName || "This product"} is still not verified. Verify it first to make a proper bill.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handlePendingVerificationConfirm}>Verify</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

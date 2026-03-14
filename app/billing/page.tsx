@@ -58,6 +58,7 @@ export default function BillingPage() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [activeTab, setActiveTab] = useState('billing')
   const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false)
+  const [transferDialogInitialOrderId, setTransferDialogInitialOrderId] = useState<string>("")
   const [isReturnToAdminOpen, setIsReturnToAdminOpen] = useState(false)
   const [billingCartRefreshKey, setBillingCartRefreshKey] = useState(0)
   const isMobile = useIsMobile()
@@ -206,6 +207,11 @@ export default function BillingPage() {
     } catch (error) {
       console.error('Error marking all as read:', error)
     }
+  }
+
+  const handleRequestTransferVerification = ({ orderId }: { orderId: string }) => {
+    setTransferDialogInitialOrderId(orderId)
+    setIsTransferDialogOpen(true)
   }
 
   useEffect(() => {
@@ -441,7 +447,10 @@ export default function BillingPage() {
         </TabsList>
 
         <TabsContent value="billing" className="flex-1 overflow-auto p-4">
-          <BillingAndCart key={`billing-cart-${billingCartRefreshKey}`} />
+          <BillingAndCart
+            key={`billing-cart-${billingCartRefreshKey}`}
+            onRequestTransferVerification={handleRequestTransferVerification}
+          />
         </TabsContent>
 
         <TabsContent value="billing-history" className="flex-1 overflow-auto p-4">
@@ -457,7 +466,13 @@ export default function BillingPage() {
       </Tabs>
       <TransferVerificationDialog
         open={isTransferDialogOpen}
-        onOpenChange={setIsTransferDialogOpen}
+        onOpenChange={(nextOpen) => {
+          setIsTransferDialogOpen(nextOpen)
+          if (!nextOpen) {
+            setTransferDialogInitialOrderId("")
+          }
+        }}
+        initialSelectedOrderId={transferDialogInitialOrderId || undefined}
         onVerificationSaved={() => setBillingCartRefreshKey((prev) => prev + 1)}
       />
       <ReturnToAdminDialog isOpen={isReturnToAdminOpen} onClose={() => setIsReturnToAdminOpen(false)} />

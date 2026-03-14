@@ -101,12 +101,13 @@ interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   onVerificationSaved?: () => void
+  initialSelectedOrderId?: string
 }
 
 const AUTO_SCOPE = "__all"
 const normalizeBarcode = (value: string) => value.trim().replace(/^0+/, "")
 
-export default function TransferVerificationDialog({ open, onOpenChange, onVerificationSaved }: Props) {
+export default function TransferVerificationDialog({ open, onOpenChange, onVerificationSaved, initialSelectedOrderId }: Props) {
   const { toast } = useToast()
   const scanInputRef = useRef<HTMLInputElement | null>(null)
   const timerRefs = useRef<ReturnType<typeof setTimeout>[]>([])
@@ -214,7 +215,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
 
   useEffect(() => {
     if (open) {
-      setSelectedOrderId("")
+      setSelectedOrderId(initialSelectedOrderId || "")
       setOrderDetailsById({})
       setItemEditsByOrder({})
       setScanRows([])
@@ -229,7 +230,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     return () => {
       clearAnimationTimers()
     }
-  }, [open])
+  }, [open, initialSelectedOrderId])
 
   useEffect(() => {
     if (!open) return
