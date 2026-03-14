@@ -56,6 +56,11 @@ type TransferItem = {
   products?: {
     name?: string
     barcode?: string
+    price?: number | string
+    selling_price?: number | string
+    sellingPrice?: number | string
+    mrp?: number | string
+    unit_price?: number | string
   }
 }
 
@@ -105,6 +110,8 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   const { toast } = useToast()
   const scanInputRef = useRef<HTMLInputElement | null>(null)
   const timerRefs = useRef<ReturnType<typeof setTimeout>[]>([])
+  const autoSubmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastAutoSubmitSignatureRef = useRef("")
 
   const [loadingOrders, setLoadingOrders] = useState(false)
   const [loadingOrderDetails, setLoadingOrderDetails] = useState(false)
@@ -123,6 +130,17 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   const clearAnimationTimers = () => {
     timerRefs.current.forEach((id) => clearTimeout(id))
     timerRefs.current = []
+    if (autoSubmitTimerRef.current) {
+      clearTimeout(autoSubmitTimerRef.current)
+      autoSubmitTimerRef.current = null
+    }
+  }
+
+  const clearSubmissionBuffers = () => {
+    setScanRows([])
+    setScanLogs([])
+    setTouchedOrderIds([])
+    lastAutoSubmitSignatureRef.current = ""
   }
 
   const createInitialEdits = (details: TransferOrderDetails): Record<string, ItemEdit> => {
@@ -205,6 +223,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       setScanInput("")
       setConfirmDamagedRowId(null)
       clearAnimationTimers()
+      lastAutoSubmitSignatureRef.current = ""
       loadOrders()
     }
     return () => {
@@ -505,7 +524,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     return <Badge className="bg-green-600 hover:bg-green-600">Verified</Badge>
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = async ({ closeOnSuccess = true, silentSuccess = false }: { closeOnSuccess?: boolean; silentSuccess?: boolean } = {}) => {
     const orderIdsToSubmit = selectedOrderId
       ? touchedOrderIds.includes(selectedOrderId)
         ? [selectedOrderId]
@@ -513,10 +532,12 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       : touchedOrderIds
 
     if (!orderIdsToSubmit.length) {
-      toast({
-        title: "Nothing to Submit",
-        description: "Scan at least one product before submitting verification.",
-      })
+      if (!silentSuccess) {
+        toast({
+          title: "Nothing to Submit",
+          description: "Scan at least one product before submitting verification.",
+        })
+      }
       return
     }
 
@@ -621,12 +642,16 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
           const failedCount = Number(batchResult?.failed_count || 0)
 
           if (successCount > 0 && failedCount === 0) {
-            toast({
-              title: "Verification Saved",
-              description: `Updated ${successCount} order${successCount > 1 ? "s" : ""}.`,
-            })
-            await loadOrders()
-            onOpenChange(false)
+            if (!silentSuccess) {
+              toast({
+                title: "Verification Saved",
+                description: `Updated ${successCount} order${successCount > 1 ? "s" : ""}.`,
+              })
+            }
+            clearSubmissionBuffers()
+            if (closeOnSuccess) {
+              onOpenChange(false)
+            }
             onVerificationSaved?.()
             return
           }
@@ -686,12 +711,16 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       }
 
       if (successCount > 0 && failures.length === 0) {
-        toast({
-          title: "Verification Saved",
-          description: `Updated ${successCount} order${successCount > 1 ? "s" : ""}.`,
-        })
-        await loadOrders()
-        onOpenChange(false)
+        if (!silentSuccess) {
+          toast({
+            title: "Verification Saved",
+            description: `Updated ${successCount} order${successCount > 1 ? "s" : ""}.`,
+          })
+        }
+        clearSubmissionBuffers()
+        if (closeOnSuccess) {
+          onOpenChange(false)
+        }
         onVerificationSaved?.()
         return
       }
@@ -721,7 +750,66 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     [scanRows, selectedOrderId],
   )
 
-  const canSubmit = touchedOrderIds.length > 0 && !saving
+  const hasPendingAnimation = useMemo(() => scanRows.some((row) => row.status === "pending"), [scanRows])
+  const autoSubmitSignature = useMemo(() => {
+    if (!touchedOrderIds.length) return ""
+    const orderSignature = [...touchedOrderIds].sort().join(",")
+    const scanSignature = scanLogs
+      .map((scan) => `${scan.order_id}:${scan.transfer_item_id}:${scan.event_type}:${scan.quantity}`)
+      .join("|")
+    return `${orderSignature}::${scanSignature}`
+  }, [touchedOrderIds, scanLogs])
+
+  useEffect(() => {
+    if (!open || saving || hasPendingAnimation || !autoSubmitSignature) return
+    if (lastAutoSubmitSignatureRef.current === autoSubmitSignature) return
+
+    if (autoSubmitTimerRef.current) {
+      clearTimeout(autoSubmitTimerRef.current)
+    }
+
+    autoSubmitTimerRef.current = setTimeout(() => {
+      lastAutoSubmitSignatureRef.current = autoSubmitSignature
+      handleSubmit({ closeOnSuccess: false, silentSuccess: true })
+    }, 180)
+
+    return () => {
+      if (autoSubmitTimerRef.current) {
+        clearTimeout(autoSubmitTimerRef.current)
+        autoSubmitTimerRef.current = null
+      }
+    }
+  }, [open, saving, hasPendingAnimation, autoSubmitSignature])
+
+  const canAutoSave = touchedOrderIds.length > 0
+
+  const getItemPrice = (item: TransferItem): unknown => {
+    const rawProduct = item.products as unknown
+    const product = (Array.isArray(rawProduct) ? rawProduct[0] : rawProduct) as
+      | (TransferItem["products"] & {
+          sellingPrice?: number | string
+          mrp?: number | string
+          unit_price?: number | string
+        })
+      | undefined
+
+    return (
+      product?.selling_price ??
+      product?.sellingPrice ??
+      (item as unknown as { selling_price?: number | string }).selling_price ??
+      (item as unknown as { sellingPrice?: number | string }).sellingPrice
+    )
+  }
+
+  const formatPrice = (value: unknown) => {
+    if (value === null || value === undefined || value === "") return "N/A"
+    const numeric =
+      typeof value === "string"
+        ? Number(value.replace(/[^0-9.-]/g, ""))
+        : Number(value)
+    if (!Number.isFinite(numeric)) return "N/A"
+    return `Rs ${numeric.toFixed(2)}`
+  }
 
   return (
     <>
@@ -730,7 +818,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
           <DialogHeader>
             <DialogTitle>Receive Assigned Products</DialogTitle>
             <DialogDescription>
-              Scan first and verify. You can focus one order, or keep auto mode and scan across multiple orders.
+              Scan first and verify. Once animation completes, verification is auto-saved.
             </DialogDescription>
           </DialogHeader>
 
@@ -851,6 +939,9 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
                           <div>
                             <p className="font-medium">{item.products?.name || item.product_id}</p>
                             <p className="text-xs text-muted-foreground">Barcode: {item.products?.barcode || "N/A"}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Price: {formatPrice(getItemPrice(item))}
+                            </p>
                           </div>
                           <div className="text-xs text-right">
                             <p>Assigned: {item.assigned_qty}</p>
@@ -867,11 +958,11 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
           </div>
 
           <DialogFooter className="sticky bottom-0 z-20 border-t bg-background pt-3">
+            <p className="text-xs text-muted-foreground mr-auto">
+              {saving ? "Saving verification..." : canAutoSave ? "Verification will save automatically after scan animation." : "Scan a product to start verification."}
+            </p>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSubmit} disabled={!canSubmit}>
-              {saving ? "Saving..." : "Submit Verification"}
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

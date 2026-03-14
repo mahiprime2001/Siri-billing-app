@@ -278,12 +278,18 @@ def get_transfer_order(order_id):
         if order.get("store_id") != store_id:
             return jsonify({"message": "Transfer order not assigned to your store"}), 403
 
-        items_response = supabase.table("inventory_transfer_items").select("*, products(name, barcode)").eq(
+        items_response = supabase.table("inventory_transfer_items").select("*, products(name, barcode, price, selling_price)").eq(
             "transfer_order_id", order_id
         ).execute()
         items = items_response.data or []
         normalized_items = []
         for item in items:
+            product_ref = item.get("products")
+            if isinstance(product_ref, list):
+                product_ref = product_ref[0] if product_ref else {}
+            if not isinstance(product_ref, dict):
+                product_ref = {}
+
             assigned = int(item.get("assigned_qty") or 0)
             verified = int(item.get("verified_qty") or 0)
             damaged = int(item.get("damaged_qty") or 0)
@@ -292,6 +298,11 @@ def get_transfer_order(order_id):
             normalized_items.append(
                 {
                     **item,
+                    "products": {
+                        **product_ref,
+                        "price": product_ref.get("price"),
+                        "selling_price": product_ref.get("selling_price"),
+                    },
                     "missing_qty": missing,
                     "status": _derive_transfer_item_state(item),
                 }
