@@ -76,6 +76,7 @@ type ScanRow = {
   transfer_item_id: string
   barcode: string
   product_name: string
+  selling_price?: number | string
   quantity: number
   status: "pending" | "verified" | "damaged"
   entry_mode: "scan" | "manual"
@@ -138,7 +139,6 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   }
 
   const clearSubmissionBuffers = () => {
-    setScanRows([])
     setScanLogs([])
     setTouchedOrderIds([])
     lastAutoSubmitSignatureRef.current = ""
@@ -355,6 +355,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
         next[existingIndex] = {
           ...next[existingIndex],
           quantity: next[existingIndex].quantity + 1,
+          selling_price: getItemPrice(item) as number | string | undefined,
           status: "pending",
           entry_mode: entryMode,
           barcode: item.products?.barcode || barcode,
@@ -368,6 +369,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
           transfer_item_id: item.id,
           barcode: item.products?.barcode || barcode,
           product_name: item.products?.name || item.product_id,
+          selling_price: getItemPrice(item) as number | string | undefined,
           quantity: 1,
           status: "pending",
           entry_mode: entryMode,
@@ -812,6 +814,34 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     return `Rs ${numeric.toFixed(2)}`
   }
 
+  const getOrderMissingQty = (orderId: string) => {
+    const details = orderDetailsById[orderId]
+    if (!details) {
+      const order = orders.find((entry) => entry.id === orderId)
+      return Number(order?.missing_qty_total ?? 0)
+    }
+
+    return details.items.reduce((missing, item) => {
+      const edit = itemEditsByOrder[orderId]?.[item.id]
+      const assigned = Number(item.assigned_qty || 0)
+      const verified = Number(edit?.verified_qty ?? item.verified_qty ?? 0)
+      const damaged = Number(edit?.damaged_qty ?? item.damaged_qty ?? 0)
+      const wrong = Number(edit?.wrong_store_qty ?? item.wrong_store_qty ?? 0)
+      const processed = verified + damaged + wrong
+      return missing + Math.max(0, assigned - processed)
+    }, 0)
+  }
+
+  const selectableOrders = orders.filter((order) => getOrderMissingQty(order.id) > 0)
+
+  useEffect(() => {
+    if (!selectedOrderId) return
+    const isStillSelectable = selectableOrders.some((order) => order.id === selectedOrderId)
+    if (!isStillSelectable) {
+      setSelectedOrderId("")
+    }
+  }, [selectedOrderId, selectableOrders])
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -832,9 +862,9 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={AUTO_SCOPE}>All active orders (auto)</SelectItem>
-                  {orders.map((order) => (
+                  {selectableOrders.map((order) => (
                     <SelectItem key={order.id} value={order.id}>
-                      {order.id} • {order.status} • Missing {order.missing_qty_total ?? 0}
+                      {order.id} • {order.status} • Missing {getOrderMissingQty(order.id)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -894,6 +924,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
                           <div className="min-w-0">
                             <p className="text-sm font-medium truncate">{row.product_name}</p>
                             <p className="text-xs text-muted-foreground truncate">{row.barcode}</p>
+                            <p className="text-xs text-muted-foreground">Selling Price: {formatPrice(row.selling_price)}</p>
                             <p className="text-[11px] text-muted-foreground">Order: {row.order_id}</p>
                           </div>
                         </div>
