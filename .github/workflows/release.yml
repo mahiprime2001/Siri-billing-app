@@ -251,23 +251,50 @@ jobs:
         run: |
           VERSION="${{ steps.bump.outputs.version }}"
           TAG="v$VERSION"
+          MSI_DIR="src-tauri/target/release/bundle/msi"
+          MSI_FILE=$(ls "$MSI_DIR"/*.msi | head -n 1)
+          SIG_FILE="$MSI_FILE.sig"
+          JSON_FILE="$MSI_DIR/latest.json"
+
+          if [ -z "$MSI_FILE" ] || [ ! -f "$MSI_FILE" ]; then
+            echo "❌ MSI file missing. Directory contents:"
+            ls -lah "$MSI_DIR"
+            exit 1
+          fi
+
+          if [ ! -f "$SIG_FILE" ]; then
+            echo "❌ Signature file missing: $SIG_FILE"
+            exit 1
+          fi
+
+          if [ ! -f "$JSON_FILE" ]; then
+            echo "❌ latest.json missing: $JSON_FILE"
+            exit 1
+          fi
+
+          echo "Files to upload:"
+          ls -lah "$MSI_DIR"
+          echo "MSI:  $MSI_FILE"
+          echo "SIG:  $SIG_FILE"
+          echo "JSON: $JSON_FILE"
 
           echo "Creating or updating release $TAG..."
 
-          # Try to create the release + upload assets
-          gh release create "$TAG" \
-            --title "Release $TAG" \
-            --notes "Auto-release $TAG\nBuilt with Tauri 2 • Next.js 16 • Python backend" \
-            --latest \
-            src-tauri/target/release/bundle/msi/*.msi \
-            src-tauri/target/release/bundle/msi/*.sig \
-            src-tauri/target/release/bundle/msi/latest.json 2>/dev/null || {
-              echo "Release $TAG already exists → uploading / updating assets only"
-              gh release upload "$TAG" \
-                src-tauri/target/release/bundle/msi/*.msi \
-                src-tauri/target/release/bundle/msi/*.sig \
-                src-tauri/target/release/bundle/msi/latest.json \
-                --clobber
-            }
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists → uploading / updating assets only"
+            gh release upload "$TAG" \
+              "$MSI_FILE" \
+              "$SIG_FILE" \
+              "$JSON_FILE" \
+              --clobber
+          else
+            gh release create "$TAG" \
+              --title "Release $TAG" \
+              --notes "Auto-release $TAG\nBuilt with Tauri 2 • Next.js 16 • Python backend" \
+              --latest \
+              "$MSI_FILE" \
+              "$SIG_FILE" \
+              "$JSON_FILE"
+          fi
 
           echo "Release page: https://github.com/${{ github.repository }}/releases/tag/$TAG"
