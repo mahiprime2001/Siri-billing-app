@@ -1193,8 +1193,10 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
                   <CardContent className="space-y-2">
                     {details.items.map((item) => {
                       const edit = itemEditsByOrder[orderId]?.[item.id]
-                      const verifiedQty = Number(edit?.verified_qty ?? item.verified_qty ?? 0)
-                      const damagedQty = Number(edit?.damaged_qty ?? item.damaged_qty ?? 0)
+                      const totalVerifiedQty = Number(edit?.verified_qty ?? item.verified_qty ?? 0)
+                      const totalDamagedQty = Number(edit?.damaged_qty ?? item.damaged_qty ?? 0)
+                      const verifiedQty = Math.max(0, totalVerifiedQty - Number(item.verified_qty || 0))
+                      const damagedQty = Math.max(0, totalDamagedQty - Number(item.damaged_qty || 0))
                       return (
                         <div key={item.id} className="border rounded-lg p-2 text-sm flex items-center justify-between">
                           <div>
