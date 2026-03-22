@@ -120,6 +120,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   const [loadingOrders, setLoadingOrders] = useState(false)
   const [loadingOrderDetails, setLoadingOrderDetails] = useState(false)
   const [orders, setOrders] = useState<TransferOrder[]>([])
+  const [sessionScopeOrderIds, setSessionScopeOrderIds] = useState<string[]>([])
   const [selectedOrderId, setSelectedOrderId] = useState<string>("")
   const [orderDetailsById, setOrderDetailsById] = useState<Record<string, TransferOrderDetails>>({})
   const [itemEditsByOrder, setItemEditsByOrder] = useState<Record<string, Record<string, ItemEdit>>>({})
@@ -199,6 +200,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       if (!response.ok) throw new Error("Failed to fetch transfer orders")
       const data = (await response.json()) as TransferOrder[]
       setOrders(data)
+      setSessionScopeOrderIds(data.map((order) => order.id).filter(Boolean))
       await preloadOrderDetails(data)
     } catch (error) {
       console.error("Error loading transfer orders:", error)
@@ -215,6 +217,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   useEffect(() => {
     if (open) {
       setSelectedOrderId(initialSelectedOrderId || "")
+      setSessionScopeOrderIds([])
       setOrderDetailsById({})
       setItemEditsByOrder({})
       setScanRows([])
@@ -401,7 +404,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     scheduleStatusToVerified(rowId)
   }
 
-  const handleBarcodeSubmit = (entryMode: "scan" | "manual") => {
+  const handleBarcodeSubmit = async (entryMode: "scan" | "manual") => {
     const entered = scanInput.trim()
     if (!entered) return
 
@@ -415,6 +418,25 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
         })
         return
       }
+
+      try {
+        const barcodeResponse = await apiClient(
+          `/api/stores/current/transfer-orders/barcode-status?barcode=${encodeURIComponent(entered)}`,
+        )
+        if (barcodeResponse.ok) {
+          const barcodeStatus = await barcodeResponse.json()
+          if (barcodeStatus?.already_verified) {
+            setScanErrorDialog({
+              title: "Already Verified",
+              description: "This product is already fully verified for assigned quantity.",
+            })
+            return
+          }
+        }
+      } catch (error) {
+        console.error("Barcode status lookup failed:", error)
+      }
+
       setScanErrorDialog({
         title: "Wrong Stock",
         description: "This barcode does not belong to your active transfer orders.",
@@ -819,12 +841,10 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     return selectableOrders.map((order) => order.id)
   }, [selectedOrderId, selectableOrders])
 
-  // Keep top summary independent from "selectableOrders" so counts do not
-  // drop when an order becomes fully verified during the current session.
   const summaryOrderIds = useMemo(() => {
     if (selectedOrderId) return [selectedOrderId]
-    return orders.map((order) => order.id)
-  }, [selectedOrderId, orders])
+    return sessionScopeOrderIds
+  }, [selectedOrderId, sessionScopeOrderIds])
 
   const summary = useMemo(() => {
     let assigned = 0

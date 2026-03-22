@@ -83,6 +83,10 @@ def _derive_transfer_item_state(item: dict) -> str:
     return "in_progress"
 
 
+def _normalize_transfer_barcode(value: str) -> str:
+    return str(value or "").strip().lstrip("0")
+
+
 def _update_local_storeinventory(store_id: str, product_id: str, delta_qty: int, now_iso: str):
     if not delta_qty:
         return
@@ -343,6 +347,98 @@ def get_transfer_order(order_id):
         return jsonify(order), 200
     except Exception as e:
         app.logger.error(f"❌ Error fetching transfer order {order_id}: {str(e)}")
+        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+
+
+@store_bp.route('/stores/current/transfer-orders/barcode-status', methods=['GET'])
+@require_auth
+def get_transfer_barcode_status():
+    """Resolve barcode against current store transfer orders (active + completed)."""
+    try:
+        barcode = request.args.get("barcode", "")
+        normalized_barcode = _normalize_transfer_barcode(barcode)
+        if not normalized_barcode:
+            return jsonify({"message": "barcode is required"}), 400
+
+        current_user_id = get_jwt_identity()
+        supabase = get_supabase_client()
+        store_id = _get_current_store_id(supabase, current_user_id)
+        if not store_id:
+            return jsonify({"message": "No store assigned to this user"}), 404
+
+        order_response = (
+            supabase.table("inventory_transfer_orders")
+            .select("id, status, created_at")
+            .eq("store_id", store_id)
+            .in_("status", ["pending", "in_progress", "completed", "closed_with_issues"])
+            .order("created_at", desc=True)
+            .limit(300)
+            .execute()
+        )
+        orders = order_response.data or []
+        if not orders:
+            return jsonify({"found": False, "already_verified": False, "reason": "not_found"}), 200
+
+        order_by_id = {str(o.get("id")): (o.get("status") or "") for o in orders if o.get("id")}
+        order_ids = list(order_by_id.keys())
+        if not order_ids:
+            return jsonify({"found": False, "already_verified": False, "reason": "not_found"}), 200
+
+        items_response = (
+            supabase.table("inventory_transfer_items")
+            .select("id, transfer_order_id, assigned_qty, verified_qty, damaged_qty, wrong_store_qty, products(barcode, name)")
+            .in_("transfer_order_id", order_ids)
+            .execute()
+        )
+        items = items_response.data or []
+
+        matched_items = []
+        for item in items:
+            product_ref = item.get("products")
+            if isinstance(product_ref, list):
+                product_ref = product_ref[0] if product_ref else {}
+            if not isinstance(product_ref, dict):
+                product_ref = {}
+
+            raw_barcodes = str(product_ref.get("barcode") or "")
+            normalized_codes = [_normalize_transfer_barcode(code) for code in raw_barcodes.split(",")]
+            normalized_codes = [code for code in normalized_codes if code]
+            if normalized_barcode in normalized_codes:
+                matched_items.append(item)
+
+        if not matched_items:
+            return jsonify({"found": False, "already_verified": False, "reason": "not_found"}), 200
+
+        for item in matched_items:
+            assigned = int(item.get("assigned_qty") or 0)
+            verified = int(item.get("verified_qty") or 0)
+            damaged = int(item.get("damaged_qty") or 0)
+            wrong_store = int(item.get("wrong_store_qty") or 0)
+            processed = verified + damaged + wrong_store
+            if assigned > 0 and processed >= assigned:
+                return jsonify(
+                    {
+                        "found": True,
+                        "already_verified": True,
+                        "reason": "already_verified",
+                        "order_id": item.get("transfer_order_id"),
+                    }
+                ), 200
+
+        first_item = matched_items[0]
+        fallback_order_id = str(first_item.get("transfer_order_id") or "")
+        fallback_order_status = order_by_id.get(fallback_order_id, "")
+        return jsonify(
+            {
+                "found": True,
+                "already_verified": False,
+                "reason": "active_or_pending",
+                "order_id": fallback_order_id,
+                "order_status": fallback_order_status,
+            }
+        ), 200
+    except Exception as e:
+        app.logger.error(f"❌ Error resolving transfer barcode status: {str(e)}")
         return jsonify({"message": "An error occurred", "error": str(e)}), 500
 
 
