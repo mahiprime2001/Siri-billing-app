@@ -819,13 +819,20 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     return selectableOrders.map((order) => order.id)
   }, [selectedOrderId, selectableOrders])
 
+  // Keep top summary independent from "selectableOrders" so counts do not
+  // drop when an order becomes fully verified during the current session.
+  const summaryOrderIds = useMemo(() => {
+    if (selectedOrderId) return [selectedOrderId]
+    return orders.map((order) => order.id)
+  }, [selectedOrderId, orders])
+
   const summary = useMemo(() => {
     let assigned = 0
     let verified = 0
     let damaged = 0
     let wrong = 0
 
-    visibleOrderIds.forEach((orderId) => {
+    summaryOrderIds.forEach((orderId) => {
       const details = orderDetailsById[orderId]
       if (!details) return
       details.items.forEach((item) => {
@@ -839,7 +846,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
 
     const missing = Math.max(0, assigned - verified - damaged - wrong)
     return { assigned, verified, damaged, wrong, missing }
-  }, [visibleOrderIds, orderDetailsById, itemEditsByOrder])
+  }, [summaryOrderIds, orderDetailsById, itemEditsByOrder])
 
   const historyOrderIds = useMemo(() => {
     const allOrderIds = selectedOrderId ? [selectedOrderId] : Object.keys(orderDetailsById)
