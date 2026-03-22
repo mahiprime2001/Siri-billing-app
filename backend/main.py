@@ -12,7 +12,15 @@ from decimal import Decimal
 from urllib.parse import urlparse
 from pathlib import Path
 from flask import Flask, request, jsonify, make_response, g
-from flask_jwt_extended import JWTManager, get_jwt, get_jwt_identity, jwt_required
+from flask_jwt_extended import (
+    JWTManager,
+    get_jwt,
+    get_jwt_identity,
+    jwt_required,
+    verify_jwt_in_request,
+    create_access_token,
+    set_access_cookies,
+)
 import threading
 import uuid
 import atexit
@@ -219,6 +227,32 @@ def is_local_origin(origin):
 # ==================== CORS CONFIGURATION ====================
 @app.after_request
 def after_request(response):
+    # Sliding-session refresh: if a valid JWT is near expiry and user is active,
+    # mint a fresh access token and return it in cookie + header.
+    try:
+        verify_jwt_in_request(optional=True)
+        jwt_data = get_jwt()
+        user_id = get_jwt_identity()
+
+        if jwt_data and user_id:
+            exp_ts = int(jwt_data.get('exp') or 0)
+            now_ts = int(datetime.now(timezone.utc).timestamp())
+            remaining_seconds = exp_ts - now_ts
+
+            # Refresh only when token has <= 30 minutes left.
+            if remaining_seconds <= 30 * 60:
+                refreshed_claims = {
+                    'email': jwt_data.get('email'),
+                    'name': jwt_data.get('name'),
+                    'role': jwt_data.get('role'),
+                }
+                refreshed_token = create_access_token(identity=user_id, additional_claims=refreshed_claims)
+                set_access_cookies(response, refreshed_token)
+                response.headers['X-Access-Token'] = refreshed_token
+    except Exception:
+        # Never break the response for refresh issues.
+        pass
+
     origin = request.headers.get('Origin')
     app.logger.debug(f"[CORS] Request from origin: {origin}")
     app.logger.debug(f"[CORS] Request path: {request.path}")
@@ -231,7 +265,7 @@ def after_request(response):
         response.headers['Access-Control-Allow-Credentials'] = 'true'
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
-        response.headers['Access-Control-Expose-Headers'] = 'Content-Type, Set-Cookie'
+        response.headers['Access-Control-Expose-Headers'] = 'Content-Type, Set-Cookie, X-Access-Token'
         app.logger.debug(f"[CORS] Added CORS headers for origin: {origin}")
     
     return response

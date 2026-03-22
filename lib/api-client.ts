@@ -59,6 +59,12 @@ export async function apiClient(
   try {
     const response = await fetch(url, defaultOptions);
 
+    // Sliding-session token refresh from backend.
+    const refreshedToken = response.headers.get('X-Access-Token');
+    if (refreshedToken) {
+      authManager.updateToken(refreshedToken);
+    }
+
     // ✅ Handle 401 errors
     if (response.status === 401) {
       let message = "Session expired";

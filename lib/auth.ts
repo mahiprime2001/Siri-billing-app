@@ -58,6 +58,18 @@ export const authManager = {
     }
   },
 
+  updateToken(token: string) {
+    try {
+      if (!token) return
+      const tokenParts = token.split('.')
+      if (tokenParts.length !== 3) return
+      safeStorage.setItem(TOKEN_KEY, token)
+      this.updateActivity()
+    } catch (error) {
+      // noop
+    }
+  },
+
   getToken(): string | null {
     try {
       if (this.isTokenExpired()) {
