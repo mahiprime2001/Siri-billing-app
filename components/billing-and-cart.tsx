@@ -229,6 +229,10 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
     barcode: string
     productName?: string
   } | null>(null)
+  const [missingBarcodeAlert, setMissingBarcodeAlert] = useState<{
+    barcode: string
+    message: string
+  } | null>(null)
 
   const barcodeInputRef = useRef<HTMLInputElement>(null)
   const idleFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -1086,10 +1090,9 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
           productName: pendingTransferMatch.productName,
         })
       } else {
-        toast({
-          title: "Product Unavailable",
-          description: "This product is not available for this store.",
-          variant: "destructive",
+        setMissingBarcodeAlert({
+          barcode: rawInput,
+          message: "This barcode is not available in this store inventory.",
         })
       }
 
@@ -2353,6 +2356,20 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handlePendingVerificationConfirm}>Verify</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!missingBarcodeAlert} onOpenChange={(nextOpen) => !nextOpen && setMissingBarcodeAlert(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Barcode Not Found</AlertDialogTitle>
+            <AlertDialogDescription>
+              {missingBarcodeAlert?.message} {missingBarcodeAlert?.barcode ? `(${missingBarcodeAlert.barcode})` : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setMissingBarcodeAlert(null)}>OK</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

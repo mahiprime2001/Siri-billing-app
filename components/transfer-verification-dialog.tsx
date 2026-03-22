@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -85,10 +86,13 @@ type ScanRow = {
 type ScanLog = {
   order_id: string
   transfer_item_id: string
+  product_name: string
+  selling_price?: number | string
   barcode: string
   quantity: number
   entry_mode: "scan" | "manual"
   event_type: "verified" | "damaged"
+  logged_at: string
 }
 
 type ItemEdit = {
@@ -112,8 +116,6 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   const { toast } = useToast()
   const scanInputRef = useRef<HTMLInputElement | null>(null)
   const timerRefs = useRef<ReturnType<typeof setTimeout>[]>([])
-  const autoSubmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const lastAutoSubmitSignatureRef = useRef("")
 
   const [loadingOrders, setLoadingOrders] = useState(false)
   const [loadingOrderDetails, setLoadingOrderDetails] = useState(false)
@@ -125,6 +127,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   const [scanInput, setScanInput] = useState("")
   const [scanRows, setScanRows] = useState<ScanRow[]>([])
   const [scanLogs, setScanLogs] = useState<ScanLog[]>([])
+  const [activeViewTab, setActiveViewTab] = useState<"scan" | "history">("scan")
   const [touchedOrderIds, setTouchedOrderIds] = useState<string[]>([])
   const [confirmDamagedRowId, setConfirmDamagedRowId] = useState<string | null>(null)
   const [scanErrorDialog, setScanErrorDialog] = useState<{ title: string; description: string } | null>(null)
@@ -132,16 +135,10 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   const clearAnimationTimers = () => {
     timerRefs.current.forEach((id) => clearTimeout(id))
     timerRefs.current = []
-    if (autoSubmitTimerRef.current) {
-      clearTimeout(autoSubmitTimerRef.current)
-      autoSubmitTimerRef.current = null
-    }
   }
 
   const clearSubmissionBuffers = () => {
-    setScanLogs([])
     setTouchedOrderIds([])
-    lastAutoSubmitSignatureRef.current = ""
   }
 
   const createInitialEdits = (details: TransferOrderDetails): Record<string, ItemEdit> => {
@@ -222,9 +219,9 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       setScanLogs([])
       setTouchedOrderIds([])
       setScanInput("")
+      setActiveViewTab("scan")
       setConfirmDamagedRowId(null)
       clearAnimationTimers()
-      lastAutoSubmitSignatureRef.current = ""
       loadOrders()
     }
     return () => {
@@ -245,29 +242,9 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     return Object.keys(orderDetailsById)
   }, [selectedOrderId, orderDetailsById])
 
-  const summary = useMemo(() => {
-    let assigned = 0
-    let verified = 0
-    let damaged = 0
-    let wrong = 0
-
-    selectedOrderIds.forEach((orderId) => {
-      const details = orderDetailsById[orderId]
-      if (!details) return
-      details.items.forEach((item) => {
-        const edit = itemEditsByOrder[orderId]?.[item.id]
-        assigned += Number(item.assigned_qty || 0)
-        verified += Number(edit?.verified_qty ?? item.verified_qty ?? 0)
-        damaged += Number(edit?.damaged_qty ?? item.damaged_qty ?? 0)
-        wrong += Number(edit?.wrong_store_qty ?? item.wrong_store_qty ?? 0)
-      })
-    })
-
-    const missing = Math.max(0, assigned - verified - damaged - wrong)
-    return { assigned, verified, damaged, wrong, missing }
-  }, [selectedOrderIds, orderDetailsById, itemEditsByOrder])
-
-  const findMatchingItem = (enteredBarcode: string): { orderId: string; item: TransferItem } | null => {
+  const findMatchingItem = (
+    enteredBarcode: string,
+  ): { match: { orderId: string; item: TransferItem } | null; alreadyProcessed: boolean } => {
     const normalized = normalizeBarcode(enteredBarcode)
     const matches: { orderId: string; item: TransferItem }[] = []
 
@@ -296,8 +273,10 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       return processed < assigned
     })
 
-    if (pendingMatches.length === 0) return null
-    if (pendingMatches.length === 1) return pendingMatches[0]
+    if (pendingMatches.length === 0) {
+      return { match: null, alreadyProcessed: matches.length > 0 }
+    }
+    if (pendingMatches.length === 1) return { match: pendingMatches[0], alreadyProcessed: false }
 
     // If the same barcode exists in multiple orders, auto-pick oldest order first.
     const orderPriority = new Map(
@@ -306,11 +285,12 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
         .map((order, idx) => [order.id, idx]),
     )
 
-    return [...pendingMatches].sort((a, b) => {
+    const picked = [...pendingMatches].sort((a, b) => {
       const aPriority = orderPriority.get(a.orderId) ?? Number.MAX_SAFE_INTEGER
       const bPriority = orderPriority.get(b.orderId) ?? Number.MAX_SAFE_INTEGER
       return aPriority - bPriority
     })[0]
+    return { match: picked, alreadyProcessed: false }
   }
 
   const scheduleStatusToVerified = (rowId: string) => {
@@ -405,10 +385,13 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       {
         order_id: orderId,
         transfer_item_id: item.id,
+        product_name: item.products?.name || item.product_id,
+        selling_price: getItemPrice(item) as number | string | undefined,
         barcode,
         quantity: 1,
         entry_mode: entryMode,
         event_type: "verified",
+        logged_at: new Date().toISOString(),
       },
     ])
 
@@ -420,9 +403,16 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     const entered = scanInput.trim()
     if (!entered) return
 
-    const match = findMatchingItem(entered)
+    const { match, alreadyProcessed } = findMatchingItem(entered)
     if (!match) {
       setScanInput("")
+      if (alreadyProcessed) {
+        setScanErrorDialog({
+          title: "Already Verified",
+          description: "This product is already fully verified for assigned quantity.",
+        })
+        return
+      }
       setScanErrorDialog({
         title: "Wrong Stock",
         description: "This barcode does not belong to your active transfer orders.",
@@ -514,10 +504,13 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       {
         order_id: row.order_id,
         transfer_item_id: row.transfer_item_id,
+        product_name: row.product_name,
+        selling_price: row.selling_price,
         barcode: row.barcode,
         quantity: 1,
         entry_mode: row.entry_mode,
         event_type: "damaged",
+        logged_at: new Date().toISOString(),
       },
     ])
 
@@ -656,12 +649,16 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
           const batchResult = await batchResponse.json().catch(() => null)
           successCount = Number(batchResult?.success_count || 0)
           const failedCount = Number(batchResult?.failed_count || 0)
+          const queuedCount = Number(batchResult?.queued_count || 0)
 
-          if (successCount > 0 && failedCount === 0) {
+          if ((successCount > 0 || queuedCount > 0) && failedCount === 0) {
             if (!silentSuccess) {
               toast({
-                title: "Verification Saved",
-                description: `Updated ${successCount} order${successCount > 1 ? "s" : ""}.`,
+                title: queuedCount > 0 ? "Verification Queued" : "Verification Saved",
+                description:
+                  queuedCount > 0
+                    ? `Queued ${queuedCount} order${queuedCount > 1 ? "s" : ""}. Sync will continue automatically when online.`
+                    : `Updated ${successCount} order${successCount > 1 ? "s" : ""}.`,
               })
             }
             clearSubmissionBuffers()
@@ -672,10 +669,10 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
             return
           }
 
-          if (successCount > 0 && failedCount > 0) {
+          if ((successCount > 0 || queuedCount > 0) && failedCount > 0) {
             toast({
               title: "Partially Saved",
-              description: `Saved ${successCount} order(s). Failed ${failedCount} order(s).`,
+              description: `Saved ${successCount} order(s), queued ${queuedCount} order(s), failed ${failedCount} order(s).`,
               variant: "destructive",
             })
             await loadOrders()
@@ -765,39 +762,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     () => (selectedOrderId ? scanRows.filter((row) => row.order_id === selectedOrderId) : scanRows),
     [scanRows, selectedOrderId],
   )
-
-  const hasPendingAnimation = useMemo(() => scanRows.some((row) => row.status === "pending"), [scanRows])
-  const autoSubmitSignature = useMemo(() => {
-    if (!touchedOrderIds.length) return ""
-    const orderSignature = [...touchedOrderIds].sort().join(",")
-    const scanSignature = scanLogs
-      .map((scan) => `${scan.order_id}:${scan.transfer_item_id}:${scan.event_type}:${scan.quantity}`)
-      .join("|")
-    return `${orderSignature}::${scanSignature}`
-  }, [touchedOrderIds, scanLogs])
-
-  useEffect(() => {
-    if (!open || saving || hasPendingAnimation || !autoSubmitSignature) return
-    if (lastAutoSubmitSignatureRef.current === autoSubmitSignature) return
-
-    if (autoSubmitTimerRef.current) {
-      clearTimeout(autoSubmitTimerRef.current)
-    }
-
-    autoSubmitTimerRef.current = setTimeout(() => {
-      lastAutoSubmitSignatureRef.current = autoSubmitSignature
-      handleSubmit({ closeOnSuccess: false, silentSuccess: true })
-    }, 180)
-
-    return () => {
-      if (autoSubmitTimerRef.current) {
-        clearTimeout(autoSubmitTimerRef.current)
-        autoSubmitTimerRef.current = null
-      }
-    }
-  }, [open, saving, hasPendingAnimation, autoSubmitSignature])
-
-  const canAutoSave = touchedOrderIds.length > 0
+  const canSave = touchedOrderIds.length > 0
 
   const getItemPrice = (item: TransferItem): unknown => {
     const rawProduct = item.products as unknown
@@ -847,6 +812,146 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
 
   const selectableOrders = orders.filter((order) => getOrderMissingQty(order.id) > 0)
 
+  const visibleOrderIds = useMemo(() => {
+    if (selectedOrderId) return [selectedOrderId]
+    return selectableOrders.map((order) => order.id)
+  }, [selectedOrderId, selectableOrders])
+
+  const summary = useMemo(() => {
+    let assigned = 0
+    let verified = 0
+    let damaged = 0
+    let wrong = 0
+
+    visibleOrderIds.forEach((orderId) => {
+      const details = orderDetailsById[orderId]
+      if (!details) return
+      details.items.forEach((item) => {
+        const edit = itemEditsByOrder[orderId]?.[item.id]
+        assigned += Number(item.assigned_qty || 0)
+        verified += Number(edit?.verified_qty ?? item.verified_qty ?? 0)
+        damaged += Number(edit?.damaged_qty ?? item.damaged_qty ?? 0)
+        wrong += Number(edit?.wrong_store_qty ?? item.wrong_store_qty ?? 0)
+      })
+    })
+
+    const missing = Math.max(0, assigned - verified - damaged - wrong)
+    return { assigned, verified, damaged, wrong, missing }
+  }, [visibleOrderIds, orderDetailsById, itemEditsByOrder])
+
+  const historyOrderIds = useMemo(() => {
+    if (selectedOrderId) return [selectedOrderId]
+    return Object.keys(orderDetailsById)
+  }, [selectedOrderId, orderDetailsById])
+
+  const formatHistoryTime = (iso: string) => {
+    const date = new Date(iso)
+    if (Number.isNaN(date.getTime())) return "N/A"
+    return date.toLocaleString()
+  }
+
+  const getLastVerifiedTimeForItem = (orderId: string, itemId: string) => {
+    const latest = scanLogs
+      .filter((log) => log.order_id === orderId && log.transfer_item_id === itemId && log.event_type === "verified")
+      .sort((a, b) => new Date(b.logged_at).getTime() - new Date(a.logged_at).getTime())[0]
+    return latest?.logged_at || ""
+  }
+
+  const markVerifiedUnitDamaged = (orderId: string, item: TransferItem) => {
+    const details = orderDetailsById[orderId]
+    if (!details) return
+
+    const edit = itemEditsByOrder[orderId]?.[item.id]
+    const verifiedQty = Number(edit?.verified_qty ?? item.verified_qty ?? 0)
+    if (verifiedQty <= 0) {
+      toast({
+        title: "No Verified Qty",
+        description: "No verified quantity is available to mark as damaged.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setItemEditsByOrder((prev) => {
+      const orderEdits = prev[orderId] || {}
+      const current = orderEdits[item.id] || {
+        verified_qty: Number(item.verified_qty || 0),
+        damaged_qty: Number(item.damaged_qty || 0),
+        wrong_store_qty: Number(item.wrong_store_qty || 0),
+        damage_reason: "",
+      }
+      return {
+        ...prev,
+        [orderId]: {
+          ...orderEdits,
+          [item.id]: {
+            ...current,
+            verified_qty: Math.max(0, current.verified_qty - 1),
+            damaged_qty: current.damaged_qty + 1,
+            damage_reason: "Marked damaged from verification history",
+          },
+        },
+      }
+    })
+
+    const barcode = (item.products?.barcode || "").split(",")[0]?.trim() || ""
+    setScanLogs((prev) => [
+      ...prev,
+      {
+        order_id: orderId,
+        transfer_item_id: item.id,
+        product_name: item.products?.name || item.product_id,
+        selling_price: getItemPrice(item) as number | string | undefined,
+        barcode,
+        quantity: 1,
+        entry_mode: "manual",
+        event_type: "damaged",
+        logged_at: new Date().toISOString(),
+      },
+    ])
+
+    setTouchedOrderIds((prev) => (prev.includes(orderId) ? prev : [...prev, orderId]))
+  }
+
+  const markVerifiedUnitReturnToAdmin = (orderId: string, item: TransferItem) => {
+    const details = orderDetailsById[orderId]
+    if (!details) return
+
+    const edit = itemEditsByOrder[orderId]?.[item.id]
+    const verifiedQty = Number(edit?.verified_qty ?? item.verified_qty ?? 0)
+    if (verifiedQty <= 0) {
+      toast({
+        title: "No Verified Qty",
+        description: "No verified quantity is available to return.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setItemEditsByOrder((prev) => {
+      const orderEdits = prev[orderId] || {}
+      const current = orderEdits[item.id] || {
+        verified_qty: Number(item.verified_qty || 0),
+        damaged_qty: Number(item.damaged_qty || 0),
+        wrong_store_qty: Number(item.wrong_store_qty || 0),
+        damage_reason: "",
+      }
+      return {
+        ...prev,
+        [orderId]: {
+          ...orderEdits,
+          [item.id]: {
+            ...current,
+            verified_qty: Math.max(0, current.verified_qty - 1),
+            wrong_store_qty: current.wrong_store_qty + 1,
+          },
+        },
+      }
+    })
+
+    setTouchedOrderIds((prev) => (prev.includes(orderId) ? prev : [...prev, orderId]))
+  }
+
   useEffect(() => {
     if (!selectedOrderId) return
     const isStillSelectable = selectableOrders.some((order) => order.id === selectedOrderId)
@@ -862,7 +967,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
           <DialogHeader>
             <DialogTitle>Receive Assigned Products</DialogTitle>
             <DialogDescription>
-              Scan first and verify. Once animation completes, verification is auto-saved.
+              Scan products, review verification details, then click Save to update billing cart.
             </DialogDescription>
           </DialogHeader>
 
@@ -897,76 +1002,177 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Scan / Enter Barcode</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex gap-2">
-                  <Input
-                    ref={scanInputRef}
-                    value={scanInput}
-                    onChange={(e) => setScanInput(e.target.value)}
-                    placeholder="Scan barcode or type manually"
-                    disabled={loadingOrderDetails || orders.length === 0}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault()
-                        handleBarcodeSubmit("scan")
-                      }
-                    }}
-                  />
-                  <Button type="button" variant="outline" disabled={loadingOrderDetails || orders.length === 0} onClick={() => handleBarcodeSubmit("manual")}>
-                    Add
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Press Enter after scanner input. In auto mode, barcode is matched to the correct order.
-                </p>
+            <Tabs value={activeViewTab} onValueChange={(value) => setActiveViewTab(value as "scan" | "history")}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="scan">Scan</TabsTrigger>
+                <TabsTrigger value="history">History</TabsTrigger>
+              </TabsList>
 
-                <div className="border rounded-lg p-3 min-h-[180px] space-y-2 bg-slate-50/60">
-                  {visibleScanRows.length === 0 ? (
-                    <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-                      No scanned products yet.
+              <TabsContent value="scan" className="mt-3">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Scan / Enter Barcode</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex gap-2">
+                      <Input
+                        ref={scanInputRef}
+                        value={scanInput}
+                        onChange={(e) => setScanInput(e.target.value)}
+                        placeholder="Scan barcode or type manually"
+                        disabled={loadingOrderDetails || orders.length === 0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault()
+                            handleBarcodeSubmit("scan")
+                          }
+                        }}
+                      />
+                      <Button type="button" variant="outline" disabled={loadingOrderDetails || orders.length === 0} onClick={() => handleBarcodeSubmit("manual")}>
+                        Add
+                      </Button>
                     </div>
-                  ) : (
-                    visibleScanRows.map((row) => (
-                      <div key={row.id} className="bg-white border rounded-md p-2 flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <ScanLine className={`h-4 w-4 ${row.status === "pending" ? "animate-pulse text-blue-600" : "text-slate-700"}`} />
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium truncate">{row.product_name}</p>
-                            <p className="text-xs text-muted-foreground truncate">{row.barcode}</p>
-                            <p className="text-xs text-muted-foreground">Selling Price: {formatPrice(row.selling_price)}</p>
-                            <p className="text-[11px] text-muted-foreground">Order: {row.order_id}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <Badge variant="outline">Qty {row.quantity}</Badge>
-                          {getStatusBadge(row.status)}
-                          {row.status !== "damaged" && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => openDamagedConfirm(row.id)}>
-                                  Damaged Product
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                    <p className="text-xs text-muted-foreground">
+                      Press Enter after scanner input. In auto mode, barcode is matched to the correct order.
+                    </p>
 
-            {selectedOrderIds.map((orderId) => {
+                    <div className="border rounded-lg p-3 min-h-[180px] space-y-2 bg-slate-50/60">
+                      {visibleScanRows.length === 0 ? (
+                        <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                          No scanned products yet.
+                        </div>
+                      ) : (
+                        visibleScanRows.map((row) => (
+                          <div key={row.id} className="bg-white border rounded-md p-2 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <ScanLine className={`h-4 w-4 ${row.status === "pending" ? "animate-pulse text-blue-600" : "text-slate-700"}`} />
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">{row.product_name}</p>
+                                <p className="text-xs text-muted-foreground truncate">{row.barcode}</p>
+                                <p className="text-xs text-muted-foreground">Selling Price: {formatPrice(row.selling_price)}</p>
+                                <p className="text-[11px] text-muted-foreground">Order: {row.order_id}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <Badge variant="outline">Qty {row.quantity}</Badge>
+                              {getStatusBadge(row.status)}
+                              {row.status !== "damaged" && (
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                                      <MoreVertical className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => openDamagedConfirm(row.id)}>
+                                      Damaged Product
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="history" className="mt-3">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Verification History</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {historyOrderIds.length === 0 ? (
+                      <div className="text-sm text-muted-foreground">No verification history yet.</div>
+                    ) : (
+                      historyOrderIds.map((orderId) => {
+                        const details = orderDetailsById[orderId]
+                        if (!details) return null
+
+                        const orderItems = details.items || []
+                        const orderCounts = orderItems.reduce(
+                          (acc, item) => {
+                            const edit = itemEditsByOrder[orderId]?.[item.id]
+                            const assigned = Number(item.assigned_qty || 0)
+                            const verified = Number(edit?.verified_qty ?? item.verified_qty ?? 0)
+                            const damaged = Number(edit?.damaged_qty ?? item.damaged_qty ?? 0)
+                            const wrong = Number(edit?.wrong_store_qty ?? item.wrong_store_qty ?? 0)
+                            acc.verified += verified
+                            acc.needed += Math.max(0, assigned - verified - damaged - wrong)
+                            return acc
+                          },
+                          { verified: 0, needed: 0 },
+                        )
+
+                        const verifiedItems = orderItems
+                          .map((item) => {
+                            const edit = itemEditsByOrder[orderId]?.[item.id]
+                            const verifiedQty = Number(edit?.verified_qty ?? item.verified_qty ?? 0)
+                            return { item, verifiedQty }
+                          })
+                          .filter(({ verifiedQty }) => verifiedQty > 0)
+
+                        return (
+                          <details key={orderId} className="border rounded-md bg-slate-50/50">
+                            <summary className="list-none cursor-pointer p-3 flex items-center justify-between">
+                              <span className="font-medium text-sm">Order: {orderId}</span>
+                              <span className="text-xs text-muted-foreground">
+                                Verified: {orderCounts.verified} • Needed: {orderCounts.needed}
+                              </span>
+                            </summary>
+                            <div className="px-3 pb-3 space-y-2">
+                              {verifiedItems.length === 0 ? (
+                                <div className="text-xs text-muted-foreground">No verified products in this order.</div>
+                              ) : (
+                                verifiedItems.map(({ item, verifiedQty }) => {
+                                  const barcode = (item.products?.barcode || "").split(",")[0]?.trim() || "N/A"
+                                  const lastVerified = getLastVerifiedTimeForItem(orderId, item.id)
+                                  return (
+                                    <div key={item.id} className="bg-white border rounded-md p-2 flex items-center justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <p className="text-sm font-medium truncate">{item.products?.name || item.product_id}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                          Price: {formatPrice(getItemPrice(item))} • Barcode: {barcode}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                          Verified Qty: {verifiedQty} • Last Verified: {lastVerified ? formatHistoryTime(lastVerified) : "N/A"}
+                                        </p>
+                                      </div>
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        <DropdownMenu>
+                                          <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                                              <MoreVertical className="h-4 w-4" />
+                                            </Button>
+                                          </DropdownMenuTrigger>
+                                          <DropdownMenuContent align="end">
+                                            <DropdownMenuItem onClick={() => markVerifiedUnitReturnToAdmin(orderId, item)}>
+                                              Return to Admin
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => markVerifiedUnitDamaged(orderId, item)}>
+                                              Damaged
+                                            </DropdownMenuItem>
+                                          </DropdownMenuContent>
+                                        </DropdownMenu>
+                                      </div>
+                                    </div>
+                                  )
+                                })
+                              )}
+                            </div>
+                          </details>
+                        )
+                      })
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+
+            {visibleOrderIds.map((orderId) => {
               const details = orderDetailsById[orderId]
               if (!details) return null
               return (
@@ -1004,10 +1210,13 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
 
           <DialogFooter className="sticky bottom-0 z-20 border-t bg-background pt-3">
             <p className="text-xs text-muted-foreground mr-auto">
-              {saving ? "Saving verification..." : canAutoSave ? "Verification will save automatically after scan animation." : "Scan a product to start verification."}
+              {saving ? "Saving verification..." : canSave ? "Click Save to apply verification and refresh billing cart." : "Scan a product to start verification."}
             </p>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Close
+            </Button>
+            <Button onClick={() => handleSubmit()} disabled={saving || !canSave}>
+              Save & Close
             </Button>
           </DialogFooter>
         </DialogContent>

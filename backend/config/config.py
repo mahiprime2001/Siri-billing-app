@@ -52,6 +52,7 @@ HSF_CODE_FILE = os.path.join(JSON_DIR, "hsf_codes.json")
 HSN_CODES_FILE = os.path.join(JSON_DIR, "hsn_codes.json")
 OFFLINE_BILL_QUEUE_FILE = os.path.join(JSON_DIR, "offline_bill_queue.json")
 OFFLINE_DAMAGE_RETURN_QUEUE_FILE = os.path.join(JSON_DIR, "offline_damage_return_queue.json")
+OFFLINE_TRANSFER_VERIFICATION_QUEUE_FILE = os.path.join(JSON_DIR, "offline_transfer_verification_queue.json")
 
 # =========================================================
 # 📝 LOGGING

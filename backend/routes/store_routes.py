@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, current_app as app, request
 from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
 from utils.connection_pool import get_supabase_client
+from utils.offline_transfer_verification_queue import enqueue_transfer_verification_create
 from datetime import datetime, timezone
 import hashlib
 from helpers.utils import read_json_file
@@ -537,14 +538,33 @@ def verify_transfer_order(order_id):
         if not store_id:
             return jsonify({"message": "No store assigned to this user"}), 404
 
-        result, status_code = _apply_transfer_order_verification(
-            supabase=supabase,
-            current_user_id=current_user_id,
-            store_id=store_id,
-            order_id=order_id,
-            data=data,
-        )
-        return jsonify(result), status_code
+        try:
+            result, status_code = _apply_transfer_order_verification(
+                supabase=supabase,
+                current_user_id=current_user_id,
+                store_id=store_id,
+                order_id=order_id,
+                data=data,
+            )
+            return jsonify(result), status_code
+        except Exception as apply_error:
+            queue_info = enqueue_transfer_verification_create(
+                user_id=current_user_id,
+                store_id=store_id,
+                order_id=order_id,
+                verification_data=data,
+            )
+            app.logger.warning(
+                f"⚠️ Transfer verification queued for order {order_id} due to cloud error: {apply_error}"
+            )
+            return jsonify(
+                {
+                    "message": "System offline. Transfer verification queued and will sync automatically.",
+                    "queued": True,
+                    "queue_id": queue_info["queue_id"],
+                    "verification_session_id": queue_info["verification_session_id"],
+                }
+            ), 202
     except Exception as e:
         app.logger.error(f"❌ Error verifying transfer order {order_id}: {str(e)}")
         return jsonify({"message": "An error occurred", "error": str(e)}), 500
@@ -573,6 +593,7 @@ def verify_transfer_orders_batch():
         success_count = 0
         failed_count = 0
         duplicate_count = 0
+        queued_count = 0
 
         for index, verification in enumerate(verifications):
             order_id = verification.get("order_id") or verification.get("orderId")
@@ -588,13 +609,37 @@ def verify_transfer_orders_batch():
                 "items": verification.get("items", []) or [],
                 "scans": verification.get("scans", []) or [],
             }
-            result, status_code = _apply_transfer_order_verification(
-                supabase=supabase,
-                current_user_id=current_user_id,
-                store_id=store_id,
-                order_id=order_id,
-                data=order_payload,
-            )
+            try:
+                result, status_code = _apply_transfer_order_verification(
+                    supabase=supabase,
+                    current_user_id=current_user_id,
+                    store_id=store_id,
+                    order_id=order_id,
+                    data=order_payload,
+                )
+            except Exception as apply_error:
+                queue_info = enqueue_transfer_verification_create(
+                    user_id=current_user_id,
+                    store_id=store_id,
+                    order_id=order_id,
+                    verification_data=order_payload,
+                )
+                queued_count += 1
+                results.append(
+                    {
+                        "index": index,
+                        "order_id": order_id,
+                        "status": "queued",
+                        "status_code": 202,
+                        "message": "System offline. Verification queued and will sync automatically.",
+                        "queued": True,
+                        "queue_id": queue_info["queue_id"],
+                        "verification_session_id": queue_info["verification_session_id"],
+                        "error": str(apply_error),
+                    }
+                )
+                continue
+
             row_status = "success" if status_code < 300 else "failed"
             if result.get("status") == "duplicate_ignored":
                 row_status = "duplicate_ignored"
@@ -614,7 +659,9 @@ def verify_transfer_orders_batch():
                 }
             )
 
-        response_status = 200 if failed_count == 0 else (207 if success_count > 0 or duplicate_count > 0 else 400)
+        response_status = 200 if failed_count == 0 else (207 if success_count > 0 or duplicate_count > 0 or queued_count > 0 else 400)
+        if failed_count == 0 and queued_count > 0 and success_count == 0 and duplicate_count == 0:
+            response_status = 202
         return jsonify(
             {
                 "message": "Batch verification processed",
@@ -622,6 +669,8 @@ def verify_transfer_orders_batch():
                 "success_count": success_count,
                 "failed_count": failed_count,
                 "duplicate_count": duplicate_count,
+                "queued_count": queued_count,
+                "queued": queued_count > 0,
                 "results": results,
             }
         ), response_status
