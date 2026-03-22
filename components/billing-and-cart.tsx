@@ -779,6 +779,11 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
       }
       
       const data = await response.json();
+      const fallbackUsed = response.headers.get("X-Fallback-Used") === "1"
+      const source = response.headers.get("X-Data-Source") || ""
+      if (fallbackUsed) {
+        console.warn(`⚠️ Products served from fallback source: ${source || "local_snapshot"}`)
+      }
       console.log("✅ Fetched store inventory products:", data.length, "items");
       console.log("📦 Sample product with tax:", data[0]);
       

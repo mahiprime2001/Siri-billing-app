@@ -5,8 +5,13 @@ from postgrest.exceptions import APIError
 from utils.connection_pool import get_supabase_client
 from helpers.utils import read_json_file
 from config.config import PRODUCTS_FILE, STOREINVENTORY_FILE, USER_STORES_FILE, HSN_CODES_FILE
+import time
 
 product_bp = Blueprint('product', __name__)
+_PRODUCTS_CLOUD_FAIL_UNTIL = {}
+_PRODUCTS_FALLBACK_CACHE = {}
+_PRODUCTS_FAIL_COOLDOWN_SECONDS = 20
+_PRODUCTS_FALLBACK_CACHE_TTL_SECONDS = 8
 
 
 def _extract_hsn_code(product_info: dict):
@@ -115,6 +120,24 @@ def _build_local_products_response(user_id: str, search: str, limit: int):
     return final_products[:limit]
 
 
+def _chunk_list(values, size):
+    chunk_size = max(1, int(size))
+    for idx in range(0, len(values), chunk_size):
+        yield values[idx: idx + chunk_size]
+
+
+def _products_cache_key(user_id: str, search: str, limit: int):
+    return f"{user_id}:{search}:{limit}"
+
+
+def _build_products_response(items, fallback_used: bool, data_source: str, cached: bool = False):
+    response = jsonify(items)
+    response.headers["X-Fallback-Used"] = "1" if fallback_used else "0"
+    response.headers["X-Data-Source"] = data_source
+    response.headers["X-Products-Cached"] = "1" if cached else "0"
+    return response
+
+
 @product_bp.route('/products', methods=['GET'])
 @require_auth
 def get_products():
@@ -122,6 +145,18 @@ def get_products():
     current_user_id = get_jwt_identity()
     search = request.args.get('search', '').strip()
     limit = request.args.get('limit', 100, type=int)
+
+    cache_key = _products_cache_key(str(current_user_id), search, limit)
+    now_ts = time.time()
+    fail_until = float(_PRODUCTS_CLOUD_FAIL_UNTIL.get(cache_key, 0))
+    if now_ts < fail_until:
+        cached = _PRODUCTS_FALLBACK_CACHE.get(cache_key)
+        if cached and now_ts - float(cached.get("ts", 0)) <= _PRODUCTS_FALLBACK_CACHE_TTL_SECONDS:
+            return _build_products_response(cached.get("items", []), fallback_used=True, data_source="local_snapshot", cached=True), 200
+
+        local_items = _build_local_products_response(current_user_id, search, limit)
+        _PRODUCTS_FALLBACK_CACHE[cache_key] = {"ts": now_ts, "items": local_items}
+        return _build_products_response(local_items, fallback_used=True, data_source="local_snapshot", cached=False), 200
 
     try:
         app.logger.info(f"User {current_user_id} fetching store inventory products")
@@ -162,27 +197,49 @@ def get_products():
             return jsonify([]), 200
 
         # Step 4: Get product details WITH HSN tax (products.tax removed)
-        products_query = supabase.table('products') \
-            .select('id, name, barcode, selling_price, price, hsn_code_id, hsn_codes(hsn_code, tax)') \
-            .in_('id', product_ids)
+        # Fetch in chunks + retry to reduce intermittent 502s from large/complex edge queries.
+        chunked_products = []
+        seen_ids = set()
+        max_retries = 2
+        for ids_chunk in _chunk_list(product_ids, 40):
+            query = supabase.table('products') \
+                .select('id, name, barcode, selling_price, price, hsn_code_id, hsn_codes(hsn_code, tax)') \
+                .in_('id', ids_chunk)
+            if search:
+                query = query.or_(f"name.ilike.%{search}%,barcode.ilike.%{search}%")
 
-        if search:
-            products_query = products_query.or_(
-                f"name.ilike.%{search}%,barcode.ilike.%{search}%"
-            )
+            chunk_response = None
+            for attempt in range(max_retries + 1):
+                try:
+                    chunk_response = query.limit(limit).order('name').execute()
+                    break
+                except APIError as chunk_error:
+                    is_last_attempt = attempt >= max_retries
+                    if is_last_attempt:
+                        app.logger.warning(
+                            f"Products cloud query failed for store {store_id}; serving local snapshot fallback. Error: {chunk_error}"
+                        )
+                        _PRODUCTS_CLOUD_FAIL_UNTIL[cache_key] = time.time() + _PRODUCTS_FAIL_COOLDOWN_SECONDS
+                        local_items = _build_local_products_response(current_user_id, search, limit)
+                        _PRODUCTS_FALLBACK_CACHE[cache_key] = {"ts": time.time(), "items": local_items}
+                        return _build_products_response(local_items, fallback_used=True, data_source="local_snapshot", cached=False), 200
+                    time.sleep(0.15 * (attempt + 1))
 
-        try:
-            products_response = products_query.limit(limit).order('name').execute()
-        except APIError as cloud_error:
-            app.logger.warning(
-                f"Products cloud query failed for store {store_id}; serving local snapshot fallback. Error: {cloud_error}"
-            )
-            return jsonify(_build_local_products_response(current_user_id, search, limit)), 200
-        if not products_response.data:
+            if not chunk_response or not chunk_response.data:
+                continue
+
+            for product in chunk_response.data:
+                pid = product.get("id")
+                if not pid or pid in seen_ids:
+                    continue
+                seen_ids.add(pid)
+                chunked_products.append(product)
+
+        if not chunked_products:
             app.logger.info("No products found matching criteria")
-            return jsonify([]), 200
+            return _build_products_response([], fallback_used=False, data_source="cloud"), 200
 
-        products = products_response.data
+        products = chunked_products
         product_info_map = {p['id']: p for p in products}
 
         # Step 5: Build final product list
@@ -216,13 +273,17 @@ def get_products():
             final_products.append(product)
 
         app.logger.info(f"Returning {len(final_products)} products from store inventory")
-        return jsonify(final_products), 200
+        _PRODUCTS_CLOUD_FAIL_UNTIL.pop(cache_key, None)
+        return _build_products_response(final_products, fallback_used=False, data_source="cloud"), 200
 
     except Exception as e:
         app.logger.error(f"Error fetching store inventory products: {str(e)}")
         import traceback
         app.logger.error(traceback.format_exc())
-        return jsonify(_build_local_products_response(current_user_id, search, limit)), 200
+        _PRODUCTS_CLOUD_FAIL_UNTIL[cache_key] = time.time() + _PRODUCTS_FAIL_COOLDOWN_SECONDS
+        local_items = _build_local_products_response(current_user_id, search, limit)
+        _PRODUCTS_FALLBACK_CACHE[cache_key] = {"ts": time.time(), "items": local_items}
+        return _build_products_response(local_items, fallback_used=True, data_source="local_snapshot", cached=False), 200
 
 
 @product_bp.route('/products/<product_id>', methods=['GET'])

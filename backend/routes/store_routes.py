@@ -5,8 +5,8 @@ from utils.connection_pool import get_supabase_client
 from utils.offline_transfer_verification_queue import enqueue_transfer_verification_create
 from datetime import datetime, timezone
 import hashlib
-from helpers.utils import read_json_file
-from config.config import STORES_FILE, USER_STORES_FILE
+from helpers.utils import read_json_file, write_json_file
+from config.config import STORES_FILE, USER_STORES_FILE, STOREINVENTORY_FILE
 
 store_bp = Blueprint('store', __name__)
 
@@ -81,6 +81,36 @@ def _derive_transfer_item_state(item: dict) -> str:
     if processed >= assigned:
         return "closed_with_issues" if (damaged > 0 or wrong_store > 0) else "completed"
     return "in_progress"
+
+
+def _update_local_storeinventory(store_id: str, product_id: str, delta_qty: int, now_iso: str):
+    if not delta_qty:
+        return
+    rows = read_json_file(STOREINVENTORY_FILE, [])
+    updated = False
+    for row in rows:
+        row_store_id = row.get("storeid") or row.get("storeId")
+        row_product_id = row.get("productid") or row.get("productId")
+        if str(row_store_id) == str(store_id) and str(row_product_id) == str(product_id):
+            current_qty = int(row.get("quantity") or 0)
+            row["quantity"] = max(0, current_qty + int(delta_qty))
+            row["updatedat"] = now_iso
+            updated = True
+            break
+
+    if not updated and delta_qty > 0:
+        rows.append(
+            {
+                "id": f"INV-LOCAL-{datetime.now(timezone.utc).timestamp()}-{product_id}",
+                "storeid": store_id,
+                "productid": product_id,
+                "quantity": int(delta_qty),
+                "assignedat": now_iso,
+                "updatedat": now_iso,
+            }
+        )
+
+    write_json_file(STOREINVENTORY_FILE, rows)
 
 @store_bp.route('/stores', methods=['GET'])
 @require_auth
@@ -366,6 +396,7 @@ def _apply_transfer_order_verification(supabase, current_user_id: str, store_id:
     now_iso = datetime.now(timezone.utc).isoformat()
     updated_items = []
     damaged_event_rows = []
+    local_inventory_deltas = {}
 
     for update in item_updates:
         item_id = update.get("transfer_item_id") or update.get("transferItemId")
@@ -407,6 +438,8 @@ def _apply_transfer_order_verification(supabase, current_user_id: str, store_id:
 
         delta_verified = max(0, new_verified - old_applied_verified)
         if delta_verified > 0:
+            product_key = str(item.get("product_id"))
+            local_inventory_deltas[product_key] = int(local_inventory_deltas.get(product_key, 0)) + int(delta_verified)
             inv_response = supabase.table("storeinventory").select("*").eq("storeid", store_id).eq(
                 "productid", item.get("product_id")
             ).limit(1).execute()
@@ -463,6 +496,10 @@ def _apply_transfer_order_verification(supabase, current_user_id: str, store_id:
         }
         supabase.table("inventory_transfer_items").update(item_payload).eq("id", item.get("id")).execute()
         updated_items.append({"item_id": item.get("id"), **item_payload, "delta_verified_applied": delta_verified})
+
+    if local_inventory_deltas:
+        for product_id, delta_qty in local_inventory_deltas.items():
+            _update_local_storeinventory(store_id, product_id, int(delta_qty), now_iso)
 
     if scans:
         scan_rows = []
