@@ -829,6 +829,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   const summary = useMemo(() => {
     let assigned = 0
     let verified = 0
+    let verifiedTotal = 0
     let damaged = 0
     let wrong = 0
 
@@ -837,14 +838,19 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       if (!details) return
       details.items.forEach((item) => {
         const edit = itemEditsByOrder[orderId]?.[item.id]
+        const baseVerified = Number(item.verified_qty || 0)
+        const currentVerified = Number(edit?.verified_qty ?? item.verified_qty ?? 0)
         assigned += Number(item.assigned_qty || 0)
-        verified += Number(edit?.verified_qty ?? item.verified_qty ?? 0)
+        // Session-only verified count: show only what was scanned/changed in this dialog session.
+        verified += Math.max(0, currentVerified - baseVerified)
+        verifiedTotal += currentVerified
         damaged += Number(edit?.damaged_qty ?? item.damaged_qty ?? 0)
         wrong += Number(edit?.wrong_store_qty ?? item.wrong_store_qty ?? 0)
       })
     })
 
-    const missing = Math.max(0, assigned - verified - damaged - wrong)
+    // Pending/Missing should represent true remaining stock, not just this-session scans.
+    const missing = Math.max(0, assigned - verifiedTotal - damaged - wrong)
     return { assigned, verified, damaged, wrong, missing }
   }, [summaryOrderIds, orderDetailsById, itemEditsByOrder])
 
