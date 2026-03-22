@@ -138,6 +138,8 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   }
 
   const clearSubmissionBuffers = () => {
+    setScanRows([])
+    setScanLogs([])
     setTouchedOrderIds([])
   }
 
@@ -840,9 +842,17 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   }, [visibleOrderIds, orderDetailsById, itemEditsByOrder])
 
   const historyOrderIds = useMemo(() => {
-    if (selectedOrderId) return [selectedOrderId]
-    return Object.keys(orderDetailsById)
-  }, [selectedOrderId, orderDetailsById])
+    const allOrderIds = selectedOrderId ? [selectedOrderId] : Object.keys(orderDetailsById)
+    return allOrderIds.filter((orderId) => {
+      const details = orderDetailsById[orderId]
+      if (!details) return false
+      return details.items.some((item) => {
+        const edit = itemEditsByOrder[orderId]?.[item.id]
+        const verifiedQty = Number(edit?.verified_qty ?? item.verified_qty ?? 0)
+        return verifiedQty > 0
+      })
+    })
+  }, [selectedOrderId, orderDetailsById, itemEditsByOrder])
 
   const formatHistoryTime = (iso: string) => {
     const date = new Date(iso)
