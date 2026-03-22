@@ -267,7 +267,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     return { assigned, verified, damaged, wrong, missing }
   }, [selectedOrderIds, orderDetailsById, itemEditsByOrder])
 
-  const findMatchingItem = (enteredBarcode: string): { orderId: string; item: TransferItem } | "ambiguous" | null => {
+  const findMatchingItem = (enteredBarcode: string): { orderId: string; item: TransferItem } | null => {
     const normalized = normalizeBarcode(enteredBarcode)
     const matches: { orderId: string; item: TransferItem }[] = []
 
@@ -286,9 +286,31 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       })
     })
 
-    if (matches.length === 0) return null
-    if (matches.length > 1 && !selectedOrderId) return "ambiguous"
-    return matches[0]
+    const pendingMatches = matches.filter(({ orderId, item }) => {
+      const edit = itemEditsByOrder[orderId]?.[item.id]
+      const assigned = Number(item.assigned_qty || 0)
+      const verified = Number(edit?.verified_qty ?? item.verified_qty ?? 0)
+      const damaged = Number(edit?.damaged_qty ?? item.damaged_qty ?? 0)
+      const wrong = Number(edit?.wrong_store_qty ?? item.wrong_store_qty ?? 0)
+      const processed = verified + damaged + wrong
+      return processed < assigned
+    })
+
+    if (pendingMatches.length === 0) return null
+    if (pendingMatches.length === 1) return pendingMatches[0]
+
+    // If the same barcode exists in multiple orders, auto-pick oldest order first.
+    const orderPriority = new Map(
+      [...orders]
+        .sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime())
+        .map((order, idx) => [order.id, idx]),
+    )
+
+    return [...pendingMatches].sort((a, b) => {
+      const aPriority = orderPriority.get(a.orderId) ?? Number.MAX_SAFE_INTEGER
+      const bPriority = orderPriority.get(b.orderId) ?? Number.MAX_SAFE_INTEGER
+      return aPriority - bPriority
+    })[0]
   }
 
   const scheduleStatusToVerified = (rowId: string) => {
@@ -399,15 +421,6 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     if (!entered) return
 
     const match = findMatchingItem(entered)
-    if (match === "ambiguous") {
-      setScanInput("")
-      setScanErrorDialog({
-        title: "Multiple Orders Matched",
-        description: "This barcode exists in multiple pending orders. Select a specific order and scan again.",
-      })
-      return
-    }
-
     if (!match) {
       setScanInput("")
       setScanErrorDialog({
