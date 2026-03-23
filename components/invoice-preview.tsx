@@ -34,8 +34,8 @@ interface InvoicePreviewProps {
   invoice: Invoice
   isOpen: boolean
   onClose: () => void
-  onSave?: (updatedInvoice: Invoice) => void | boolean | Promise<void | boolean>
-  onPrintAndSave?: (updatedInvoice: Invoice) => void | boolean | Promise<void | boolean>
+  onSave?: (updatedInvoice: Invoice) => void | boolean | Invoice | Promise<void | boolean | Invoice>
+  onPrintAndSave?: (updatedInvoice: Invoice) => void | boolean | Invoice | Promise<void | boolean | Invoice>
   onUpdateInvoice?: (updatedInvoice: Invoice) => void
   initialPaperSize?: string
   initialCustomerName?: string
@@ -408,14 +408,32 @@ export default function InvoicePreview({
         return
       }
 
+      const updatedInvoice = getUpdatedInvoice()
+
+      // Save first so print always uses the real persisted invoice number.
+      if (onPrintAndSave) {
+        console.log('💾 Saving invoice...')
+        const saveResult = await Promise.resolve(onPrintAndSave(updatedInvoice))
+        if (saveResult === false) {
+          setIsPrinting(false)
+          return
+        }
+        if (saveResult && typeof saveResult === "object") {
+          Object.assign(updatedInvoice, saveResult)
+        }
+      }
+
+      onUpdateInvoice?.(updatedInvoice)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
       console.log('🖨️ Starting print process...')
-      
       if (!printRef.current) {
         throw new Error('Print reference not found')
       }
 
+      const printableInvoiceId = updatedInvoice.id || invoice.id || 'unknown'
       const printContent = printRef.current.outerHTML
-      const html = generatePrintHTML(printContent, paperSize, invoice.id || 'unknown')
+      const html = generatePrintHTML(printContent, paperSize, printableInvoiceId)
 
       if (isTauriApp()) {
         const printerName = selectedPrinter === SYSTEM_DEFAULT_PRINTER_VALUE ? "" : selectedPrinter
@@ -432,16 +450,6 @@ export default function InvoicePreview({
           throw new Error(result.error || 'Browser print failed')
         }
         console.log('✅ Browser print dialog opened')
-      }
-
-      // Save the invoice after successful print
-      if (onPrintAndSave) {
-        console.log('💾 Saving invoice...')
-        const saveResult = await Promise.resolve(onPrintAndSave(getUpdatedInvoice()))
-        if (saveResult === false) {
-          setIsPrinting(false)
-          return
-        }
       }
 
       // Close dialog

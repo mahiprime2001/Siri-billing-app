@@ -1502,10 +1502,28 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
 
       console.log("📥 Response status:", response.status);
 
-      if (response.ok) {
-        const result = await response.json();
-        console.log("✅ Bill saved successfully:", result);
-        const wasQueued = response.status === 202 || result?.queued;
+	      if (response.ok) {
+	        const result = await response.json();
+	        console.log("✅ Bill saved successfully:", result);
+	        const wasQueued = response.status === 202 || result?.queued;
+	        const persistedBillId = String(
+	          result?.bill_id ||
+	          result?.bill?.id ||
+	          (isRevisingExistingInvoice ? invoiceEditSession?.billId : "") ||
+	          invoiceToSave.id ||
+	          "",
+	        ).trim()
+	        if (persistedBillId) {
+	          invoiceToSave.id = persistedBillId
+	        }
+	        const persistedTimestamp =
+	          result?.bill?.created_at ||
+	          result?.bill?.timestamp ||
+	          result?.bill?.createdAt ||
+	          invoiceToSave.timestamp
+	        if (persistedTimestamp) {
+	          invoiceToSave.timestamp = persistedTimestamp
+	        }
 
         toast({
           title: isRevisingExistingInvoice ? "Invoice Updated" : wasQueued ? "Queued" : "Success",
@@ -1550,9 +1568,9 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
           clearReplacementSession()
         }
 
-        setShowPreview(false);
-        return true;
-      } else {
+	        setShowPreview(false);
+	        return invoiceToSave;
+	      } else {
         let errorMessage = "Failed to save invoice";
         let errorDetails = "";
 
@@ -1577,8 +1595,8 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
           console.error("❌ Error details:", errorDetails);
         }
 
-        return false;
-      }
+	        return false;
+	      }
     } catch (error: any) {
       console.error("❌ Error saving invoice:", error);
 
@@ -1598,11 +1616,11 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
         variant: "destructive",
       });
       
-      return false;
-    } finally {
-      saveInFlightRef.current = false
-    }
-  };
+	      return false;
+	    } finally {
+	      saveInFlightRef.current = false
+	    }
+	  };
 
   const handlePrintAndSave = async (invoiceToPrintAndSave: Invoice) => {
     const saved = await handleSaveInvoice(invoiceToPrintAndSave)
