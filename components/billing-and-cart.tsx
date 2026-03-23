@@ -1400,7 +1400,12 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
     setShowPreview(true)
   }
 
-  const handleSaveInvoice = async (invoiceToSave: Invoice, isReplay = false) => {
+  const handleSaveInvoice = async (
+    invoiceToSave: Invoice,
+    isReplay = false,
+    options?: { closePreview?: boolean },
+  ) => {
+    const closePreview = options?.closePreview ?? true
     if (saveInFlightRef.current) {
       console.warn("⚠️ Save request ignored because a save is already in progress.")
       return false
@@ -1568,7 +1573,9 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
           clearReplacementSession()
         }
 
-	        setShowPreview(false);
+	        if (closePreview) {
+	          setShowPreview(false)
+	        }
 	        return invoiceToSave;
 	      } else {
         let errorMessage = "Failed to save invoice";
@@ -1623,7 +1630,7 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
 	  };
 
   const handlePrintAndSave = async (invoiceToPrintAndSave: Invoice) => {
-    const saved = await handleSaveInvoice(invoiceToPrintAndSave)
+    const saved = await handleSaveInvoice(invoiceToPrintAndSave, false, { closePreview: false })
     if (saved) {
       // Printing functionality is handled by InvoicePreview component
     }

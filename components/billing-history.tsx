@@ -7,12 +7,14 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 // Printing in history is now identical to billing-cart: direct print (no dialog)
 import { Eye, Search, Printer, Pencil, History } from "lucide-react"
 import InvoicePreview from "./invoice-preview"
 import PrintableInvoice from "./printable-invoice"
 import { apiClient } from "@/lib/api-client"
-import { isTauriApp, printHtmlContent } from "@/lib/tauriPrinter"
+import { isTauriApp, listPrinters, printHtmlContent } from "@/lib/tauriPrinter"
 import { safePrint } from "@/lib/printUtils"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -63,6 +65,13 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
   const printRef = useRef<HTMLDivElement>(null)
   const [isTauriRuntime, setIsTauriRuntime] = useState(false)
   const [printingInvoiceId, setPrintingInvoiceId] = useState<string | null>(null)
+  const [showPrintDialog, setShowPrintDialog] = useState(false)
+  const [historyPrintInvoice, setHistoryPrintInvoice] = useState<Invoice | null>(null)
+  const [historyPrintCopies, setHistoryPrintCopies] = useState(1)
+  const [historyPrinters, setHistoryPrinters] = useState<string[]>([])
+  const [isLoadingHistoryPrinters, setIsLoadingHistoryPrinters] = useState(false)
+  const [isHistoryPrinting, setIsHistoryPrinting] = useState(false)
+  const [historySelectedPrinter, setHistorySelectedPrinter] = useState("__SYSTEM_DEFAULT__")
   const [clockNowMs, setClockNowMs] = useState(() => Date.now())
   const [showAuditDialog, setShowAuditDialog] = useState(false)
   const [auditEvents, setAuditEvents] = useState<BillEvent[]>([])
@@ -79,6 +88,8 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
   const [openDayKeys, setOpenDayKeys] = useState<string[]>([])
 
   const IST_TIMEZONE = "Asia/Kolkata"
+  const HISTORY_PRINTER_STORAGE_KEY = "siri_selected_printer_history"
+  const SYSTEM_DEFAULT_PRINTER_VALUE = "__SYSTEM_DEFAULT__"
 
   const parseServerDate = (value: string | Date | undefined | null): Date | null => {
     if (!value) return null
@@ -148,6 +159,19 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
   useEffect(() => {
     setIsTauriRuntime(isTauriApp())
   }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const savedPrinter = window.localStorage.getItem(HISTORY_PRINTER_STORAGE_KEY)
+    if (savedPrinter?.trim()) {
+      setHistorySelectedPrinter(savedPrinter)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    window.localStorage.setItem(HISTORY_PRINTER_STORAGE_KEY, historySelectedPrinter)
+  }, [historySelectedPrinter])
 
   useEffect(() => {
     const ticker = setInterval(() => setClockNowMs(Date.now()), 1000)
@@ -482,53 +506,96 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
     setShowPreview(true)
   }
 
-  // Direct print flow using PrintableInvoice (isolated iframe)
   const handlePrintInvoice = async (invoice: Invoice) => {
     if (printingInvoiceId) return
     setPrintingInvoiceId(invoice.id)
-    const [items, replacements] = await Promise.all([
-      fetchBillItems(invoice.id),
-      fetchBillReplacements(invoice.id),
-    ])
-    const enrichedItems = enrichItemsWithReplacementMeta(items, replacements)
-    const printable = {
-      ...invoice,
-      items: enrichedItems,
-      isReplacementBill: replacements.length > 0,
-      companyName: settings?.companyName || invoice.companyName || "",
-      companyAddress: settings?.companyAddress || invoice.companyAddress || "",
-      companyPhone: settings?.companyPhone || invoice.companyPhone || "",
-      companyEmail: settings?.companyEmail || invoice.companyEmail || "",
-      gstin: settings?.gstin || invoice.gstin || "",
-    } as Invoice
-    setSelectedInvoice(printable)
-
-    // Wait a tick for PrintableInvoice to render into the ref
-    await new Promise((resolve) => setTimeout(resolve, 0))
-
-    const printOuter = printRef.current?.outerHTML || ""
-    const printContent = generatePrintHTML(printOuter, printPaperSize, printable.id || "invoice")
-
     try {
+      const [items, replacements] = await Promise.all([
+        fetchBillItems(invoice.id),
+        fetchBillReplacements(invoice.id),
+      ])
+      const enrichedItems = enrichItemsWithReplacementMeta(items, replacements)
+      const printable = {
+        ...invoice,
+        items: enrichedItems,
+        isReplacementBill: replacements.length > 0,
+        companyName: settings?.companyName || invoice.companyName || "",
+        companyAddress: settings?.companyAddress || invoice.companyAddress || "",
+        companyPhone: settings?.companyPhone || invoice.companyPhone || "",
+        companyEmail: settings?.companyEmail || invoice.companyEmail || "",
+        gstin: settings?.gstin || invoice.gstin || "",
+      } as Invoice
+
+      setHistoryPrintInvoice(printable)
+      setHistoryPrintCopies(1)
+      setShowPrintDialog(true)
+
       if (isTauriRuntime) {
-        const result = await printHtmlContent(printContent, { paperSize: printPaperSize })
+        setIsLoadingHistoryPrinters(true)
+        const printers = await listPrinters()
+        setHistoryPrinters(printers)
+        setHistorySelectedPrinter((prev) =>
+          prev !== SYSTEM_DEFAULT_PRINTER_VALUE && prev && !printers.includes(prev)
+            ? SYSTEM_DEFAULT_PRINTER_VALUE
+            : prev,
+        )
+      }
+    } catch (error) {
+      console.error("❌ [BillingHistory] Failed to prepare print preview:", error)
+      toast({
+        title: "Print Preview Failed",
+        description: "Could not prepare invoice preview for printing.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoadingHistoryPrinters(false)
+      setPrintingInvoiceId(null)
+    }
+  }
+
+  const handleConfirmHistoryPrint = async () => {
+    if (!historyPrintInvoice) return
+    setIsHistoryPrinting(true)
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      const printOuter = printRef.current?.outerHTML || ""
+      if (!printOuter) {
+        throw new Error("Print content is not ready yet")
+      }
+
+      const printContent = generatePrintHTML(printOuter, printPaperSize, historyPrintInvoice.id || "invoice")
+      const copies = Math.max(1, Math.trunc(Number(historyPrintCopies || 1)))
+
+      if (isTauriRuntime) {
+        const printerName = historySelectedPrinter === SYSTEM_DEFAULT_PRINTER_VALUE ? "" : historySelectedPrinter
+        const result = await printHtmlContent(printContent, {
+          paperSize: printPaperSize,
+          printerName,
+          copies,
+        })
         console.log("✅ [BillingHistory] Tauri print submitted:", result)
         toast({
           title: "Print job queued",
-          description: "Printer: System default",
+          description: `Printer: ${printerName || "System default"} • Copies: ${copies}`,
           variant: "default",
         })
-        return
+      } else {
+        const result = await safePrint(printContent, printPaperSize)
+        if (!result.success) {
+          throw new Error(result.error || "Browser print failed")
+        }
       }
 
-      const result = await safePrint(printContent, printPaperSize)
-      if (!result.success) {
-        console.error("❌ [BillingHistory] Browser print failed:", result.error)
-      }
+      setShowPrintDialog(false)
     } catch (error) {
       console.error("❌ [BillingHistory] Print failed:", error)
+      toast({
+        title: "Print Failed",
+        description: error instanceof Error ? error.message : "Could not print invoice.",
+        variant: "destructive",
+      })
     } finally {
-      setPrintingInvoiceId(null)
+      setIsHistoryPrinting(false)
     }
   }
 
@@ -994,10 +1061,86 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
 
       {/* Printable invoice directly used for billing-history printing */}
       <div className="hidden print:block">
-        {selectedInvoice && (
-          <PrintableInvoice ref={printRef} invoice={selectedInvoice} paperSize={printPaperSize} />
+        {historyPrintInvoice && (
+          <PrintableInvoice ref={printRef} invoice={historyPrintInvoice} paperSize={printPaperSize} />
         )}
       </div>
+
+      <Dialog open={showPrintDialog} onOpenChange={setShowPrintDialog}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Print Invoice</DialogTitle>
+            <DialogDescription>
+              {historyPrintInvoice ? `Invoice: ${historyPrintInvoice.id}` : "Select print options and confirm."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-3 md:border-r md:pr-4">
+              <div className="space-y-2">
+                <Label htmlFor="history-print-copies">No. of Copies</Label>
+                <Input
+                  id="history-print-copies"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={historyPrintCopies}
+                  onChange={(e) => {
+                    const value = Number(e.target.value)
+                    setHistoryPrintCopies(Number.isFinite(value) && value > 0 ? Math.trunc(value) : 1)
+                  }}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="history-printer-select">Printer</Label>
+                {isTauriRuntime ? (
+                  <Select
+                    value={historySelectedPrinter}
+                    onValueChange={setHistorySelectedPrinter}
+                    disabled={isLoadingHistoryPrinters}
+                  >
+                    <SelectTrigger id="history-printer-select">
+                      <SelectValue placeholder={isLoadingHistoryPrinters ? "Loading printers..." : "Select printer"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={SYSTEM_DEFAULT_PRINTER_VALUE}>System Default</SelectItem>
+                      {historyPrinters.map((printer) => (
+                        <SelectItem key={printer} value={printer}>
+                          {printer}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input id="history-printer-select" value="Browser Print Dialog" disabled />
+                )}
+              </div>
+
+              {isTauriRuntime && historyPrinters.length === 0 && !isLoadingHistoryPrinters && (
+                <p className="text-xs text-muted-foreground">No printers reported by Tauri. System default will be used.</p>
+              )}
+            </div>
+
+            <div className="md:col-span-2 max-h-[70vh] overflow-y-auto rounded border bg-muted/20 p-2">
+              {historyPrintInvoice ? (
+                <PrintableInvoice invoice={historyPrintInvoice} paperSize={printPaperSize} />
+              ) : (
+                <p className="text-sm text-muted-foreground">No invoice selected for preview.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowPrintDialog(false)} disabled={isHistoryPrinting}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmHistoryPrint} disabled={!historyPrintInvoice || isHistoryPrinting}>
+              {isHistoryPrinting ? "Printing..." : "Print"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showAuditDialog} onOpenChange={setShowAuditDialog}>
         <DialogContent>
