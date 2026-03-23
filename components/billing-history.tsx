@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -76,6 +76,41 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
   const [auditNextOffset, setAuditNextOffset] = useState(0)
   const auditFetchLimit = 50
   const auditPageSize = 10
+  const [openDayKeys, setOpenDayKeys] = useState<string[]>([])
+
+  const IST_TIMEZONE = "Asia/Kolkata"
+
+  const getIstDateKey = (value: string) => {
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return ""
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: IST_TIMEZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date)
+    const year = parts.find((part) => part.type === "year")?.value
+    const month = parts.find((part) => part.type === "month")?.value
+    const day = parts.find((part) => part.type === "day")?.value
+    if (!year || !month || !day) return ""
+    return `${year}-${month}-${day}`
+  }
+
+  const getTodayIstDateKey = () => {
+    const now = new Date()
+    return getIstDateKey(now.toISOString())
+  }
+
+  const formatIstDateKey = (dateKey: string) => {
+    const date = new Date(`${dateKey}T00:00:00+05:30`)
+    if (Number.isNaN(date.getTime())) return dateKey
+    return new Intl.DateTimeFormat("en-IN", {
+      timeZone: IST_TIMEZONE,
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }).format(date)
+  }
 
   useEffect(() => {
     setIsTauriRuntime(isTauriApp())
@@ -344,6 +379,56 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
 
     setFilteredInvoices(filtered)
   }, [searchTerm, invoices])
+
+  const groupedInvoices = useMemo(() => {
+    const map = new Map<string, Invoice[]>()
+    filteredInvoices.forEach((invoice) => {
+      const dateKey = getIstDateKey(invoice.timestamp || invoice.createdAt || "")
+      if (!dateKey) return
+      const list = map.get(dateKey) || []
+      list.push(invoice)
+      map.set(dateKey, list)
+    })
+
+    return Array.from(map.entries())
+      .map(([dateKey, dayInvoices]) => {
+        const sortedInvoices = [...dayInvoices].sort(
+          (a, b) =>
+            new Date(b.timestamp || b.createdAt || 0).getTime() -
+            new Date(a.timestamp || a.createdAt || 0).getTime(),
+        )
+        const totalBills = sortedInvoices.length
+        const totalValue = sortedInvoices.reduce((acc, invoice) => {
+          const status = String(invoice.status || "").toLowerCase()
+          if (status !== "completed" && status !== "paid") {
+            return acc
+          }
+          return acc + Number(invoice.total || 0)
+        }, 0)
+        return { dateKey, invoices: sortedInvoices, totalBills, totalValue }
+      })
+      .sort((a, b) => b.dateKey.localeCompare(a.dateKey))
+  }, [filteredInvoices])
+
+  useEffect(() => {
+    if (!groupedInvoices.length) {
+      setOpenDayKeys([])
+      return
+    }
+
+    if (searchTerm.trim()) {
+      setOpenDayKeys(groupedInvoices.map((group) => group.dateKey))
+      return
+    }
+
+    const todayKey = getTodayIstDateKey()
+    if (groupedInvoices.some((group) => group.dateKey === todayKey)) {
+      setOpenDayKeys([todayKey])
+      return
+    }
+
+    setOpenDayKeys([])
+  }, [groupedInvoices, searchTerm])
 
   const handleViewInvoice = async (invoice: Invoice) => {
     const [items, replacements] = await Promise.all([
@@ -742,94 +827,125 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
               </p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Invoice ID</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Total</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredInvoices.map((invoice) => (
-                  <TableRow key={invoice.id}>
-                    <TableCell className="font-medium">{invoice.id}</TableCell>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium">{getCustomerName(invoice)}</p>
-                        {getCustomerPhone(invoice) && (
-                          <p className="text-sm text-muted-foreground">
-                            {getCustomerPhone(invoice)}
-                          </p>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>{new Date(invoice.timestamp).toLocaleString()}</TableCell>
-                    <TableCell>₹{invoice.total.toLocaleString()}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-1">
-                        <Badge className={getStatusColor(invoice.status || "completed")}>
-                          {invoice.status || "Completed"}
-                        </Badge>
-                        {isInvoiceEdited(invoice) && (
-                          <span className="text-xs text-blue-700">Edited</span>
-                        )}
-                        {String(invoice.status || "").toLowerCase() === "cancelled" && invoice.cancelReason && (
-                          <span className="text-xs text-red-700">Reason: {invoice.cancelReason}</span>
-                        )}
-                        {canEditInvoice(invoice) && getSecondsRemaining(invoice) > 0 && (
-                          <span className="text-xs text-muted-foreground">
-                            Editable for {formatRemaining(getSecondsRemaining(invoice))}
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        {canEditInvoice(invoice) && (
-                          <Button variant="outline" size="sm" onClick={() => handleEditInvoice(invoice)}>
-                            <Pencil className="h-4 w-4 mr-1" />
-                            Edit
-                          </Button>
-                        )}
-                        <Button variant="outline" size="sm" onClick={() => handleViewInvoice(invoice)}>
-                          <Eye className="h-4 w-4 mr-1" />
-                          View
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleOpenAudit(invoice)}>
-                          <History className="h-4 w-4 mr-1" />
-                          Audit
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handlePrintInvoice(invoice)}
-                          disabled={printingInvoiceId === invoice.id}
-                          className={printingInvoiceId === invoice.id ? "animate-pulse" : ""}
-                        >
-                          {printingInvoiceId === invoice.id ? (
-                            <>
-                              <span className="mr-1 inline-flex items-center">
-                                <span className="h-3 w-3 animate-spin rounded-full border-2 border-gray-500 border-t-transparent"></span>
-                              </span>
-                              Printing...
-                            </>
-                          ) : (
-                            <>
-                              <Printer className="h-4 w-4 mr-1" />
-                              Print
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="space-y-3">
+              {groupedInvoices.map((group) => {
+                const isOpen = openDayKeys.includes(group.dateKey)
+                return (
+                  <details
+                    key={group.dateKey}
+                    open={isOpen}
+                    onToggle={(event) => {
+                      const nextOpen = (event.currentTarget as HTMLDetailsElement).open
+                      setOpenDayKeys((prev) => {
+                        if (nextOpen) {
+                          if (prev.includes(group.dateKey)) return prev
+                          return [...prev, group.dateKey]
+                        }
+                        return prev.filter((key) => key !== group.dateKey)
+                      })
+                    }}
+                    className="border rounded-md bg-slate-50/40"
+                  >
+                    <summary className="list-none cursor-pointer px-4 py-3 flex items-center justify-between gap-4">
+                      <span className="font-medium text-sm">{formatIstDateKey(group.dateKey)}</span>
+                      <span className="text-xs text-muted-foreground">
+                        Total Bills: {group.totalBills} • Total Value: ₹{group.totalValue.toLocaleString()}
+                      </span>
+                    </summary>
+                    <div className="px-3 pb-3">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Invoice ID</TableHead>
+                            <TableHead>Customer</TableHead>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Total</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {group.invoices.map((invoice) => (
+                            <TableRow key={invoice.id}>
+                              <TableCell className="font-medium">{invoice.id}</TableCell>
+                              <TableCell>
+                                <div>
+                                  <p className="font-medium">{getCustomerName(invoice)}</p>
+                                  {getCustomerPhone(invoice) && (
+                                    <p className="text-sm text-muted-foreground">
+                                      {getCustomerPhone(invoice)}
+                                    </p>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>{new Date(invoice.timestamp).toLocaleString()}</TableCell>
+                              <TableCell>₹{Number(invoice.total || 0).toLocaleString()}</TableCell>
+                              <TableCell>
+                                <div className="flex flex-col gap-1">
+                                  <Badge className={getStatusColor(invoice.status || "completed")}>
+                                    {invoice.status || "Completed"}
+                                  </Badge>
+                                  {isInvoiceEdited(invoice) && (
+                                    <span className="text-xs text-blue-700">Edited</span>
+                                  )}
+                                  {String(invoice.status || "").toLowerCase() === "cancelled" && invoice.cancelReason && (
+                                    <span className="text-xs text-red-700">Reason: {invoice.cancelReason}</span>
+                                  )}
+                                  {canEditInvoice(invoice) && getSecondsRemaining(invoice) > 0 && (
+                                    <span className="text-xs text-muted-foreground">
+                                      Editable for {formatRemaining(getSecondsRemaining(invoice))}
+                                    </span>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex space-x-2">
+                                  {canEditInvoice(invoice) && (
+                                    <Button variant="outline" size="sm" onClick={() => handleEditInvoice(invoice)}>
+                                      <Pencil className="h-4 w-4 mr-1" />
+                                      Edit
+                                    </Button>
+                                  )}
+                                  <Button variant="outline" size="sm" onClick={() => handleViewInvoice(invoice)}>
+                                    <Eye className="h-4 w-4 mr-1" />
+                                    View
+                                  </Button>
+                                  <Button variant="outline" size="sm" onClick={() => handleOpenAudit(invoice)}>
+                                    <History className="h-4 w-4 mr-1" />
+                                    Audit
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handlePrintInvoice(invoice)}
+                                    disabled={printingInvoiceId === invoice.id}
+                                    className={printingInvoiceId === invoice.id ? "animate-pulse" : ""}
+                                  >
+                                    {printingInvoiceId === invoice.id ? (
+                                      <>
+                                        <span className="mr-1 inline-flex items-center">
+                                          <span className="h-3 w-3 animate-spin rounded-full border-2 border-gray-500 border-t-transparent"></span>
+                                        </span>
+                                        Printing...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Printer className="h-4 w-4 mr-1" />
+                                        Print
+                                      </>
+                                    )}
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </details>
+                )
+              })}
+            </div>
           )}
         </CardContent>
       </Card>
