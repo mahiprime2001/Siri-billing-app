@@ -600,19 +600,16 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
   }
 
   const generatePrintHTML = (printContent: string, paperSize: string, invoiceId: string): string => {
-    const isThermal = paperSize.includes("Thermal")
-    const thermalLeftCompensationMm = 4
-
     const getPageStyles = (): string => {
       if (paperSize === "Thermal 58mm") {
         return `
           @page { size: 58mm auto; margin: 0; }
-          body { width: 58mm; margin: 0; padding: 2mm; }
+          body { width: 58mm; margin: 0; padding: 0; }
         `
       } else if (paperSize === "Thermal 80mm") {
         return `
           @page { size: 80mm auto; margin: 0; }
-          body { width: 80mm; margin: 0; padding: 2mm; }
+          body { width: 80mm; margin: 0; padding: 0; }
         `
       } else if (paperSize === "A4") {
         return `
@@ -666,15 +663,15 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
             .print-container {
               width: 100%;
               max-width: 100%;
-              padding: 0;
+              padding: ${paperSize.includes("Thermal") ? "1mm" : "0"};
               margin: 0 auto;
+              box-sizing: border-box;
             }
 
-            .invoice-wrapper {
-              break-after: avoid-page;
-              page-break-after: avoid;
-              ${isThermal ? `margin-left: -${thermalLeftCompensationMm}mm !important; margin-right: 0 !important;` : ""}
-            }
+          .invoice-wrapper {
+            break-after: avoid-page;
+            page-break-after: avoid;
+          }
           </style>
         </head>
         <body>

@@ -112,12 +112,10 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
       <div style={{ borderTop: "1px dashed #000", margin: "5px 0" }} />
     );
 
-    const wrapperWidth =
-      paperSize === "Thermal 58mm"
-        ? "56mm"
-        : paperSize === "Thermal 80mm"
-        ? "76mm"
-        : "100%"
+    const isThermalPaper = paperSize.includes("Thermal")
+    const wrapperWidth = "100%"
+    const wrapperMargin = isThermalPaper ? "0" : "0 auto"
+    const wrapperPadding = isThermalPaper ? "0" : "2mm 2mm 0 2mm"
 
     return (
       <>
@@ -126,8 +124,8 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
           ref={ref}
           style={{
             width: wrapperWidth,
-            margin: "0 auto",
-            padding: "2mm 2mm 0 2mm",
+            margin: wrapperMargin,
+            padding: wrapperPadding,
             boxSizing: "border-box",
             background: "#fff",
             fontFamily: "'Courier New', Courier, monospace",
