@@ -34,8 +34,8 @@ interface InvoicePreviewProps {
   invoice: Invoice
   isOpen: boolean
   onClose: () => void
-  onSave?: (updatedInvoice: Invoice) => void
-  onPrintAndSave?: (updatedInvoice: Invoice) => void
+  onSave?: (updatedInvoice: Invoice) => void | boolean | Promise<void | boolean>
+  onPrintAndSave?: (updatedInvoice: Invoice) => void | boolean | Promise<void | boolean>
   onUpdateInvoice?: (updatedInvoice: Invoice) => void
   initialPaperSize?: string
   initialCustomerName?: string
@@ -63,6 +63,7 @@ export default function InvoicePreview({
   const { toast } = useToast()
   
   const [isPrinting, setIsPrinting] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [printError, setPrintError] = useState<string | null>(null)
   const [discountApprovalStatus, setDiscountApprovalStatus] = useState<Invoice["discountApprovalStatus"]>(
     invoice.discountApprovalStatus || "not_required"
@@ -362,7 +363,8 @@ export default function InvoicePreview({
     }
   }
 
-  const handleSaveClick = () => {
+  const handleSaveClick = async () => {
+    if (isSaving) return
     if (isDiscountBlocked) {
       toast({
         title: "Approval Required",
@@ -371,9 +373,15 @@ export default function InvoicePreview({
       })
       return
     }
-    if (onSave) {
-      onSave(getUpdatedInvoice())
-      onClose()
+    if (!onSave) return
+    setIsSaving(true)
+    try {
+      const result = await Promise.resolve(onSave(getUpdatedInvoice()))
+      if (result !== false) {
+        onClose()
+      }
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -429,7 +437,11 @@ export default function InvoicePreview({
       // Save the invoice after successful print
       if (onPrintAndSave) {
         console.log('💾 Saving invoice...')
-        onPrintAndSave(getUpdatedInvoice())
+        const saveResult = await Promise.resolve(onPrintAndSave(getUpdatedInvoice()))
+        if (saveResult === false) {
+          setIsPrinting(false)
+          return
+        }
       }
 
       // Close dialog
@@ -742,7 +754,7 @@ export default function InvoicePreview({
           <Button
             onClick={handlePrintAndSave}
             className={`bg-blue-600 hover:bg-blue-700 ${isPrinting ? "animate-pulse" : ""}`}
-            disabled={isPrinting || isDiscountBlocked}
+            disabled={isPrinting || isSaving || isDiscountBlocked}
           >
             {isPrinting ? (
               <span className="inline-flex items-center">
@@ -754,19 +766,19 @@ export default function InvoicePreview({
             ) : (
               <>
                 <Printer className="h-4 w-4 mr-2" />
-                Print & Save
+                {isSaving ? "Saving..." : "Print & Save"}
               </>
             )}
           </Button>
 
           {onSave && (
-            <Button onClick={handleSaveClick} variant="outline" disabled={isPrinting || isDiscountBlocked}>
+            <Button onClick={handleSaveClick} variant="outline" disabled={isPrinting || isSaving || isDiscountBlocked}>
               <Save className="h-4 w-4 mr-2" />
-              Save Only
+              {isSaving ? "Saving..." : "Save Only"}
             </Button>
           )}
 
-          <Button variant="outline" onClick={handleClose} disabled={isPrinting}>
+          <Button variant="outline" onClick={handleClose} disabled={isPrinting || isSaving}>
             Close
           </Button>
 

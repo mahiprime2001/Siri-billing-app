@@ -3,9 +3,10 @@ from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
 from utils.connection_pool import get_supabase_client
 from datetime import datetime, timezone, timedelta
+import threading
 import traceback
-from helpers.utils import read_json_file
-from config.config import BILLS_FILE
+from helpers.utils import read_json_file, write_json_file
+from config.config import BILLS_FILE, BILL_IDEMPOTENCY_FILE
 
 from services.billing_service import create_bill_transaction
 from utils.offline_bill_queue import enqueue_bill_create
@@ -14,6 +15,8 @@ from data_access.data_access import update_both_inventory_and_product_stock
 billing_bp = Blueprint('billing', __name__)
 EDIT_WINDOW_HOURS = 24
 EDITABLE_STATUSES = {"completed", "paid", "pending"}
+_bill_idempotency_lock = threading.Lock()
+_BILL_IDEMPOTENCY_TTL_HOURS = 48
 
 
 def _parse_iso_datetime(raw_value):
@@ -87,6 +90,58 @@ def _log_bill_event(supabase, event_type, bill_id, message):
     except Exception:
         # Optional logging should never break billing flow.
         pass
+
+
+def _cleanup_bill_idempotency_map(raw_map):
+    now = datetime.now(timezone.utc)
+    cleaned = {}
+    for key, value in (raw_map or {}).items():
+        if not isinstance(value, dict):
+            continue
+        created_at = _parse_iso_datetime(value.get("created_at"))
+        if not created_at:
+            continue
+        age_seconds = (now - created_at).total_seconds()
+        if age_seconds <= _BILL_IDEMPOTENCY_TTL_HOURS * 3600:
+            cleaned[key] = value
+    return cleaned
+
+
+def _read_bill_idempotency_map():
+    raw = read_json_file(BILL_IDEMPOTENCY_FILE, {})
+    if not isinstance(raw, dict):
+        raw = {}
+    return _cleanup_bill_idempotency_map(raw)
+
+
+def _write_bill_idempotency_map(data):
+    write_json_file(BILL_IDEMPOTENCY_FILE, data)
+
+
+def _lookup_bill_by_request_id(client_request_id):
+    if not client_request_id:
+        return None
+    with _bill_idempotency_lock:
+        cache = _read_bill_idempotency_map()
+        entry = cache.get(client_request_id)
+        if not entry:
+            _write_bill_idempotency_map(cache)
+            return None
+        _write_bill_idempotency_map(cache)
+        return entry.get("bill_id")
+
+
+def _remember_bill_request(client_request_id, bill_id, user_id):
+    if not client_request_id or not bill_id:
+        return
+    with _bill_idempotency_lock:
+        cache = _read_bill_idempotency_map()
+        cache[client_request_id] = {
+            "bill_id": bill_id,
+            "user_id": user_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        _write_bill_idempotency_map(cache)
 
 
 @billing_bp.route('/bills', methods=['GET'])
@@ -175,9 +230,28 @@ def create_bill():
         current_user_id = get_jwt_identity()
         data = request.get_json() or {}
         app.logger.info(f"💰 User {current_user_id} creating new bill")
+        client_request_id = str(data.get("_client_request_id") or "").strip()
+
+        existing_bill_id = _lookup_bill_by_request_id(client_request_id)
+        if existing_bill_id:
+            supabase = get_supabase_client()
+            existing_bill = _fetch_bill_by_id(supabase, existing_bill_id) if supabase else None
+            if existing_bill:
+                app.logger.info(
+                    f"🔁 Duplicate bill request replayed for request_id={client_request_id}, bill_id={existing_bill_id}"
+                )
+                return jsonify(
+                    {
+                        "message": "Bill already processed",
+                        "bill_id": existing_bill_id,
+                        "bill": existing_bill,
+                        "idempotent_replay": True,
+                    }
+                ), 200
 
         try:
             response_data = create_bill_transaction(current_user_id=current_user_id, data=data)
+            _remember_bill_request(client_request_id, response_data.get("bill_id"), current_user_id)
             app.logger.info(f"✅ Bill {response_data.get('bill_id')} completed")
             return jsonify(response_data), 201
         except ValueError as e:

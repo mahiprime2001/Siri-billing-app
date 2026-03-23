@@ -16,12 +16,14 @@ def _utc_now() -> str:
 
 
 def enqueue_bill_create(current_user_id: str, bill_payload: Dict[str, Any]) -> Dict[str, str]:
+    client_request_id = str(bill_payload.get("_client_request_id") or "").strip()
     forced_bill_id = bill_payload.get("_forced_bill_id") or f"BILL-{uuid.uuid4().hex[:12]}"
     queue_id = f"Q-{uuid.uuid4().hex[:12]}"
     item = {
         "queue_id": queue_id,
         "type": "create_bill",
         "user_id": current_user_id,
+        "client_request_id": client_request_id or None,
         "forced_bill_id": forced_bill_id,
         "payload": {**bill_payload, "_forced_bill_id": forced_bill_id},
         "attempts": 0,
@@ -32,6 +34,20 @@ def enqueue_bill_create(current_user_id: str, bill_payload: Dict[str, Any]) -> D
 
     with _queue_lock:
         queue = read_json_file(OFFLINE_BILL_QUEUE_FILE, [])
+        if client_request_id:
+            existing = next(
+                (
+                    q
+                    for q in queue
+                    if str(q.get("client_request_id") or "").strip() == client_request_id
+                ),
+                None,
+            )
+            if existing:
+                return {
+                    "queue_id": existing.get("queue_id", queue_id),
+                    "bill_id": existing.get("forced_bill_id", forced_bill_id),
+                }
         queue.append(item)
         write_json_file(OFFLINE_BILL_QUEUE_FILE, queue)
 
@@ -97,4 +113,3 @@ def process_offline_bill_queue(app_logger=None, max_items: int = 20) -> Dict[str
         "failed": failed,
         "remaining": len(remaining),
     }
-

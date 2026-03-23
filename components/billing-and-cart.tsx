@@ -235,6 +235,7 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
   } | null>(null)
 
   const barcodeInputRef = useRef<HTMLInputElement>(null)
+  const saveInFlightRef = useRef(false)
   const idleFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const IDLE_FOCUS_DELAY_MS = 5000
   const billingTabsRef = useRef<BillingInstance[]>([])
@@ -1398,6 +1399,11 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
   }
 
   const handleSaveInvoice = async (invoiceToSave: Invoice, isReplay = false) => {
+    if (saveInFlightRef.current) {
+      console.warn("⚠️ Save request ignored because a save is already in progress.")
+      return false
+    }
+    saveInFlightRef.current = true
     try {
       if (invoiceToSave.discountPercentage > 10 && invoiceToSave.discountApprovalStatus !== "approved") {
         toast({
@@ -1446,6 +1452,14 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
         return false
       }
 
+      const existingClientRequestId = (invoiceToSave as unknown as { _clientRequestId?: string })._clientRequestId
+      const clientRequestId =
+        existingClientRequestId ||
+        (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `req-${Date.now()}-${Math.random().toString(16).slice(2)}`)
+      ;(invoiceToSave as unknown as { _clientRequestId?: string })._clientRequestId = clientRequestId
+
       const billData = {
         store_id: invoiceToSave.storeId,
         customer_name: invoiceToSave.customerName || 'Walk-in Customer',
@@ -1463,6 +1477,7 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
         notes: invoiceToSave.notes || '',
         original_bill_id: isReplacementInvoice ? replacementSession?.originalBillId || undefined : undefined,
         replacements: replacementItemsPayload,
+        _client_request_id: clientRequestId,
         items: saleItems.map((item: any) => ({
           product_id: item.productId,
           quantity: item.quantity,
@@ -1582,6 +1597,8 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
       });
       
       return false;
+    } finally {
+      saveInFlightRef.current = false
     }
   };
 

@@ -50,6 +50,22 @@ def _generate_daily_invoice_id(supabase) -> str:
     return f"{prefix}{max_serial + 1:04d}"
 
 
+def _fetch_existing_bill_by_id(supabase, bill_id: str) -> Optional[Dict[str, Any]]:
+    try:
+        response = (
+            supabase.table("bills")
+            .select("*")
+            .eq("id", bill_id)
+            .limit(1)
+            .execute()
+        )
+        if response.data:
+            return response.data[0]
+    except Exception:
+        return None
+    return None
+
+
 def create_bill_transaction(
     current_user_id: str,
     data: Dict[str, Any],
@@ -69,9 +85,21 @@ def create_bill_transaction(
     if not supabase:
         raise RuntimeError("Supabase client unavailable")
 
-    bill_id = _generate_daily_invoice_id(supabase)
+    bill_id = forced_bill_id or _generate_daily_invoice_id(supabase)
     now = datetime.now(timezone.utc).isoformat()
     customer_id = data.get("customer_id") or DEFAULT_WALKIN_CUSTOMER_ID
+
+    if forced_bill_id:
+        existing_bill = _fetch_existing_bill_by_id(supabase, forced_bill_id)
+        if existing_bill:
+            return {
+                "message": "Bill already exists",
+                "bill_id": forced_bill_id,
+                "bill": existing_bill,
+                "items_created": 0,
+                "total_amount": data.get("total_amount", 0),
+                "idempotent_replay": True,
+            }
 
     discount_percentage = data.get("discount_percentage", 0) or 0
     discount_amount = data.get("discount_amount", 0) or 0
@@ -123,6 +151,17 @@ def create_bill_transaction(
         except Exception as insert_error:
             err_text = str(insert_error).lower()
             if "duplicate" in err_text or "unique" in err_text:
+                if forced_bill_id:
+                    existing_bill = _fetch_existing_bill_by_id(supabase, forced_bill_id)
+                    if existing_bill:
+                        return {
+                            "message": "Bill already exists",
+                            "bill_id": forced_bill_id,
+                            "bill": existing_bill,
+                            "items_created": 0,
+                            "total_amount": data.get("total_amount", 0),
+                            "idempotent_replay": True,
+                        }
                 bill_id = _generate_daily_invoice_id(supabase)
                 bill_data["id"] = bill_id
                 continue

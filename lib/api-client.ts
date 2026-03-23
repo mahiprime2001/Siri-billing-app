@@ -55,6 +55,8 @@ export async function apiClient(
     credentials: "include",
     ...options,
   };
+  const method = String(defaultOptions.method || "GET").toUpperCase()
+  const canRetryOnNetworkError = method === "GET" || method === "HEAD" || method === "OPTIONS"
 
   try {
     const response = await fetch(url, defaultOptions);
@@ -113,8 +115,8 @@ export async function apiClient(
   } catch (error) {
     console.error("❌ [API-CLIENT] Network error:", error);
     
-    // ✅ Retry on network errors too
-    if (retryCount < MAX_RETRIES) {
+    // Retry only idempotent reads on network errors to avoid duplicate writes.
+    if (retryCount < MAX_RETRIES && canRetryOnNetworkError) {
       console.log(`🔄 [API-CLIENT] Retrying after network error (attempt ${retryCount + 1}/${MAX_RETRIES})`);
       await new Promise(resolve => setTimeout(resolve, 200));
       return apiClient(path, options, retryCount + 1);
