@@ -80,9 +80,42 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
 
   const IST_TIMEZONE = "Asia/Kolkata"
 
+  const parseServerDate = (value: string | Date | undefined | null): Date | null => {
+    if (!value) return null
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value
+    }
+    const raw = String(value).trim()
+    if (!raw) return null
+    const hasExplicitTimezone = /([zZ]|[+-]\d{2}:\d{2})$/.test(raw)
+    const normalized = !hasExplicitTimezone && raw.includes("T") ? `${raw}Z` : raw
+    const parsed = new Date(normalized)
+    return Number.isNaN(parsed.getTime()) ? null : parsed
+  }
+
+  const toEpochMs = (value: string | Date | undefined | null): number => {
+    const parsed = parseServerDate(value)
+    return parsed ? parsed.getTime() : 0
+  }
+
+  const formatIstDateTime = (value: string | Date | undefined | null): string => {
+    const parsed = parseServerDate(value)
+    if (!parsed) return "-"
+    return new Intl.DateTimeFormat("en-IN", {
+      timeZone: IST_TIMEZONE,
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    }).format(parsed)
+  }
+
   const getIstDateKey = (value: string) => {
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return ""
+    const date = parseServerDate(value)
+    if (!date) return ""
     const parts = new Intl.DateTimeFormat("en-CA", {
       timeZone: IST_TIMEZONE,
       year: "numeric",
@@ -259,7 +292,7 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
 
     normalized.sort(
       (a: any, b: any) =>
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        toEpochMs(b.timestamp) - toEpochMs(a.timestamp)
     )
 
     setInvoices(normalized)
@@ -394,8 +427,8 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
       .map(([dateKey, dayInvoices]) => {
         const sortedInvoices = [...dayInvoices].sort(
           (a, b) =>
-            new Date(b.timestamp || b.createdAt || 0).getTime() -
-            new Date(a.timestamp || a.createdAt || 0).getTime(),
+            toEpochMs(b.timestamp || b.createdAt || "") -
+            toEpochMs(a.timestamp || a.createdAt || ""),
         )
         const totalBills = sortedInvoices.length
         const totalValue = sortedInvoices.reduce((acc, invoice) => {
@@ -773,7 +806,7 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
       getAuditTypeLabel(event.type),
       event.notification || "",
       event.created_at || "",
-      new Date(event.created_at).toLocaleString(),
+      formatIstDateTime(event.created_at || ""),
     ])
     const csv = [header, ...rows].map((row) => row.map((cell) => escapeCsv(String(cell))).join(",")).join("\n")
 
@@ -878,7 +911,7 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
                                   )}
                                 </div>
                               </TableCell>
-                              <TableCell>{new Date(invoice.timestamp).toLocaleString()}</TableCell>
+                              <TableCell>{formatIstDateTime(invoice.timestamp || invoice.createdAt || "")}</TableCell>
                               <TableCell>₹{Number(invoice.total || 0).toLocaleString()}</TableCell>
                               <TableCell>
                                 <div className="flex flex-col gap-1">
@@ -1018,7 +1051,7 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
                   </div>
                   <p className="text-sm font-medium">{event.notification}</p>
                   <p className="text-xs text-muted-foreground">
-                    {new Date(event.created_at).toLocaleString()}
+                    {formatIstDateTime(event.created_at || "")}
                   </p>
                 </div>
               ))
