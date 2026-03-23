@@ -75,6 +75,20 @@ def _fetch_bill_by_id(supabase, bill_id):
     return response.data[0] if response.data else None
 
 
+def _bill_has_items(supabase, bill_id):
+    try:
+        response = (
+            supabase.table("billitems")
+            .select("id")
+            .eq("billid", bill_id)
+            .limit(1)
+            .execute()
+        )
+        return bool(response.data)
+    except Exception:
+        return False
+
+
 def _log_bill_event(supabase, event_type, bill_id, message):
     """Best-effort bill event logger using notifications table."""
     try:
@@ -236,7 +250,7 @@ def create_bill():
         if existing_bill_id:
             supabase = get_supabase_client()
             existing_bill = _fetch_bill_by_id(supabase, existing_bill_id) if supabase else None
-            if existing_bill:
+            if existing_bill and _bill_has_items(supabase, existing_bill_id):
                 app.logger.info(
                     f"🔁 Duplicate bill request replayed for request_id={client_request_id}, bill_id={existing_bill_id}"
                 )

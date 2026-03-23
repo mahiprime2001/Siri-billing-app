@@ -66,6 +66,20 @@ def _fetch_existing_bill_by_id(supabase, bill_id: str) -> Optional[Dict[str, Any
     return None
 
 
+def _bill_has_items(supabase, bill_id: str) -> bool:
+    try:
+        response = (
+            supabase.table("billitems")
+            .select("id")
+            .eq("billid", bill_id)
+            .limit(1)
+            .execute()
+        )
+        return bool(response.data)
+    except Exception:
+        return False
+
+
 def create_bill_transaction(
     current_user_id: str,
     data: Dict[str, Any],
@@ -88,18 +102,23 @@ def create_bill_transaction(
     bill_id = forced_bill_id or _generate_daily_invoice_id(supabase)
     now = datetime.now(timezone.utc).isoformat()
     customer_id = data.get("customer_id") or DEFAULT_WALKIN_CUSTOMER_ID
+    created_bill = None
+    skip_bill_insert = False
 
     if forced_bill_id:
         existing_bill = _fetch_existing_bill_by_id(supabase, forced_bill_id)
         if existing_bill:
-            return {
-                "message": "Bill already exists",
-                "bill_id": forced_bill_id,
-                "bill": existing_bill,
-                "items_created": 0,
-                "total_amount": data.get("total_amount", 0),
-                "idempotent_replay": True,
-            }
+            if _bill_has_items(supabase, forced_bill_id):
+                return {
+                    "message": "Bill already exists",
+                    "bill_id": forced_bill_id,
+                    "bill": existing_bill,
+                    "items_created": 0,
+                    "total_amount": data.get("total_amount", 0),
+                    "idempotent_replay": True,
+                }
+            created_bill = existing_bill
+            skip_bill_insert = True
 
     discount_percentage = data.get("discount_percentage", 0) or 0
     discount_amount = data.get("discount_amount", 0) or 0
@@ -143,34 +162,38 @@ def create_bill_transaction(
     }
 
     response = None
-    for _ in range(5):
-        try:
-            response = supabase.table("bills").insert(bill_data).execute()
-            if response.data and len(response.data) > 0:
-                break
-        except Exception as insert_error:
-            err_text = str(insert_error).lower()
-            if "duplicate" in err_text or "unique" in err_text:
-                if forced_bill_id:
-                    existing_bill = _fetch_existing_bill_by_id(supabase, forced_bill_id)
-                    if existing_bill:
-                        return {
-                            "message": "Bill already exists",
-                            "bill_id": forced_bill_id,
-                            "bill": existing_bill,
-                            "items_created": 0,
-                            "total_amount": data.get("total_amount", 0),
-                            "idempotent_replay": True,
-                        }
-                bill_id = _generate_daily_invoice_id(supabase)
-                bill_data["id"] = bill_id
-                continue
-            raise
+    if not skip_bill_insert:
+        for _ in range(5):
+            try:
+                response = supabase.table("bills").insert(bill_data).execute()
+                if response.data and len(response.data) > 0:
+                    created_bill = response.data[0]
+                    break
+                # Some PostgREST configs can return empty data even on success.
+                created_bill = _fetch_existing_bill_by_id(supabase, bill_data["id"])
+                if created_bill:
+                    break
+            except Exception as insert_error:
+                err_text = str(insert_error).lower()
+                if "duplicate" in err_text or "unique" in err_text:
+                    if forced_bill_id:
+                        existing_bill = _fetch_existing_bill_by_id(supabase, forced_bill_id)
+                        if existing_bill and _bill_has_items(supabase, forced_bill_id):
+                            return {
+                                "message": "Bill already exists",
+                                "bill_id": forced_bill_id,
+                                "bill": existing_bill,
+                                "items_created": 0,
+                                "total_amount": data.get("total_amount", 0),
+                                "idempotent_replay": True,
+                            }
+                    bill_id = _generate_daily_invoice_id(supabase)
+                    bill_data["id"] = bill_id
+                    continue
+                raise
 
-    if not response or not response.data or len(response.data) == 0:
+    if not created_bill:
         raise RuntimeError("Bill insert failed")
-
-    created_bill = response.data[0]
 
     if discount_request_id:
         try:
@@ -230,10 +253,8 @@ def create_bill_transaction(
 
         try:
             item_response = supabase.table("billitems").insert(bill_item_data).execute()
-            if item_response.data:
-                bill_items_created.append(product_id)
-            else:
-                bill_item_errors.append(f"item[{index}] empty insert response for product {product_id}")
+            _ = item_response
+            bill_items_created.append(product_id)
         except Exception as item_error:
             bill_item_errors.append(f"item[{index}] insert error for product {product_id}: {str(item_error)}")
 
@@ -317,6 +338,15 @@ def create_bill_transaction(
                 replacement_stock_errors.append(replaced_product_id)
 
     if len(bill_items_created) == 0:
+        if _bill_has_items(supabase, bill_id):
+            return {
+                "message": "Bill already exists",
+                "bill_id": bill_id,
+                "bill": created_bill,
+                "items_created": 0,
+                "total_amount": data.get("total_amount", 0),
+                "idempotent_replay": True,
+            }
         raise RuntimeError(
             f"Bill created but no bill items were saved. Errors: {bill_item_errors or ['unknown']}"
         )

@@ -53,7 +53,7 @@ interface Notification {
 export default function BillingPage() {
   const [user, setUser] = useState<User | null>(null)
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
-  const [currentStore, setCurrentStore] = useState<{ id: string; name: string } | null>(null)
+  const [currentStore, setCurrentStore] = useState<{ id: string; name: string; address?: string; phone?: string } | null>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [activeTab, setActiveTab] = useState('billing')
@@ -141,7 +141,9 @@ export default function BillingPage() {
         console.log('✅ Store data received:', storeData)
         setCurrentStore({
           id: storeData.id,
-          name: storeData.name
+          name: storeData.name,
+          address: storeData.address || "",
+          phone: storeData.phone || "",
         })
       } else {
         console.error('❌ Failed to fetch store data')

@@ -57,7 +57,8 @@ interface User {
 interface Store {
   id: string;
   name: string;
-  address: string;
+  address?: string;
+  phone?: string;
 }
 
 interface UserStore {
@@ -1349,6 +1350,7 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
       storeId: currentStore?.id || "",
       storeName: currentStore?.name || "N/A",
       storeAddress: currentStore?.address || "N/A",
+      storePhone: currentStore?.phone || settings?.companyPhone || "",
       customerName: activeBillingInstance.customerName || "Walk-in Customer",
       customerEmail: "",
       customerPhone: activeBillingInstance.customerPhone || "",
