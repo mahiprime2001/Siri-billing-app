@@ -19,6 +19,14 @@ _bill_idempotency_lock = threading.Lock()
 _BILL_IDEMPOTENCY_TTL_HOURS = 48
 
 
+def _idempotency_key(user_id, client_request_id):
+    safe_user = str(user_id or "").strip()
+    safe_request = str(client_request_id or "").strip()
+    if not safe_user or not safe_request:
+        return None
+    return f"{safe_user}:{safe_request}"
+
+
 def _parse_iso_datetime(raw_value):
     if not raw_value:
         return None
@@ -132,12 +140,18 @@ def _write_bill_idempotency_map(data):
     write_json_file(BILL_IDEMPOTENCY_FILE, data)
 
 
-def _lookup_bill_by_request_id(client_request_id):
-    if not client_request_id:
+def _lookup_bill_by_request_id(client_request_id, user_id):
+    scoped_key = _idempotency_key(user_id, client_request_id)
+    if not scoped_key:
         return None
     with _bill_idempotency_lock:
         cache = _read_bill_idempotency_map()
-        entry = cache.get(client_request_id)
+        entry = cache.get(scoped_key)
+        if not entry:
+            # Backward compatibility for older unscoped cache keys.
+            legacy_entry = cache.get(str(client_request_id).strip())
+            if isinstance(legacy_entry, dict) and str(legacy_entry.get("user_id") or "") == str(user_id or ""):
+                entry = legacy_entry
         if not entry:
             _write_bill_idempotency_map(cache)
             return None
@@ -146,16 +160,80 @@ def _lookup_bill_by_request_id(client_request_id):
 
 
 def _remember_bill_request(client_request_id, bill_id, user_id):
-    if not client_request_id or not bill_id:
+    scoped_key = _idempotency_key(user_id, client_request_id)
+    if not scoped_key or not bill_id:
         return
     with _bill_idempotency_lock:
         cache = _read_bill_idempotency_map()
-        cache[client_request_id] = {
+        cache[scoped_key] = {
             "bill_id": bill_id,
             "user_id": user_id,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         _write_bill_idempotency_map(cache)
+
+
+def _cancel_bill_internal(bill_id, current_user_id, cancel_reason):
+    supabase = get_supabase_client()
+    bill = _fetch_bill_by_id(supabase, bill_id)
+    if not bill:
+        return jsonify({"message": "Bill not found"}), 404
+
+    if str(bill.get("status") or "").lower() == "cancelled":
+        return jsonify({"message": "Bill already cancelled"}), 409
+
+    edit_meta = _build_edit_window_meta(bill)
+    if not edit_meta["can_cancel"]:
+        return jsonify(
+            {"message": "Invoice cancel window expired or bill status is not cancellable", **edit_meta}
+        ), 409
+
+    store_id = bill.get("storeid")
+    if not store_id:
+        return jsonify({"message": "Store ID missing on bill"}), 400
+
+    items_response = supabase.table("billitems").select("*").eq("billid", bill_id).execute()
+    items = items_response.data if items_response.data else []
+
+    stock_errors = []
+    for item in items:
+        product_id = item.get("productid")
+        quantity = int(item.get("quantity") or 0)
+        if not product_id or quantity <= 0:
+            continue
+        try:
+            ok = update_both_inventory_and_product_stock(
+                store_id=store_id,
+                product_id=product_id,
+                quantity_sold=-quantity,
+            )
+            if not ok:
+                stock_errors.append(product_id)
+        except Exception:
+            stock_errors.append(product_id)
+
+    now = datetime.now(timezone.utc).isoformat()
+    update_data = {
+        "status": "cancelled",
+        "updated_at": now,
+    }
+    supabase.table("bills").update(update_data).eq("id", bill_id).execute()
+    reason_suffix = f" (Reason: {cancel_reason})" if cancel_reason else ""
+    _log_bill_event(
+        supabase=supabase,
+        event_type="invoice_cancelled",
+        bill_id=bill_id,
+        message=f"Invoice {bill_id} cancelled by user {current_user_id}{reason_suffix}",
+    )
+
+    response_payload = {
+        "message": "Invoice cancelled successfully",
+        "bill_id": bill_id,
+        "cancel_reason": cancel_reason or None,
+    }
+    if stock_errors:
+        response_payload["stock_update_errors"] = stock_errors
+    return jsonify(response_payload), 200
 
 
 @billing_bp.route('/bills', methods=['GET'])
@@ -246,7 +324,7 @@ def create_bill():
         app.logger.info(f"💰 User {current_user_id} creating new bill")
         client_request_id = str(data.get("_client_request_id") or "").strip()
 
-        existing_bill_id = _lookup_bill_by_request_id(client_request_id)
+        existing_bill_id = _lookup_bill_by_request_id(client_request_id, current_user_id)
         if existing_bill_id:
             supabase = get_supabase_client()
             existing_bill = _fetch_bill_by_id(supabase, existing_bill_id) if supabase else None
@@ -327,27 +405,15 @@ def update_bill(bill_id):
 @billing_bp.route('/bills/<bill_id>', methods=['DELETE'])
 @require_auth
 def delete_bill(bill_id):
-    """Delete a bill (soft delete by marking as cancelled)"""
+    """Legacy endpoint: cancel a bill using the same safe flow as /cancel."""
     try:
         current_user_id = get_jwt_identity()
-        app.logger.info(f"User {current_user_id} deleting bill {bill_id}")
-        
-        supabase = get_supabase_client()
-        
-        # Soft delete - mark as cancelled
-        update_data = {
-            'status': 'cancelled',
-            'updated_at': datetime.now(timezone.utc).isoformat()
-        }
-        
-        response = supabase.table('bills').update(update_data).eq('id', bill_id).execute()
-        
-        if not response.data or len(response.data) == 0:
-            return jsonify({"message": "Bill not found"}), 404
-        
-        app.logger.info(f"✅ Bill cancelled: {bill_id}")
-        return jsonify({"message": "Bill cancelled successfully"}), 200
-        
+        app.logger.info(f"User {current_user_id} deleting bill {bill_id} via legacy endpoint")
+        return _cancel_bill_internal(
+            bill_id=bill_id,
+            current_user_id=current_user_id,
+            cancel_reason="Cancelled via legacy DELETE endpoint",
+        )
     except Exception as e:
         app.logger.error(f"❌ Error deleting bill {bill_id}: {str(e)}")
         app.logger.error(traceback.format_exc())
@@ -665,67 +731,11 @@ def cancel_bill(bill_id):
         cancel_reason = str(payload.get("cancel_reason") or "").strip()
         app.logger.info(f"User {current_user_id} cancelling bill {bill_id}")
 
-        supabase = get_supabase_client()
-        bill = _fetch_bill_by_id(supabase, bill_id)
-        if not bill:
-            return jsonify({"message": "Bill not found"}), 404
-
-        if str(bill.get("status") or "").lower() == "cancelled":
-            return jsonify({"message": "Bill already cancelled"}), 409
-
-        edit_meta = _build_edit_window_meta(bill)
-        if not edit_meta["can_cancel"]:
-            return jsonify(
-                {"message": "Invoice cancel window expired or bill status is not cancellable", **edit_meta}
-            ), 409
-
-        store_id = bill.get("storeid")
-        if not store_id:
-            return jsonify({"message": "Store ID missing on bill"}), 400
-
-        items_response = supabase.table("billitems").select("*").eq("billid", bill_id).execute()
-        items = items_response.data if items_response.data else []
-
-        stock_errors = []
-        for item in items:
-            product_id = item.get("productid")
-            quantity = int(item.get("quantity") or 0)
-            if not product_id or quantity <= 0:
-                continue
-            try:
-                ok = update_both_inventory_and_product_stock(
-                    store_id=store_id,
-                    product_id=product_id,
-                    quantity_sold=-quantity,
-                )
-                if not ok:
-                    stock_errors.append(product_id)
-            except Exception:
-                stock_errors.append(product_id)
-
-        now = datetime.now(timezone.utc).isoformat()
-        update_data = {
-            "status": "cancelled",
-            "updated_at": now,
-        }
-        supabase.table("bills").update(update_data).eq("id", bill_id).execute()
-        reason_suffix = f" (Reason: {cancel_reason})" if cancel_reason else ""
-        _log_bill_event(
-            supabase=supabase,
-            event_type="invoice_cancelled",
+        return _cancel_bill_internal(
             bill_id=bill_id,
-            message=f"Invoice {bill_id} cancelled by user {current_user_id}{reason_suffix}",
+            current_user_id=current_user_id,
+            cancel_reason=cancel_reason,
         )
-
-        response_payload = {
-            "message": "Invoice cancelled successfully",
-            "bill_id": bill_id,
-            "cancel_reason": cancel_reason or None,
-        }
-        if stock_errors:
-            response_payload["stock_update_errors"] = stock_errors
-
-        return jsonify(response_payload), 200
     except Exception as e:
         app.logger.error(f"❌ Error cancelling bill {bill_id}: {str(e)}")
         app.logger.error(traceback.format_exc())

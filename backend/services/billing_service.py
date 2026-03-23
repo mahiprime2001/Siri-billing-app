@@ -80,6 +80,91 @@ def _bill_has_items(supabase, bill_id: str) -> bool:
         return False
 
 
+def _parse_positive_int(value: Any, default: int = 0) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed
+
+
+def _aggregate_item_quantities(items):
+    aggregated = {}
+    for index, item in enumerate(items):
+        product_id = item.get("product_id") or item.get("productId")
+        quantity = _parse_positive_int(item.get("quantity", 1), default=0)
+        if not product_id:
+            raise ValueError(f"item[{index}] missing product_id/productId")
+        if quantity <= 0:
+            raise ValueError(f"item[{index}] has invalid quantity")
+        aggregated[product_id] = aggregated.get(product_id, 0) + quantity
+    return aggregated
+
+
+def _fetch_store_stock_map(supabase, store_id: str, product_ids):
+    if not product_ids:
+        return {}
+    response = (
+        supabase.table("storeinventory")
+        .select("productid, quantity")
+        .eq("storeid", store_id)
+        .in_("productid", list(product_ids))
+        .execute()
+    )
+    stock_map = {}
+    for row in (response.data or []):
+        product_id = row.get("productid")
+        if not product_id:
+            continue
+        stock_map[product_id] = _parse_positive_int(row.get("quantity"), default=0)
+    return stock_map
+
+
+def _validate_sufficient_stock(supabase, store_id: str, required_quantities):
+    stock_map = _fetch_store_stock_map(supabase, store_id, required_quantities.keys())
+    stock_errors = []
+    for product_id, required_qty in required_quantities.items():
+        available_qty = _parse_positive_int(stock_map.get(product_id), default=0)
+        if required_qty > available_qty:
+            stock_errors.append(
+                f"{product_id}: required={required_qty}, available={available_qty}"
+            )
+    return stock_errors
+
+
+def _rollback_bill_creation(supabase, bill_id: str, store_id: str, applied_deductions):
+    rollback_errors = []
+
+    for product_id, quantity in applied_deductions:
+        try:
+            restored = update_both_inventory_and_product_stock(
+                store_id=store_id,
+                product_id=product_id,
+                quantity_sold=-quantity,
+            )
+            if not restored:
+                rollback_errors.append(f"stock restore failed for {product_id}")
+        except Exception as restore_error:
+            rollback_errors.append(f"stock restore error for {product_id}: {restore_error}")
+
+    try:
+        supabase.table("replacements").delete().eq("bill_id", bill_id).execute()
+    except Exception as replacement_delete_error:
+        rollback_errors.append(f"replacement cleanup failed: {replacement_delete_error}")
+
+    try:
+        supabase.table("billitems").delete().eq("billid", bill_id).execute()
+    except Exception as item_delete_error:
+        rollback_errors.append(f"billitems cleanup failed: {item_delete_error}")
+
+    try:
+        supabase.table("bills").delete().eq("id", bill_id).execute()
+    except Exception as bill_delete_error:
+        rollback_errors.append(f"bill cleanup failed: {bill_delete_error}")
+
+    return rollback_errors
+
+
 def create_bill_transaction(
     current_user_id: str,
     data: Dict[str, Any],
@@ -223,22 +308,38 @@ def create_bill_transaction(
         except Exception:
             pass
 
+    required_quantities = _aggregate_item_quantities(items)
+    insufficient_stock_errors = _validate_sufficient_stock(
+        supabase=supabase,
+        store_id=store_id,
+        required_quantities=required_quantities,
+    )
+    if insufficient_stock_errors:
+        raise ValueError(
+            "Insufficient stock for one or more products: "
+            + "; ".join(insufficient_stock_errors)
+        )
+
     bill_items_created = []
     bill_item_errors = []
     stock_update_errors = []
     updated_product_ids = []
+    applied_stock_deductions = []
     replacement_save_errors = []
     replacement_stock_errors = []
     replacement_rows_created = 0
 
     for index, item in enumerate(items):
         product_id = item.get("product_id") or item.get("productId")
-        quantity = item.get("quantity", 1)
+        quantity = _parse_positive_int(item.get("quantity", 1), default=0)
         unit_price = item.get("unit_price", item.get("unitPrice", item.get("price", 0)))
         item_total = item.get("item_total", item.get("itemTotal", unit_price * quantity))
 
         if not product_id:
             bill_item_errors.append(f"item[{index}] missing product_id/productId")
+            continue
+        if quantity <= 0:
+            bill_item_errors.append(f"item[{index}] has invalid quantity")
             continue
 
         bill_item_data = {
@@ -257,6 +358,7 @@ def create_bill_transaction(
             bill_items_created.append(product_id)
         except Exception as item_error:
             bill_item_errors.append(f"item[{index}] insert error for product {product_id}: {str(item_error)}")
+            continue
 
         try:
             stock_updated = update_both_inventory_and_product_stock(
@@ -268,6 +370,7 @@ def create_bill_transaction(
                 stock_update_errors.append(product_id)
             else:
                 updated_product_ids.append(product_id)
+                applied_stock_deductions.append((product_id, quantity))
         except Exception:
             stock_update_errors.append(product_id)
 
@@ -337,19 +440,30 @@ def create_bill_transaction(
             except Exception:
                 replacement_stock_errors.append(replaced_product_id)
 
-    if len(bill_items_created) == 0:
-        if _bill_has_items(supabase, bill_id):
-            return {
-                "message": "Bill already exists",
-                "bill_id": bill_id,
-                "bill": created_bill,
-                "items_created": 0,
-                "total_amount": data.get("total_amount", 0),
-                "idempotent_replay": True,
-            }
-        raise RuntimeError(
-            f"Bill created but no bill items were saved. Errors: {bill_item_errors or ['unknown']}"
+    has_blocking_errors = bool(
+        bill_item_errors or stock_update_errors or replacement_save_errors or replacement_stock_errors
+    )
+    if has_blocking_errors or len(bill_items_created) == 0:
+        rollback_errors = _rollback_bill_creation(
+            supabase=supabase,
+            bill_id=bill_id,
+            store_id=store_id,
+            applied_deductions=applied_stock_deductions,
         )
+        failure_parts = []
+        if bill_item_errors:
+            failure_parts.append(f"bill item errors: {bill_item_errors}")
+        if stock_update_errors:
+            failure_parts.append(f"stock update errors: {stock_update_errors}")
+        if replacement_save_errors:
+            failure_parts.append(f"replacement save errors: {replacement_save_errors}")
+        if replacement_stock_errors:
+            failure_parts.append(f"replacement stock errors: {replacement_stock_errors}")
+        if len(bill_items_created) == 0:
+            failure_parts.append("no bill items were created")
+        if rollback_errors:
+            failure_parts.append(f"rollback errors: {rollback_errors}")
+        raise ValueError("Bill creation failed and was rolled back. " + " | ".join(failure_parts))
 
     unique_updated_products = list(dict.fromkeys(updated_product_ids))
     if unique_updated_products:
