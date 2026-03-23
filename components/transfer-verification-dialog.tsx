@@ -834,6 +834,32 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     }, 0)
   }
 
+  const getPendingQtyForBarcodeInOrder = (orderId: string, barcodeValue: string) => {
+    const details = orderDetailsById[orderId]
+    if (!details) return 0
+
+    const normalizedBarcode = normalizeBarcode((barcodeValue || "").split(",")[0] || "")
+    if (!normalizedBarcode) return 0
+
+    return details.items.reduce((pending, item) => {
+      const itemBarcodes = (item.products?.barcode || "")
+        .split(",")
+        .map((code) => normalizeBarcode(code))
+        .filter(Boolean)
+      if (!itemBarcodes.includes(normalizedBarcode)) {
+        return pending
+      }
+
+      const edit = itemEditsByOrder[orderId]?.[item.id]
+      const assigned = Number(item.assigned_qty || 0)
+      const verified = Number(edit?.verified_qty ?? item.verified_qty ?? 0)
+      const damaged = Number(edit?.damaged_qty ?? item.damaged_qty ?? 0)
+      const wrong = Number(edit?.wrong_store_qty ?? item.wrong_store_qty ?? 0)
+      const processed = verified + damaged + wrong
+      return pending + Math.max(0, assigned - processed)
+    }, 0)
+  }
+
   const selectableOrders = orders.filter((order) => getOrderMissingQty(order.id) > 0)
 
   const visibleOrderIds = useMemo(() => {
@@ -1093,6 +1119,9 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
                                 <p className="text-sm font-medium truncate">{row.product_name}</p>
                                 <p className="text-xs text-muted-foreground truncate">{row.barcode}</p>
                                 <p className="text-xs text-muted-foreground">Selling Price: {formatPrice(row.selling_price)}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Pending: {getPendingQtyForBarcodeInOrder(row.order_id, row.barcode)}
+                                </p>
                                 <p className="text-[11px] text-muted-foreground">Order: {row.order_id}</p>
                               </div>
                             </div>

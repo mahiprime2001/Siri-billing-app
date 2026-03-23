@@ -11,7 +11,7 @@ interface PrintableInvoiceProps {
 // No IE workarounds needed. This component is written for Chrome/Edge.
 
 const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
-  ({ invoice }, ref) => {
+  ({ invoice, paperSize }, ref) => {
     const fmt = (value: number | undefined | null | string) => {
       if (value == null || isNaN(Number(value))) return "0";
       return Number(value).toLocaleString();
@@ -112,15 +112,22 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
       <div style={{ borderTop: "1px dashed #000", margin: "5px 0" }} />
     );
 
+    const wrapperWidth =
+      paperSize === "Thermal 58mm"
+        ? "56mm"
+        : paperSize === "Thermal 80mm"
+        ? "76mm"
+        : "100%"
+
     return (
       <>
         <div
           className="invoice-wrapper"
           ref={ref}
           style={{
-            width: "78mm",
+            width: wrapperWidth,
             margin: "0 auto",
-            padding: "3mm 3mm 0 3mm",
+            padding: "2mm 2mm 0 2mm",
             boxSizing: "border-box",
             background: "#fff",
             fontFamily: "'Courier New', Courier, monospace",

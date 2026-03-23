@@ -465,6 +465,7 @@ export default function InvoicePreview({
   const isThermal = paperSize.includes("Thermal")
   const isA4 = paperSize === "A4"
   const isLetter = paperSize === "Letter"
+  const hiddenPrintWidthPx = isThermal ? (paperSize === "Thermal 58mm" ? "220px" : "302px") : "840px"
   const requiresDiscountApproval = invoice.discountPercentage > 10
   const isDiscountApproved = requiresDiscountApproval && discountApprovalStatus === "approved"
   const isDiscountPending = requiresDiscountApproval && discountApprovalStatus === "pending"
@@ -747,7 +748,7 @@ export default function InvoicePreview({
               position: "fixed",
               top: 0,
               left: "-9999px",
-              width: "302px",       // 80mm at 96dpi — matches WebBrowser render width
+              width: hiddenPrintWidthPx,
               visibility: "hidden",
               pointerEvents: "none",
               zIndex: -1,
@@ -810,10 +811,6 @@ export default function InvoicePreview({
  * Note: Not all browsers support CSS copies, so user may need to set in dialog
  */
 function generatePrintHTML(printContent: string, paperSize: string, invoiceId: string): string {
-  const isThermal = paperSize.includes("Thermal")
-  const thermalFitScale = isThermal ? 0.92 : 1
-  const thermalInset = isThermal ? "2.2mm" : "0"
-
   const getPageStyles = (): string => {
     if (paperSize === "Thermal 58mm") {
       return `
@@ -935,18 +932,7 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
             max-width: 100%;
             padding: 0;
             margin: 0 auto;
-            overflow: hidden;
-          }
-
-          .print-fit {
-            width: calc(100% - (2 * ${thermalInset}));
-            margin: 0 ${thermalInset};
-            transform: scale(${thermalFitScale});
-            transform-origin: top left;
-          }
-
-          .print-fit-inner {
-            width: ${thermalFitScale === 1 ? "100%" : `${(100 / thermalFitScale).toFixed(4)}%`};
+            overflow: visible;
           }
 
           .invoice-wrapper {
@@ -957,11 +943,7 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
       </head>
       <body>
         <div class="print-container">
-          <div class="print-fit">
-            <div class="print-fit-inner">
-              ${printContent}
-            </div>
-          </div>
+          ${printContent}
         </div>
       </body>
     </html>
