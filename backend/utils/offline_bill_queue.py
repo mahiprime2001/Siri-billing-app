@@ -98,6 +98,19 @@ def get_queue_size() -> int:
         return len(queue)
 
 
+def get_queue_status() -> Dict[str, Any]:
+    with _queue_lock:
+        queue = read_json_file(OFFLINE_BILL_QUEUE_FILE, [])
+        if not isinstance(queue, list):
+            queue = []
+        return {
+            "size": len(queue),
+            "max_attempts": max((int(item.get("attempts", 0)) for item in queue), default=0),
+            "oldest_created_at": min((item.get("created_at") for item in queue if item.get("created_at")), default=None),
+            "recent_errors": [item.get("last_error") for item in queue if item.get("last_error")][-3:],
+        }
+
+
 def process_offline_bill_queue(app_logger=None, max_items: int = 20) -> Dict[str, int]:
     with _queue_lock:
         queue = read_json_file(OFFLINE_BILL_QUEUE_FILE, [])

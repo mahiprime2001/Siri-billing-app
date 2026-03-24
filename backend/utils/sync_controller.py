@@ -60,9 +60,10 @@ class SyncController:
     def get_sync_status(self) -> Dict[str, Any]:
         """Return the current sync status."""
         supabase: Client = get_supabase_client()
-        database_connected = bool(supabase)  # Check if client is available
+        is_fallback_client = (not supabase) or getattr(supabase, "is_offline_fallback", False)
+        database_connected = not is_fallback_client
 
-        # Attempt a simple query to verify connection if client exists
+        # Attempt a simple query to verify cloud connection if this is not fallback client
         if database_connected:
             try:
                 # Attempt to get a small piece of non-sensitive data from an always-present table.
@@ -73,10 +74,35 @@ class SyncController:
                 logger.warning(f"Supabase connection test failed: {e}")
                 database_connected = False
 
+        try:
+            from utils.offline_bill_queue import get_queue_status as _bill_queue_status
+            from utils.offline_damage_return_queue import get_queue_status as _damage_queue_status
+            from utils.offline_transfer_verification_queue import get_queue_status as _transfer_queue_status
+
+            bill_q = _bill_queue_status()
+            damage_q = _damage_queue_status()
+            transfer_q = _transfer_queue_status()
+        except Exception as e:
+            logger.warning(f"Could not read offline queue status: {e}")
+            bill_q = {"size": 0}
+            damage_q = {"size": 0}
+            transfer_q = {"size": 0}
+
+        offline_total = int(bill_q.get("size", 0)) + int(damage_q.get("size", 0)) + int(transfer_q.get("size", 0))
+        sync_total = len(self.sync_queue)
+
         return {
             "database_connected": database_connected,
+            "mode": "cloud" if database_connected else "fallback",
             "last_sync": self.last_sync_timestamp,
-            "queue_size": len(self.sync_queue)
+            "queue_size": sync_total + offline_total,
+            "sync_controller_queue_size": sync_total,
+            "offline_queues": {
+                "bills": bill_q,
+                "damage_returns": damage_q,
+                "transfer_verifications": transfer_q,
+                "total_size": offline_total,
+            },
         }
 
     def _log_to_sync_table(self, supabase: Client, table_name: str, record_id: str, operation_type: str, change_data: Dict, source: str = "local", status: str = "pending", error_message: Optional[str] = None):
@@ -136,7 +162,7 @@ class SyncController:
         logger.info(f"Processing sync queue. Current size: {len(self.sync_queue)}")
         supabase: Client = get_supabase_client()
 
-        if not supabase:
+        if not supabase or getattr(supabase, "is_offline_fallback", False):
             logger.error("Supabase client not available for processing sync queue.")
             return
 

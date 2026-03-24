@@ -9,6 +9,7 @@ from flask_jwt_extended import (
 )
 
 from datetime import datetime, timezone
+import re
 from utils.connection_pool import get_supabase_client
 from helpers.utils import read_json_file
 from config.config import USERS_FILE
@@ -215,3 +216,42 @@ def check_auth():
     except Exception as e:
         app.logger.error(f"❌ [BACKEND-CHECK] Auth check error: {str(e)}")
         return jsonify({"authenticated": False}), 401
+
+
+@auth_bp.route('/forgot-password-proxy', methods=['POST'])
+def forgot_password_proxy():
+    """
+    Local proxy endpoint expected by frontend.
+    For desktop/offline-first flow we return a safe generic message and never disclose account existence.
+    """
+    try:
+        data = request.get_json() or {}
+        email = str(data.get("email", "")).strip().lower()
+        if not email or not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email):
+            return jsonify({"success": False, "message": "Please enter a valid email address."}), 400
+
+        # Best-effort existence check (cloud then local), but response remains generic.
+        exists = False
+        try:
+            supabase = get_supabase_client()
+            if supabase and not getattr(supabase, "is_offline_fallback", False):
+                response = supabase.table("users").select("id").eq("email", email).limit(1).execute()
+                exists = bool(response.data)
+        except Exception:
+            pass
+        if not exists:
+            exists = bool(_find_local_user_by_email(email))
+
+        # Avoid account enumeration; always return success.
+        if exists:
+            app.logger.info(f"🔐 [FORGOT-PASSWORD] Password reset requested for existing user: {email}")
+        else:
+            app.logger.info(f"🔐 [FORGOT-PASSWORD] Password reset requested for non-existing user: {email}")
+
+        return jsonify({
+            "success": True,
+            "message": "If an account exists for this email, reset instructions have been sent."
+        }), 200
+    except Exception as e:
+        app.logger.error(f"❌ [FORGOT-PASSWORD] Error: {str(e)}")
+        return jsonify({"success": False, "message": "Unable to process request right now."}), 500

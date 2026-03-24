@@ -106,3 +106,16 @@ def process_offline_transfer_verification_queue(app_logger=None, max_items: int 
         "failed": failed,
         "remaining": len(remaining),
     }
+
+
+def get_queue_status() -> Dict[str, Any]:
+    with _queue_lock:
+        queue = read_json_file(OFFLINE_TRANSFER_VERIFICATION_QUEUE_FILE, [])
+        if not isinstance(queue, list):
+            queue = []
+        return {
+            "size": len(queue),
+            "max_attempts": max((int(item.get("attempts", 0)) for item in queue), default=0),
+            "oldest_created_at": min((item.get("created_at") for item in queue if item.get("created_at")), default=None),
+            "recent_errors": [item.get("last_error") for item in queue if item.get("last_error")][-3:],
+        }
