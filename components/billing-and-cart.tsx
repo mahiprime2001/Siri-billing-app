@@ -1852,6 +1852,10 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
   }
 
   const tax = calculateTotalTax()
+  const totalVerifiedStoreStock = products.reduce((sum, product) => {
+    const stock = Number(product.stock || 0)
+    return sum + (Number.isFinite(stock) && stock > 0 ? stock : 0)
+  }, 0)
 
   return (
     <>
@@ -1899,16 +1903,21 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <Input
-                  placeholder="Search products or click to see all..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  onFocus={handleSearchFocus}
-                  onBlur={handleSearchBlur}
-                  className="pl-10"
-                />
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                  <Input
+                    placeholder="Search products or click to see all..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onFocus={handleSearchFocus}
+                    onBlur={handleSearchBlur}
+                    className="pl-10"
+                  />
+                </div>
+                <Badge variant="secondary" className="whitespace-nowrap">
+                  Verified Stock: {totalVerifiedStoreStock.toLocaleString()}
+                </Badge>
               </div>
 
               <div className="max-h-96 overflow-y-auto border rounded-md">
