@@ -47,9 +47,19 @@ def _local_get_store_id_for_user(user_id: str):
     return match.get("storeId") or match.get("storeid")
 
 
+def _fallback_local_store_id_from_inventory():
+    inventory_items = read_json_file(STOREINVENTORY_FILE, [])
+    store_ids = {
+        str(row.get("storeid") or row.get("storeId"))
+        for row in inventory_items
+        if row.get("storeid") or row.get("storeId")
+    }
+    return next(iter(store_ids)) if len(store_ids) == 1 else None
+
+
 def _build_local_products_response(user_id: str, search: str, limit: int):
     """Build products list from local JSON snapshots for resilient fallback."""
-    store_id = _local_get_store_id_for_user(user_id)
+    store_id = _local_get_store_id_for_user(user_id) or _fallback_local_store_id_from_inventory()
     if not store_id:
         return []
 
@@ -162,6 +172,10 @@ def get_products():
         app.logger.info(f"User {current_user_id} fetching store inventory products")
 
         supabase = get_supabase_client()
+        if getattr(supabase, "is_offline_fallback", False):
+            local_items = _build_local_products_response(current_user_id, search, limit)
+            _PRODUCTS_FALLBACK_CACHE[cache_key] = {"ts": time.time(), "items": local_items}
+            return _build_products_response(local_items, fallback_used=True, data_source="local_snapshot", cached=False), 200
 
         # Step 1: Get user's store ID
         user_store_response = supabase.table('userstores') \
@@ -170,8 +184,9 @@ def get_products():
             .execute()
 
         if not user_store_response.data:
-            app.logger.warning(f"No store assigned to user {current_user_id}")
-            return jsonify([]), 200
+            app.logger.warning(f"No store assigned to user {current_user_id}; trying local products fallback")
+            local_items = _build_local_products_response(current_user_id, search, limit)
+            return _build_products_response(local_items, fallback_used=True, data_source="local_snapshot", cached=False), 200
 
         store_id = user_store_response.data[0]['storeId']
         app.logger.info(f"Fetching inventory for store: {store_id}")

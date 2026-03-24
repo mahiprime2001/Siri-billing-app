@@ -70,6 +70,35 @@ def _get_current_store_id(supabase, user_id: str):
     return _extract_store_id_from_row(rows[0])
 
 
+def _local_resolve_store_for_user(user_id: str):
+    user_stores = read_json_file(USER_STORES_FILE, [])
+    assigned = next(
+        (
+            _normalize_user_store_row(u)
+            for u in user_stores
+            if str(u.get("userId") or u.get("userid")) == str(user_id)
+        ),
+        None,
+    )
+    stores = read_json_file(STORES_FILE, [])
+    if assigned and assigned.get("storeId"):
+        store = next((s for s in stores if str(s.get("id")) == str(assigned.get("storeId"))), None)
+        if store:
+            return store
+
+    # Single-store offline fallback if mapping snapshot is missing.
+    inventory_rows = read_json_file(STOREINVENTORY_FILE, [])
+    store_ids = {
+        str(row.get("storeid") or row.get("storeId"))
+        for row in inventory_rows
+        if row.get("storeid") or row.get("storeId")
+    }
+    if len(store_ids) == 1:
+        only_store_id = next(iter(store_ids))
+        return next((s for s in stores if str(s.get("id")) == only_store_id), None)
+    return None
+
+
 def _derive_transfer_item_state(item: dict) -> str:
     assigned = int(item.get("assigned_qty") or 0)
     verified = int(item.get("verified_qty") or 0)
@@ -184,6 +213,10 @@ def get_current_user_store():
         
         user_store_rows = _fetch_user_store_rows(supabase, current_user_id)
         if not user_store_rows or len(user_store_rows) == 0:
+            local_store = _local_resolve_store_for_user(current_user_id) if getattr(supabase, "is_offline_fallback", False) else None
+            if local_store:
+                app.logger.warning(f"⚠️ No user-store mapping found; using local single-store fallback {local_store.get('id')}")
+                return jsonify(local_store), 200
             app.logger.warning(f"⚠️ No store assigned to user {current_user_id}")
             return jsonify({"message": "No store assigned to this user"}), 404
 
@@ -212,21 +245,9 @@ def get_current_user_store():
         app.logger.error(f"❌ Error fetching current user store: {str(e)}")
         import traceback
         app.logger.error(traceback.format_exc())
-        user_stores = read_json_file(USER_STORES_FILE, [])
-        assigned = next(
-            (
-                _normalize_user_store_row(u)
-                for u in user_stores
-                if str(u.get("userId") or u.get("userid")) == str(current_user_id)
-            ),
-            None,
-        )
-        if not assigned:
-            return jsonify({"message": "No store assigned to this user"}), 404
-        stores = read_json_file(STORES_FILE, [])
-        store = next((s for s in stores if str(s.get("id")) == str(assigned.get("storeId") or assigned.get("storeid"))), None)
+        store = _local_resolve_store_for_user(current_user_id)
         if not store:
-            return jsonify({"message": "Store not found"}), 404
+            return jsonify({"message": "No store assigned to this user"}), 404
         return jsonify(store), 200
 
 

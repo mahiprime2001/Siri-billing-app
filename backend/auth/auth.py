@@ -24,8 +24,15 @@ def require_auth(f):
             response = supabase.table('users').select('id').eq('id', user_id).execute()
             
             if not response.data or len(response.data) == 0:
-                app.logger.warning(f"User {user_id} not found in database")
-                return jsonify({"message": "User not found"}), 404
+                # In offline fallback mode, local users snapshot may be stale/missing.
+                # Do not hard-fail authenticated desktop requests in that state.
+                if getattr(supabase, "is_offline_fallback", False):
+                    app.logger.warning(
+                        f"User {user_id} not found in local fallback users snapshot; allowing JWT-authenticated request in offline mode."
+                    )
+                else:
+                    app.logger.warning(f"User {user_id} not found in database")
+                    return jsonify({"message": "User not found"}), 404
             
             return f(*args, **kwargs)
             
