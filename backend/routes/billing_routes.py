@@ -1,10 +1,12 @@
 from flask import Blueprint, request, jsonify, current_app as app
 from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
+from postgrest.exceptions import APIError
 from utils.connection_pool import get_supabase_client
 from datetime import datetime, timezone, timedelta
 import threading
 import traceback
+import time
 from helpers.utils import read_json_file, write_json_file
 from config.config import BILLS_FILE, BILL_IDEMPOTENCY_FILE
 
@@ -350,13 +352,28 @@ def get_bills():
         if end_date:
             query = query.lte('created_at', end_date)
         
-        response = query.limit(limit).order('created_at', desc=True).execute()
-        bills = response.data if response.data else []
+        response = None
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                response = query.limit(limit).order('created_at', desc=True).execute()
+                break
+            except APIError as api_error:
+                if attempt >= max_retries:
+                    raise api_error
+                app.logger.warning(
+                    f"Retrying bills fetch after APIError (attempt {attempt + 1}/{max_retries + 1}): {api_error}"
+                )
+                time.sleep(0.2 * (attempt + 1))
+
+        bills = response.data if response and response.data else []
         for bill in bills:
             bill.update(_build_edit_window_meta(bill))
-        
+
         app.logger.info(f"✅ Fetched {len(bills)} bills")
-        return jsonify(bills), 200
+        result = jsonify(bills)
+        result.headers["X-Bills-Fallback-Used"] = "0"
+        return result, 200
         
     except Exception as e:
         app.logger.error(f"❌ Error fetching bills: {str(e)}")
@@ -364,7 +381,9 @@ def get_bills():
         cached_bills = read_json_file(BILLS_FILE, [])
         if store_id:
             cached_bills = [b for b in cached_bills if str(b.get("storeid")) == str(store_id)]
-        return jsonify(cached_bills[:limit]), 200
+        result = jsonify(cached_bills[:limit])
+        result.headers["X-Bills-Fallback-Used"] = "1"
+        return result, 200
 
 
 @billing_bp.route('/bills/<bill_id>', methods=['GET'])

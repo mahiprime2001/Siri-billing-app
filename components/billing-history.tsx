@@ -261,7 +261,7 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
     // ✅ Let apiClient + authManager handle the token
 
     const response = await apiClient(
-      `/api/bills?store_id=${currentStore.id}&limit=100`,
+      `/api/bills?store_id=${currentStore.id}&limit=500`,
       {
         method: "GET",
       }
@@ -271,6 +271,7 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
       throw new Error(`HTTP error! status: ${response.status}`)
     }
 
+    const usedFallback = response.headers.get("X-Bills-Fallback-Used") === "1"
     const bills: RawInvoice[] = await response.json()
 
     const normalized = bills.map((b) => ({
@@ -323,6 +324,13 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
     setFilteredInvoices(normalized)
 
     console.log(`✅ Loaded ${normalized.length} invoices from backend`)
+    if (usedFallback) {
+      toast({
+        title: "Showing cached billing history",
+        description: "Live billing history is temporarily unavailable. Trying again shortly.",
+        variant: "default",
+      })
+    }
   } catch (error) {
     console.error("❌ Failed to fetch billing history:", error)
   }

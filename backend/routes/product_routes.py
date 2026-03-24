@@ -10,7 +10,7 @@ import time
 product_bp = Blueprint('product', __name__)
 _PRODUCTS_CLOUD_FAIL_UNTIL = {}
 _PRODUCTS_FALLBACK_CACHE = {}
-_PRODUCTS_FAIL_COOLDOWN_SECONDS = 20
+_PRODUCTS_FAIL_COOLDOWN_SECONDS = 5
 _PRODUCTS_FALLBACK_CACHE_TTL_SECONDS = 8
 
 
@@ -149,7 +149,7 @@ def get_products():
     cache_key = _products_cache_key(str(current_user_id), search, limit)
     now_ts = time.time()
     fail_until = float(_PRODUCTS_CLOUD_FAIL_UNTIL.get(cache_key, 0))
-    if now_ts < fail_until:
+    if now_ts < fail_until and not search:
         cached = _PRODUCTS_FALLBACK_CACHE.get(cache_key)
         if cached and now_ts - float(cached.get("ts", 0)) <= _PRODUCTS_FALLBACK_CACHE_TTL_SECONDS:
             return _build_products_response(cached.get("items", []), fallback_used=True, data_source="local_snapshot", cached=True), 200

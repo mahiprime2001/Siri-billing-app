@@ -1022,6 +1022,28 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
     return code.trim().replace(/^0+/, "")
   }
 
+  const lookupProductByBarcode = async (rawBarcode: string) => {
+    try {
+      const response = await apiClient(
+        `/api/products?search=${encodeURIComponent(rawBarcode)}&limit=50`,
+        { method: "GET" },
+      )
+      if (!response.ok) return null
+      const matches = (await response.json()) as Product[]
+      const normalized = normalizeBarcode(rawBarcode)
+      return (matches || []).find((candidate) => {
+        const barcodes = String(candidate.barcodes || "")
+          .split(",")
+          .map((b) => normalizeBarcode(b))
+          .filter(Boolean)
+        return barcodes.includes(normalized)
+      }) || null
+    } catch (error) {
+      console.warn("Barcode server lookup failed:", error)
+      return null
+    }
+  }
+
   const findPendingTransferForBarcode = async (barcode: string) => {
     try {
       const normalizedBarcode = normalizeBarcode(barcode)
@@ -1088,6 +1110,30 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
         barcodeInputRef.current?.focus()
       }, 0)
     } else {
+      const serverMatchedProduct = await lookupProductByBarcode(rawInput)
+      if (serverMatchedProduct) {
+        setProducts((prev) => {
+          const next = [...prev]
+          const existingIndex = next.findIndex((item) => item.id === serverMatchedProduct.id)
+          if (existingIndex >= 0) {
+            next[existingIndex] = serverMatchedProduct
+          } else {
+            next.push(serverMatchedProduct)
+          }
+          return sortProductsByName(next)
+        })
+
+        const added = addToCart(serverMatchedProduct.id, 1)
+        if (added) {
+          setLastScanned(serverMatchedProduct)
+        }
+        setBarcodeInput("")
+        setTimeout(() => {
+          barcodeInputRef.current?.focus()
+        }, 0)
+        return
+      }
+
       const pendingTransferMatch = await findPendingTransferForBarcode(input)
       setBarcodeInput("")
       if (pendingTransferMatch) {
