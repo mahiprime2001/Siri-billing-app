@@ -356,7 +356,7 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
           price: item.price || item.unit_price || 0,
           total: item.total || item.item_total || 0,
           barcodes: product.barcode || "",
-          taxPercentage: product.tax || item.taxPercentage || 0,
+          taxPercentage: product.tax || item.tax_percentage || item.taxPercentage || 0,
           hsnCode,
         }
       })

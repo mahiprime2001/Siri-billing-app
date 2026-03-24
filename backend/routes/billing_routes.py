@@ -488,7 +488,7 @@ def get_bill_items(bill_id):
         
         # Get bill items with product details
         response = supabase.table('billitems') \
-            .select('*, products(name, barcode, price, selling_price, hsn_code_id, hsn_codes(hsn_code))') \
+            .select('*, products(name, barcode, price, selling_price, hsn_code_id, hsn_codes(hsn_code, tax))') \
             .eq('billid', bill_id) \
             .execute()
         
@@ -500,13 +500,21 @@ def get_bill_items(bill_id):
             if isinstance(hsn_ref, list):
                 hsn_ref = hsn_ref[0] if hsn_ref else None
             hsn_code = None
+            tax_percentage = None
             if isinstance(hsn_ref, dict):
                 hsn_code = hsn_ref.get('hsn_code')
+                tax_percentage = hsn_ref.get('tax')
             if not hsn_code:
                 hsn_code = product.get('hsn_code')
             if hsn_code:
                 item['hsn_code'] = hsn_code
                 item['hsnCode'] = hsn_code
+            if tax_percentage is None:
+                tax_percentage = product.get('tax')
+            if tax_percentage is not None:
+                item['tax_percentage'] = tax_percentage
+                item['taxPercentage'] = tax_percentage
+                product['tax'] = tax_percentage
             enriched_items.append(item)
         
         app.logger.info(f"✅ Fetched {len(enriched_items)} items for bill {bill_id}")

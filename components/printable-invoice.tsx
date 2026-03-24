@@ -98,10 +98,16 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
 
     const gTotalQty = taxRows.reduce((s, r) => s + r.totalQuantity, 0);
     const gTaxable  = taxRows.reduce((s, r) => s + r.taxableAmount, 0);
-    const gCGST     = taxRows.reduce((s, r) => s + r.cgst, 0);
-    const gSGST     = taxRows.reduce((s, r) => s + r.sgst, 0);
+    const computedCGST = taxRows.reduce((s, r) => s + r.cgst, 0);
+    const computedSGST = taxRows.reduce((s, r) => s + r.sgst, 0);
     const gIGST     = taxRows.reduce((s, r) => s + r.igst, 0);
-    const gTotalTax = taxRows.reduce((s, r) => s + r.totalTax, 0);
+    const computedTotalTax = taxRows.reduce((s, r) => s + r.totalTax, 0);
+    const invoiceCGST = Number(safeInvoice.cgst || 0);
+    const invoiceSGST = Number(safeInvoice.sgst || 0);
+    const invoiceTaxAmount = Number(safeInvoice.taxAmount || 0);
+    const gCGST = computedCGST > 0 ? computedCGST : invoiceCGST;
+    const gSGST = computedSGST > 0 ? computedSGST : invoiceSGST;
+    const gTotalTax = computedTotalTax > 0 ? computedTotalTax : (invoiceTaxAmount || (gCGST + gSGST));
     const gAfterTax = taxRows.reduce((s, r) => s + r.totalAfterTax, 0);
 
     const printedAt = safeInvoice.timestamp
