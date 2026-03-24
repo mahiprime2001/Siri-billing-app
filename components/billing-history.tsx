@@ -605,13 +605,13 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
         return `
           @page { size: 58mm auto; margin: 0; }
           body { width: 58mm; margin: 0; padding: 0; }
-          .print-container { width: 54mm !important; margin: 0 auto !important; padding: 0 !important; box-sizing: border-box !important; }
+          .print-container { width: 50mm !important; margin: 0 auto !important; padding: 0 !important; box-sizing: border-box !important; }
         `
       } else if (paperSize === "Thermal 80mm") {
         return `
           @page { size: 80mm auto; margin: 0; }
           body { width: 80mm; margin: 0; padding: 0; }
-          .print-container { width: 76mm !important; margin: 0 auto !important; padding: 0 !important; box-sizing: border-box !important; }
+          .print-container { width: 72mm !important; margin: 0 auto !important; padding: 0 !important; box-sizing: border-box !important; }
         `
       } else if (paperSize === "A4") {
         return `

@@ -825,7 +825,7 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
           overflow-x: hidden;
         }
         .print-container {
-          width: 54mm !important;
+          width: 50mm !important;
           margin: 0 auto !important;
           padding: 0 !important;
           box-sizing: border-box !important;
@@ -844,7 +844,7 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
           overflow-x: hidden;
         }
         .print-container {
-          width: 76mm !important;
+          width: 72mm !important;
           margin: 0 auto !important;
           padding: 0 !important;
           box-sizing: border-box !important;
