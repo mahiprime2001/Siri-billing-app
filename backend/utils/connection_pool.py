@@ -7,10 +7,11 @@ Manages a single Supabase client instance for efficient database access
 import os
 from dotenv import load_dotenv
 import logging
-from typing import Optional
+from typing import Optional, Any
 from supabase import create_client, Client
 import httpx
 import time
+import random
 from threading import Lock
 from utils.offline_supabase_fallback import OfflineSupabaseClient
 
@@ -24,15 +25,31 @@ logger = logging.getLogger('supabase_client')
 # Global Supabase client instance
 _supabase_client: Optional[Client] = None
 _client_lock = Lock()
+_probe_lock = Lock()
 _offline_client = OfflineSupabaseClient()
 _supabase_offline_until: float = 0.0
 _last_probe_at: float = 0.0
-_PROBE_INTERVAL_SECONDS = 10
-_OFFLINE_COOLDOWN_SECONDS = 45
+_last_success_at: float = 0.0
+_last_failure_at: float = 0.0
+_last_error: str = ""
+_consecutive_network_failures: int = 0
+_consecutive_probe_failures: int = 0
+_PROBE_INTERVAL_SECONDS = 5
+_BASE_OFFLINE_COOLDOWN_SECONDS = 8
+_MAX_OFFLINE_COOLDOWN_SECONDS = 60
+_PROBE_FAILURE_RESET_THRESHOLD = 3
+_MAX_CONNECTIONS = 30
+_MAX_KEEPALIVE_CONNECTIONS = 8
+_KEEPALIVE_EXPIRY_SECONDS = 45.0
 
 
-def _is_timeout_error(err: Exception) -> bool:
-    timeout_types = (
+class SupabaseCircuitOpenError(Exception):
+    """Raised when Supabase circuit breaker is open."""
+    pass
+
+
+def _is_network_offline_error(err: Exception | str) -> bool:
+    timeout_types: tuple[type[Any], ...] = (
         httpx.ConnectTimeout,
         httpx.ReadTimeout,
         httpx.WriteTimeout,
@@ -41,41 +58,123 @@ def _is_timeout_error(err: Exception) -> bool:
         httpx.WriteError,
         httpx.RemoteProtocolError,
     )
+    if isinstance(err, SupabaseCircuitOpenError):
+        return False
     if isinstance(err, timeout_types):
         return True
     text = str(err).lower()
-    return "timed out" in text or "timeout" in text
+    return any(
+        token in text
+        for token in [
+            "timed out",
+            "timeout",
+            "connection reset",
+            "connection refused",
+            "temporary failure",
+            "name resolution",
+            "dns",
+            "bad gateway",
+            "gateway timeout",
+            "502",
+            "503",
+            "504",
+            "remoteprotocolerror",
+        ]
+    )
+
+
+def _is_server_error_response(response: httpx.Response) -> bool:
+    return response.status_code >= 500
 
 
 def _mark_supabase_offline(reason: Exception | str):
-    global _supabase_offline_until
-    _supabase_offline_until = time.time() + _OFFLINE_COOLDOWN_SECONDS
-    logger.warning(f"⚠️ [CONNECTION-POOL] Supabase marked offline for {_OFFLINE_COOLDOWN_SECONDS}s: {reason}")
+    global _supabase_offline_until, _last_failure_at, _last_error, _consecutive_network_failures
+    now = time.time()
+    _consecutive_network_failures += 1
+    cooldown = min(
+        _MAX_OFFLINE_COOLDOWN_SECONDS,
+        _BASE_OFFLINE_COOLDOWN_SECONDS * (2 ** max(0, _consecutive_network_failures - 1)),
+    )
+    # Add light jitter so multiple workers don't probe at the exact same moment.
+    jitter = random.uniform(0, 2.0)
+    _supabase_offline_until = max(_supabase_offline_until, now + cooldown + jitter)
+    _last_failure_at = now
+    _last_error = str(reason)
+    logger.warning(
+        f"⚠️ [CONNECTION-POOL] Supabase marked offline for ~{int(cooldown)}s "
+        f"(failures={_consecutive_network_failures}): {reason}"
+    )
 
 
 def _mark_supabase_online():
-    global _supabase_offline_until
+    global _supabase_offline_until, _last_success_at, _consecutive_network_failures, _consecutive_probe_failures, _last_error
     if _supabase_offline_until != 0:
         logger.info("✅ [CONNECTION-POOL] Supabase connectivity restored; using Supabase as primary source")
     _supabase_offline_until = 0.0
+    _last_success_at = time.time()
+    _consecutive_network_failures = 0
+    _consecutive_probe_failures = 0
+    _last_error = ""
 
 
 def _is_supabase_offline() -> bool:
     return time.time() < _supabase_offline_until
 
 
+def _offline_remaining_seconds() -> int:
+    return max(0, int(_supabase_offline_until - time.time()))
+
+
 class ResilientHTTPClient(httpx.Client):
     def request(self, method, url, *args, **kwargs):  # type: ignore[override]
         if _is_supabase_offline():
-            raise httpx.ConnectTimeout("Supabase offline circuit is open")
+            raise SupabaseCircuitOpenError(
+                f"Supabase offline circuit is open ({_offline_remaining_seconds()}s remaining)"
+            )
         try:
             response = super().request(method, url, *args, **kwargs)
-            _mark_supabase_online()
+            if _is_server_error_response(response):
+                _mark_supabase_offline(f"HTTP {response.status_code} for {url}")
+            else:
+                _mark_supabase_online()
             return response
         except Exception as e:
-            if _is_timeout_error(e):
+            if _is_network_offline_error(e):
                 _mark_supabase_offline(e)
             raise
+
+
+def _probe_supabase_health() -> bool:
+    global _last_probe_at, _consecutive_probe_failures
+    with _probe_lock:
+        _last_probe_at = time.time()
+        if _supabase_client is None:
+            return False
+        try:
+            _supabase_client.from_("systemsettings").select("id").limit(1).execute()
+            _mark_supabase_online()
+            return True
+        except Exception as probe_error:
+            if _is_network_offline_error(probe_error):
+                _mark_supabase_offline(probe_error)
+            _consecutive_probe_failures += 1
+            logger.warning(
+                f"⚠️ [CONNECTION-POOL] Supabase probe failed "
+                f"(consecutive_probe_failures={_consecutive_probe_failures}): {probe_error}"
+            )
+            if _consecutive_probe_failures >= _PROBE_FAILURE_RESET_THRESHOLD:
+                logger.warning("🔄 [CONNECTION-POOL] Repeated probe failures, resetting Supabase client.")
+                reset_supabase_client()
+                try:
+                    if _supabase_client is not None:
+                        _supabase_client.from_("systemsettings").select("id").limit(1).execute()
+                        _mark_supabase_online()
+                        return True
+                except Exception as reset_probe_error:
+                    if _is_network_offline_error(reset_probe_error):
+                        _mark_supabase_offline(reset_probe_error)
+                    logger.warning(f"⚠️ [CONNECTION-POOL] Probe after reset failed: {reset_probe_error}")
+            return False
 
 def initialize_supabase_client():
     """Initialize the Supabase client with HTTP/1.1 only"""
@@ -110,9 +209,9 @@ def initialize_supabase_client():
                 http2=False,  # Disable HTTP/2
                 timeout=httpx.Timeout(30.0, connect=10.0),
                 limits=httpx.Limits(
-                    max_connections=50,  # Max concurrent connections
-                    max_keepalive_connections=10,  # Connections to keep alive
-                    keepalive_expiry=60.0  # Keep connections alive for 60 seconds
+                    max_connections=_MAX_CONNECTIONS,  # Max concurrent connections
+                    max_keepalive_connections=_MAX_KEEPALIVE_CONNECTIONS,  # Connections to keep alive
+                    keepalive_expiry=_KEEPALIVE_EXPIRY_SECONDS
                 ),
                 verify=True,  # Verify SSL certificates
             )
@@ -124,7 +223,10 @@ def initialize_supabase_client():
             _supabase_client.postgrest.session = custom_http_client
             
             logger.info("✅ [CONNECTION-POOL] Supabase client initialized successfully (HTTP/1.1 only)")
-            logger.info(f"🔧 [CONNECTION-POOL] Max connections: 50, Keepalive: 10, Timeout: 30s")
+            logger.info(
+                f"🔧 [CONNECTION-POOL] Max connections: {_MAX_CONNECTIONS}, "
+                f"Keepalive: {_MAX_KEEPALIVE_CONNECTIONS}, Timeout: 30s"
+            )
             
             return _supabase_client
             
@@ -137,7 +239,7 @@ def get_supabase_client():
     Get the initialized Supabase client.
     Initializes it if not already initialized.
     """
-    global _supabase_client, _last_probe_at
+    global _supabase_client
     
     if _supabase_client is None:
         initialize_supabase_client()
@@ -147,17 +249,13 @@ def get_supabase_client():
         return _offline_client
 
     if _is_supabase_offline():
-        now = time.time()
-        if now - _last_probe_at >= _PROBE_INTERVAL_SECONDS:
-            _last_probe_at = now
-            try:
-                _supabase_client.from_("systemsettings").select("id").limit(1).execute()
-                _mark_supabase_online()
-            except Exception as e:
-                if _is_timeout_error(e):
-                    _mark_supabase_offline(e)
-                return _offline_client
-        else:
+        # Respect cooldown window first; do not keep extending it through immediate probes.
+        if _offline_remaining_seconds() > 0:
+            return _offline_client
+        # Cooldown expired; probe once per interval before switching back to cloud.
+        if time.time() - _last_probe_at < _PROBE_INTERVAL_SECONDS:
+            return _offline_client
+        if not _probe_supabase_health():
             return _offline_client
 
     return _supabase_client
@@ -188,21 +286,50 @@ def reset_supabase_client():
     close_supabase_client()
     return initialize_supabase_client()
 
+
+def warmup_supabase_connection() -> bool:
+    """
+    Attempt a one-time startup probe to avoid stale offline state.
+    Returns True if Supabase is reachable, else False.
+    """
+    client = get_supabase_client()
+    if not client or getattr(client, "is_offline_fallback", False):
+        return False
+    return _probe_supabase_health()
+
 def get_client_status():
     """Get the current status of the Supabase client"""
     if _supabase_client is None:
         return {
             "initialized": False,
             "status": "not initialized",
+            "mode": "fallback",
+            "offline_remaining_seconds": _offline_remaining_seconds(),
+            "probe_interval_seconds": _PROBE_INTERVAL_SECONDS,
+            "last_probe_at": _last_probe_at or None,
+            "last_success_at": _last_success_at or None,
+            "last_failure_at": _last_failure_at or None,
+            "last_error": _last_error or None,
+            "consecutive_network_failures": _consecutive_network_failures,
+            "consecutive_probe_failures": _consecutive_probe_failures,
         }
     
     return {
         "initialized": True,
-        "status": "active",
+        "status": "active" if not _is_supabase_offline() else "cooldown",
+        "mode": "cloud" if not _is_supabase_offline() else "fallback",
         "http_version": "HTTP/1.1",
+        "offline_remaining_seconds": _offline_remaining_seconds(),
+        "probe_interval_seconds": _PROBE_INTERVAL_SECONDS,
+        "last_probe_at": _last_probe_at or None,
+        "last_success_at": _last_success_at or None,
+        "last_failure_at": _last_failure_at or None,
+        "last_error": _last_error or None,
+        "consecutive_network_failures": _consecutive_network_failures,
+        "consecutive_probe_failures": _consecutive_probe_failures,
         "connection_pool": {
-            "max_connections": 50,
-            "max_keepalive_connections": 10,
-            "keepalive_expiry": "60s",
+            "max_connections": _MAX_CONNECTIONS,
+            "max_keepalive_connections": _MAX_KEEPALIVE_CONNECTIONS,
+            "keepalive_expiry": f"{int(_KEEPALIVE_EXPIRY_SECONDS)}s",
         }
     }

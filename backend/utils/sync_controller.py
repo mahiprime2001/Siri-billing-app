@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import List, Dict, Any, Optional
 from supabase import Client
 from postgrest.exceptions import APIError
-from utils.connection_pool import get_supabase_client
+from utils.connection_pool import get_supabase_client, get_client_status
 from helpers.utils import read_json_file, write_json_file
 from config.config import (
     USERS_FILE, PRODUCTS_FILE, BILLS_FILE, CUSTOMERS_FILE,
@@ -97,6 +97,7 @@ class SyncController:
             "last_sync": self.last_sync_timestamp,
             "queue_size": sync_total + offline_total,
             "sync_controller_queue_size": sync_total,
+            "cloud_connection": get_client_status(),
             "offline_queues": {
                 "bills": bill_q,
                 "damage_returns": damage_q,

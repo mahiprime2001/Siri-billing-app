@@ -29,7 +29,7 @@ from functools import wraps
 import signal
 
 # Import connection pool and sync controller
-from utils.connection_pool import initialize_supabase_client, get_supabase_client, close_supabase_client
+from utils.connection_pool import initialize_supabase_client, get_supabase_client, close_supabase_client, warmup_supabase_connection
 from utils.sync_controller import SyncController, json_serial as sync_json_serial
 
 # Import refactored modules
@@ -170,6 +170,13 @@ app.logger.info(f"JWT_COOKIE_SAMESITE: {app.config['JWT_COOKIE_SAMESITE']}")
 app.logger.info(f"JWT_ACCESS_TOKEN_EXPIRES: {app.config['JWT_ACCESS_TOKEN_EXPIRES']}")
 app.logger.info(f"JWT_ACCESS_COOKIE_PATH: {app.config['JWT_ACCESS_COOKIE_PATH']}")
 app.logger.info(f"JWT_COOKIE_DOMAIN: {app.config['JWT_COOKIE_DOMAIN']}")
+try:
+    if warmup_supabase_connection():
+        app.logger.info("✅ Supabase startup warmup probe succeeded.")
+    else:
+        app.logger.warning("⚠️ Supabase startup warmup probe failed; fallback mode may be active until recovery.")
+except Exception as warmup_err:
+    app.logger.warning(f"⚠️ Supabase startup warmup probe errored: {warmup_err}")
 
 # ==================== JWT CALLBACKS ====================
 @jwt.expired_token_loader
