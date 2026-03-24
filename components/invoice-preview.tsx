@@ -845,7 +845,7 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
         }
         .print-container {
           width: 72mm !important;
-          margin: 0 auto !important;
+          margin: 0 0 0 2mm !important;
           padding: 0 !important;
           box-sizing: border-box !important;
         }

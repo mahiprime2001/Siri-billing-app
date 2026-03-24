@@ -622,7 +622,7 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
         return `
           @page { size: 80mm auto; margin: 0; }
           body { width: 80mm; margin: 0; padding: 0; }
-          .print-container { width: 72mm !important; margin: 0 auto !important; padding: 0 !important; box-sizing: border-box !important; }
+          .print-container { width: 72mm !important; margin: 0 0 0 2mm !important; padding: 0 !important; box-sizing: border-box !important; }
         `
       } else if (paperSize === "A4") {
         return `

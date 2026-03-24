@@ -83,10 +83,12 @@ function buildPrintHtml(htmlContent: string, paperSize?: string): string {
   let pageWidth = "210mm";
   let pageHeight = "auto";
   let thermalContainerWidth = "";
+  let thermalContainerMargin = "0 auto";
 
   if (paperSize === "Thermal 80mm") {
     pageWidth = "80mm";
     thermalContainerWidth = "72mm";
+    thermalContainerMargin = "0 0 0 2mm";
   } else if (paperSize === "Thermal 58mm") {
     pageWidth = "58mm";
     thermalContainerWidth = "50mm";
@@ -121,7 +123,7 @@ function buildPrintHtml(htmlContent: string, paperSize?: string): string {
   }
   .print-container {
     width: ${thermalContainerWidth} !important;
-    margin: 0 auto !important;
+    margin: ${thermalContainerMargin} !important;
     padding: 0 !important;
     box-sizing: border-box !important;
   }` : ""}
