@@ -221,7 +221,7 @@ def create_bill_transaction(
         raise ValueError("Items list is empty")
 
     supabase = get_supabase_client()
-    if not supabase:
+    if not supabase or getattr(supabase, "is_offline_fallback", False):
         raise RuntimeError("Supabase client unavailable")
 
     bill_id = forced_bill_id or _generate_daily_invoice_id(supabase)
