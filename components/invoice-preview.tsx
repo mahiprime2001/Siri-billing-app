@@ -28,6 +28,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { apiClient } from "@/lib/api-client"
 import { isTauriApp, listPrinters, printHtmlContent } from "@/lib/tauriPrinter"
 import { safePrint } from "@/lib/printUtils"
+import { getThermalConfig, measureContentScale } from "@/utils/printCalibration"
 
 
 interface InvoicePreviewProps {
@@ -433,7 +434,20 @@ export default function InvoicePreview({
 
       const printableInvoiceId = updatedInvoice.id || invoice.id || 'unknown'
       const printContent = printRef.current.outerHTML
-      const html = generatePrintHTML(printContent, paperSize, printableInvoiceId)
+      const config = getThermalConfig(paperSize)
+
+      let scale = 1
+      if (printRef.current && paperSize.includes("Thermal")) {
+        scale = measureContentScale(printRef.current, config.maxWidthPx)
+      }
+
+      const html = generatePrintHTML(
+        printContent,
+        paperSize,
+        printableInvoiceId,
+        scale,
+        config
+      )
 
       if (isTauriApp()) {
         const printerName = selectedPrinter === SYSTEM_DEFAULT_PRINTER_VALUE ? "" : selectedPrinter
@@ -465,7 +479,7 @@ export default function InvoicePreview({
   const isThermal = paperSize.includes("Thermal")
   const isA4 = paperSize === "A4"
   const isLetter = paperSize === "Letter"
-  const hiddenPrintWidthPx = isThermal ? (paperSize === "Thermal 58mm" ? "220px" : "302px") : "840px"
+  const hiddenPrintWidthPx = isThermal ? (paperSize === "Thermal 58mm" ? "200px" : "270px") : "840px"
   const requiresDiscountApproval = invoice.discountPercentage > 10
   const isDiscountApproved = requiresDiscountApproval && discountApprovalStatus === "approved"
   const isDiscountPending = requiresDiscountApproval && discountApprovalStatus === "pending"
@@ -810,136 +824,122 @@ export default function InvoicePreview({
  * ✅ Generate print HTML with CSS to suggest default copies
  * Note: Not all browsers support CSS copies, so user may need to set in dialog
  */
-function generatePrintHTML(printContent: string, paperSize: string, invoiceId: string): string {
+function generatePrintHTML(
+  printContent: string,
+  paperSize: string,
+  invoiceId: string,
+  scale: number = 1,
+  config?: any
+): string {
   const getPageStyles = (): string => {
+    if (paperSize === "Thermal 80mm") {
+      return `
+        @page {
+          size: 80mm auto;
+          margin: 0;
+        }
+
+        html, body {
+          width: 100%;
+          margin: 0;
+          padding: 0;
+        }
+
+        body {
+          display: flex;
+          justify-content: center;
+          transform: scale(${scale});
+          transform-origin: top center;
+        }
+
+        .print-container {
+          width: 100%;
+          max-width: ${config?.maxWidthMM || 72}mm;
+          margin: 0 auto;
+          padding-left: ${config?.sideMarginCompensationPx || 4}px;
+          padding-right: ${config?.sideMarginCompensationPx || 4}px;
+          box-sizing: border-box;
+        }
+      `
+    }
+
     if (paperSize === "Thermal 58mm") {
       return `
         @page {
           size: 58mm auto;
           margin: 0;
         }
-        body {
-          width: 58mm;
+
+        html, body {
+          width: 100%;
           margin: 0;
           padding: 0;
-          overflow-x: hidden;
         }
+
+        body {
+          display: flex;
+          justify-content: center;
+          transform: scale(${scale});
+          transform-origin: top center;
+        }
+
         .print-container {
-          width: 47mm !important;
-          margin: 0 0 0 1mm !important;
-          padding: 0 !important;
-          box-sizing: border-box !important;
-        }
-      `
-    } else if (paperSize === "Thermal 80mm") {
-      return `
-        @page {
-          size: 80mm auto;
-          margin: 0;
-        }
-        body {
-          width: 80mm;
-          margin: 0;
-          padding: 0;
-          overflow-x: hidden;
-        }
-        .print-container {
-          width: 69mm !important;
-          margin: 0 0 0 1mm !important;
-          padding: 0 !important;
-          box-sizing: border-box !important;
-        }
-      `
-    } else if (paperSize === "A4") {
-      return `
-        @page {
-          size: A4 portrait;
-          margin: 0;
-        }
-        body {
-          margin: 0;
-          padding: 15mm 10mm;
-        }
-      `
-    } else if (paperSize === "Letter") {
-      return `
-        @page {
-          size: Letter portrait;
-          margin: 0;
-        }
-        body {
-          margin: 0;
-          padding: 0.6in 0.4in;
+          width: 100%;
+          max-width: ${config?.maxWidthMM || 48}mm;
+          margin: 0 auto;
+          padding-left: ${config?.sideMarginCompensationPx || 3}px;
+          padding-right: ${config?.sideMarginCompensationPx || 3}px;
+          box-sizing: border-box;
         }
       `
     }
+
+    if (paperSize === "A4") {
+      return `
+        @page { size: A4 portrait; margin: 0; }
+        body { margin: 0; padding: 15mm 10mm; }
+      `
+    }
+
+    if (paperSize === "Letter") {
+      return `
+        @page { size: Letter portrait; margin: 0; }
+        body { margin: 0; padding: 0.6in 0.4in; }
+      `
+    }
+
     return `
-      @page {
-        size: A4 portrait;
-        margin: 0;
-      }
-      body {
-        margin: 0;
-        padding: 15mm 10mm;
-      }
+      @page { size: A4 portrait; margin: 0; }
+      body { margin: 0; padding: 15mm 10mm; }
     `
   }
 
   return `
     <!DOCTYPE html>
-    <html lang="en">
+    <html>
       <head>
         <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Invoice-${invoiceId}</title>
+
         <style>
           ${getPageStyles()}
-          
-          * { 
+
+          * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
           }
-          
-          html, body {
+
+          body {
             font-family: 'Courier New', monospace;
             font-size: ${paperSize.includes("Thermal") ? "12px" : "14px"};
             line-height: 1.5;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
             background: white;
             color: black;
-            height: auto;
-          }
-          
-          @media print {
-            html, body {
-              margin: 0 !important;
-              overflow: visible !important;
-              height: auto !important;
-            }
-            
-            /* Remove default browser headers/footers */
-            @page {
-              margin: 0;
-            }
-            
-            .no-print { 
-              display: none !important; 
-            }
-          }
-          
-          .print-container {
-            width: auto;
-            max-width: 100%;
-            padding: 0;
-            margin: 0;
-            overflow: visible;
           }
 
-          .invoice-wrapper {
-            break-after: avoid-page;
-            page-break-after: avoid;
+          @media print {
+            @page { margin: 0; }
           }
         </style>
       </head>
