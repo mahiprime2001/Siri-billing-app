@@ -811,6 +811,9 @@ export default function InvoicePreview({
  * Note: Not all browsers support CSS copies, so user may need to set in dialog
  */
 function generatePrintHTML(printContent: string, paperSize: string, invoiceId: string): string {
+  const isThermal = paperSize.includes("Thermal")
+  const thermalLeftCompensationMm = 3
+
   const getPageStyles = (): string => {
     if (paperSize === "Thermal 58mm") {
       return `
@@ -940,6 +943,7 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
           .invoice-wrapper {
             break-after: avoid-page;
             page-break-after: avoid;
+            ${isThermal ? `margin-left: -${thermalLeftCompensationMm}mm !important; margin-right: 0 !important;` : ""}
           }
         </style>
       </head>
