@@ -119,7 +119,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
     );
 
     const isThermalPaper = paperSize.includes("Thermal")
-    const wrapperWidth = isThermalPaper ? (paperSize === "Thermal 58mm" ? "48mm" : "70mm") : "100%"
+    const wrapperWidth = isThermalPaper ? (paperSize === "Thermal 58mm" ? "47mm" : "69mm") : "100%"
     const wrapperMargin = isThermalPaper ? "0" : "0 auto"
     const wrapperPadding = isThermalPaper ? "0" : "2mm 2mm 0 2mm"
 
@@ -208,7 +208,15 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
                   </span>
                 </div>
                 <div style={{ fontSize: "9px", color: "#222", paddingLeft: "8%" }}>
-                  Barcode: {(item as any).barcode || (item as any).bar_code || (item as any).productBarcode || "-"} | HSN: {(item as any).hsnCode || (item as any).hsn || (item as any).hsn_code || "-"}
+                  Barcode: {String(
+                    (item as any).barcode ||
+                    (item as any).bar_code ||
+                    (item as any).productBarcode ||
+                    (item as any).barcodes ||
+                    "",
+                  )
+                    .split(",")[0]
+                    .trim() || "-"} | HSN: {(item as any).hsnCode || (item as any).hsn || (item as any).hsn_code || "-"}
                 </div>
                 {(item as any).replacementTag && (
                   <div style={{ fontSize: "10px", fontWeight: 700, paddingLeft: "8%" }}>

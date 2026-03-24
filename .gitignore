@@ -35,3 +35,7 @@ next-env.d.ts
 
 private.key
 private.key.pub
+
+# Python cache
+**/__pycache__/
+*.pyc
