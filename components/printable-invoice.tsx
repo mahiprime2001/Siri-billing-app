@@ -351,26 +351,6 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
 
         </div>
 
-        {/* @page CSS — Edge headless fully respects this unlike IE */}
-        <style jsx global>{`
-          @page {
-            size: 80mm auto;
-            margin: 0;
-          }
-          @media print {
-            html, body {
-              margin: 0;
-              padding: 0;
-              background: #fff;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
-            }
-            .invoice-wrapper {
-              width: 78mm;
-              margin: 0 auto;
-            }
-          }
-        `}</style>
       </>
     );
   }
