@@ -825,8 +825,8 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
           overflow-x: hidden;
         }
         .print-container {
-          width: 50mm !important;
-          margin: 0 auto !important;
+          width: 48mm !important;
+          margin: 0 !important;
           padding: 0 !important;
           box-sizing: border-box !important;
         }
@@ -844,8 +844,8 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
           overflow-x: hidden;
         }
         .print-container {
-          width: 72mm !important;
-          margin: 0 0 0 2mm !important;
+          width: 70mm !important;
+          margin: 0 !important;
           padding: 0 !important;
           box-sizing: border-box !important;
         }
@@ -930,10 +930,10 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
           }
           
           .print-container {
-            width: 100%;
+            width: auto;
             max-width: 100%;
             padding: 0;
-            margin: 0 auto;
+            margin: 0;
             overflow: visible;
           }
 

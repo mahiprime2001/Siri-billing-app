@@ -87,11 +87,12 @@ function buildPrintHtml(htmlContent: string, paperSize?: string): string {
 
   if (paperSize === "Thermal 80mm") {
     pageWidth = "80mm";
-    thermalContainerWidth = "72mm";
-    thermalContainerMargin = "0 0 0 2mm";
+    thermalContainerWidth = "70mm";
+    thermalContainerMargin = "0";
   } else if (paperSize === "Thermal 58mm") {
     pageWidth = "58mm";
-    thermalContainerWidth = "50mm";
+    thermalContainerWidth = "48mm";
+    thermalContainerMargin = "0";
   } else if (paperSize === "A4") {
     pageWidth = "210mm";
     pageHeight = "297mm";
