@@ -82,11 +82,14 @@ function releasePrintLock(): void {
 function buildPrintHtml(htmlContent: string, paperSize?: string): string {
   let pageWidth = "210mm";
   let pageHeight = "auto";
+  let thermalContainerWidth = "";
 
   if (paperSize === "Thermal 80mm") {
     pageWidth = "80mm";
+    thermalContainerWidth = "76mm";
   } else if (paperSize === "Thermal 58mm") {
     pageWidth = "58mm";
+    thermalContainerWidth = "54mm";
   } else if (paperSize === "A4") {
     pageWidth = "210mm";
     pageHeight = "297mm";
@@ -110,6 +113,18 @@ function buildPrintHtml(htmlContent: string, paperSize?: string): string {
     }
     .no-print { display: none !important; }
   }
+  ${thermalContainerWidth ? `
+  body {
+    width: ${pageWidth} !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .print-container {
+    width: ${thermalContainerWidth} !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+  }` : ""}
 </style>`;
 
   if (/<\/head>/i.test(htmlContent)) {

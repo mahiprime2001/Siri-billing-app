@@ -811,9 +811,6 @@ export default function InvoicePreview({
  * Note: Not all browsers support CSS copies, so user may need to set in dialog
  */
 function generatePrintHTML(printContent: string, paperSize: string, invoiceId: string): string {
-  const isThermal = paperSize.includes("Thermal")
-  const thermalLeftCompensationMm = 3
-
   const getPageStyles = (): string => {
     if (paperSize === "Thermal 58mm") {
       return `
@@ -822,16 +819,16 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
           margin: 0;
         }
         body {
-          width: 100%;
+          width: 58mm;
           margin: 0;
           padding: 0;
           overflow-x: hidden;
         }
         .print-container {
-          width: 100%;
-          margin: 0;
-          padding: 1mm;
-          box-sizing: border-box;
+          width: 54mm !important;
+          margin: 0 auto !important;
+          padding: 0 !important;
+          box-sizing: border-box !important;
         }
       `
     } else if (paperSize === "Thermal 80mm") {
@@ -841,16 +838,16 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
           margin: 0;
         }
         body {
-          width: 100%;
+          width: 80mm;
           margin: 0;
           padding: 0;
           overflow-x: hidden;
         }
         .print-container {
-          width: 100%;
-          margin: 0;
-          padding: 1mm;
-          box-sizing: border-box;
+          width: 76mm !important;
+          margin: 0 auto !important;
+          padding: 0 !important;
+          box-sizing: border-box !important;
         }
       `
     } else if (paperSize === "A4") {
@@ -943,7 +940,6 @@ function generatePrintHTML(printContent: string, paperSize: string, invoiceId: s
           .invoice-wrapper {
             break-after: avoid-page;
             page-break-after: avoid;
-            ${isThermal ? `margin-left: -${thermalLeftCompensationMm}mm !important; margin-right: 0 !important;` : ""}
           }
         </style>
       </head>
