@@ -1492,7 +1492,11 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
           product_id: item.productId,
           quantity: item.quantity,
           unit_price: item.price,
-          item_total: item.total
+          item_total: item.total,
+          tax_percentage: Number(item.taxPercentage || 0),
+          hsn_code: item.hsnCode || "",
+          name: item.name || "",
+          barcode: item.barcodes || "",
         }))
       };
 

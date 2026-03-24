@@ -342,12 +342,23 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
           ? product.hsn_codes?.[0]?.hsn_code
           : product.hsn_codes?.hsn_code
         const hsnCode =
+          item.hsn_code ||
+          item.hsnCode ||
           product.hsn_code ||
           product.hsnCode ||
           hsnFromProduct ||
-          item.hsn_code ||
-          item.hsnCode ||
           ""
+        const taxCandidates = [
+          item.tax_percentage,
+          item.taxPercentage,
+          product.tax,
+          Array.isArray(product.hsn_codes) ? product.hsn_codes?.[0]?.tax : product.hsn_codes?.tax,
+        ]
+        const resolvedTax = taxCandidates.reduce<number>((acc, value) => {
+          if (acc > 0) return acc
+          const parsed = Number(value || 0)
+          return Number.isFinite(parsed) ? parsed : 0
+        }, 0)
         return {
           id: item.id,
           productId: item.productid || item.product_id,
@@ -356,7 +367,7 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
           price: item.price || item.unit_price || 0,
           total: item.total || item.item_total || 0,
           barcodes: product.barcode || "",
-          taxPercentage: product.tax || item.tax_percentage || item.taxPercentage || 0,
+          taxPercentage: resolvedTax,
           hsnCode,
         }
       })

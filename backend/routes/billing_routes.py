@@ -11,6 +11,7 @@ from config.config import BILLS_FILE, BILL_IDEMPOTENCY_FILE
 from services.billing_service import create_bill_transaction
 from utils.offline_bill_queue import enqueue_bill_create
 from data_access.data_access import update_both_inventory_and_product_stock
+from utils.bill_item_snapshot import get_bill_item_snapshots, replace_bill_item_snapshots
 
 billing_bp = Blueprint('billing', __name__)
 EDIT_WINDOW_HOURS = 24
@@ -112,6 +113,92 @@ def _log_bill_event(supabase, event_type, bill_id, message):
     except Exception:
         # Optional logging should never break billing flow.
         pass
+
+
+def _to_float(value, default=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _snapshot_match_key(product_id, quantity, price, total):
+    return (
+        str(product_id or ""),
+        int(quantity or 0),
+        round(_to_float(price, 0.0), 3),
+        round(_to_float(total, 0.0), 3),
+    )
+
+
+def _pop_item_snapshot(snapshot_buckets, item):
+    exact_key = _snapshot_match_key(
+        item.get("productid"),
+        item.get("quantity"),
+        item.get("price"),
+        item.get("total"),
+    )
+    exact_bucket = snapshot_buckets.get(exact_key) or []
+    if exact_bucket:
+        return exact_bucket.pop(0)
+
+    loose_key = (
+        str(item.get("productid") or ""),
+        int(item.get("quantity") or 0),
+    )
+    loose_bucket = snapshot_buckets.get(loose_key) or []
+    if loose_bucket:
+        return loose_bucket.pop(0)
+    return None
+
+
+def _build_snapshot_buckets(rows):
+    buckets = {}
+    for row in rows or []:
+        exact_key = _snapshot_match_key(
+            row.get("productid"),
+            row.get("quantity"),
+            row.get("price"),
+            row.get("total"),
+        )
+        buckets.setdefault(exact_key, []).append(row)
+
+        loose_key = (
+            str(row.get("productid") or ""),
+            int(row.get("quantity") or 0),
+        )
+        buckets.setdefault(loose_key, []).append(row)
+    return buckets
+
+
+def _fetch_product_meta_map(supabase, product_ids):
+    clean_ids = [str(pid) for pid in product_ids if pid]
+    if not clean_ids:
+        return {}
+
+    response = (
+        supabase.table("products")
+        .select("id, name, barcode, price, selling_price, hsn_code, hsn_codes(hsn_code, tax)")
+        .in_("id", clean_ids)
+        .execute()
+    )
+
+    mapped = {}
+    for row in response.data or []:
+        hsn_ref = row.get("hsn_codes")
+        if isinstance(hsn_ref, list):
+            hsn_ref = hsn_ref[0] if hsn_ref else {}
+        if not isinstance(hsn_ref, dict):
+            hsn_ref = {}
+        product_id = str(row.get("id") or "").strip()
+        if not product_id:
+            continue
+        mapped[product_id] = {
+            **row,
+            "tax": hsn_ref.get("tax", row.get("tax")),
+            "hsn_code": hsn_ref.get("hsn_code") or row.get("hsn_code"),
+        }
+    return mapped
 
 
 def _cleanup_bill_idempotency_map(raw_map):
@@ -486,35 +573,46 @@ def get_bill_items(bill_id):
         
         supabase = get_supabase_client()
         
-        # Get bill items with product details
-        response = supabase.table('billitems') \
-            .select('*, products(name, barcode, price, selling_price, hsn_code_id, hsn_codes(hsn_code, tax))') \
-            .eq('billid', bill_id) \
+        # Get bill items first, then enrich with robust product + snapshot fallback.
+        response = (
+            supabase.table('billitems')
+            .select('*')
+            .eq('billid', bill_id)
+            .order('id')
             .execute()
-        
+        )
         items = response.data if response.data else []
+        product_map = _fetch_product_meta_map(supabase, [it.get("productid") for it in items])
+        snapshot_buckets = _build_snapshot_buckets(get_bill_item_snapshots(bill_id))
         enriched_items = []
         for item in items:
-            product = item.get('products') or {}
-            hsn_ref = product.get('hsn_codes')
-            if isinstance(hsn_ref, list):
-                hsn_ref = hsn_ref[0] if hsn_ref else None
-            hsn_code = None
-            tax_percentage = None
-            if isinstance(hsn_ref, dict):
-                hsn_code = hsn_ref.get('hsn_code')
-                tax_percentage = hsn_ref.get('tax')
-            if not hsn_code:
-                hsn_code = product.get('hsn_code')
+            snapshot = _pop_item_snapshot(snapshot_buckets, item) or {}
+            product = product_map.get(str(item.get("productid") or ""), {})
+            hsn_code = (
+                snapshot.get("hsn_code")
+                or product.get('hsn_code')
+                or item.get("hsn_code")
+                or item.get("hsnCode")
+            )
+            tax_percentage = item.get("tax_percentage")
+            if tax_percentage is None:
+                tax_percentage = item.get("taxPercentage")
+            if tax_percentage is None:
+                tax_percentage = snapshot.get("tax_percentage")
+            if tax_percentage is None:
+                tax_percentage = product.get('tax')
             if hsn_code:
                 item['hsn_code'] = hsn_code
                 item['hsnCode'] = hsn_code
-            if tax_percentage is None:
-                tax_percentage = product.get('tax')
             if tax_percentage is not None:
                 item['tax_percentage'] = tax_percentage
                 item['taxPercentage'] = tax_percentage
                 product['tax'] = tax_percentage
+            if snapshot.get("name") and not product.get("name"):
+                product["name"] = snapshot.get("name")
+            if snapshot.get("barcode") and not product.get("barcode"):
+                product["barcode"] = snapshot.get("barcode")
+            item["products"] = product
             enriched_items.append(item)
         
         app.logger.info(f"✅ Fetched {len(enriched_items)} items for bill {bill_id}")
@@ -562,6 +660,7 @@ def get_bill_edit_payload(bill_id):
             .execute()
         )
         raw_items = items_response.data if items_response.data else []
+        snapshot_buckets = _build_snapshot_buckets(get_bill_item_snapshots(bill_id))
 
         items = []
         for item in raw_items:
@@ -571,18 +670,33 @@ def get_bill_edit_payload(bill_id):
                 hsn_ref = hsn_ref[0] if hsn_ref else {}
             if not isinstance(hsn_ref, dict):
                 hsn_ref = {}
+            snapshot = _pop_item_snapshot(snapshot_buckets, item) or {}
+            tax_percentage = item.get("tax_percentage", item.get("taxPercentage"))
+            if tax_percentage is None:
+                tax_percentage = snapshot.get("tax_percentage")
+            if tax_percentage is None:
+                tax_percentage = hsn_ref.get("tax")
+            hsn_code = (
+                item.get("hsn_code")
+                or item.get("hsnCode")
+                or snapshot.get("hsn_code")
+                or hsn_ref.get("hsn_code")
+                or ""
+            )
+            name = product.get("name") or snapshot.get("name") or item.get("name") or "Unknown Item"
+            barcode = product.get("barcode") or snapshot.get("barcode") or ""
 
             items.append(
                 {
                     "id": item.get("id"),
                     "productId": item.get("productid"),
-                    "name": product.get("name") or item.get("name") or "Unknown Item",
+                    "name": name,
                     "quantity": item.get("quantity") or 0,
                     "price": float(item.get("price") or 0),
                     "total": float(item.get("total") or 0),
-                    "barcodes": product.get("barcode") or "",
-                    "taxPercentage": float(hsn_ref.get("tax") or 0),
-                    "hsnCode": hsn_ref.get("hsn_code") or "",
+                    "barcodes": barcode,
+                    "taxPercentage": float(tax_percentage or 0),
+                    "hsnCode": hsn_code,
                 }
             )
 
@@ -670,6 +784,7 @@ def revise_bill(bill_id):
 
         now = datetime.now(timezone.utc).isoformat()
         insert_rows = []
+        valid_source_items = []
         for item in new_items:
             product_id = item.get("product_id") or item.get("productId")
             quantity = int(item.get("quantity") or 0)
@@ -688,11 +803,43 @@ def revise_bill(bill_id):
                     "updated_at": now,
                 }
             )
+            valid_source_items.append(item)
 
         if not insert_rows:
             return jsonify({"message": "No valid items found for revision"}), 400
 
         supabase.table("billitems").insert(insert_rows).execute()
+        product_map = _fetch_product_meta_map(
+            supabase,
+            [row.get("productid") for row in insert_rows],
+        )
+        snapshot_rows = []
+        for row, src in zip(insert_rows, valid_source_items):
+            product_id = str(row.get("productid") or "")
+            product = product_map.get(product_id, {})
+            tax_percentage = src.get("tax_percentage", src.get("taxPercentage"))
+            if tax_percentage is None:
+                tax_percentage = product.get("tax")
+            hsn_code = src.get("hsn_code", src.get("hsnCode"))
+            if not hsn_code:
+                hsn_code = product.get("hsn_code")
+            snapshot_rows.append(
+                {
+                    "productid": product_id,
+                    "quantity": row.get("quantity"),
+                    "price": row.get("price"),
+                    "total": row.get("total"),
+                    "tax_percentage": _to_float(tax_percentage, 0.0),
+                    "hsn_code": str(hsn_code or "").strip(),
+                    "name": str(src.get("name") or product.get("name") or "").strip(),
+                    "barcode": str(src.get("barcode") or src.get("barcodes") or product.get("barcode") or "").strip(),
+                    "created_at": now,
+                }
+            )
+        try:
+            replace_bill_item_snapshots(bill_id, snapshot_rows)
+        except Exception:
+            app.logger.warning(f"Could not update bill item snapshots for revised bill {bill_id}")
 
         update_data = {
             "subtotal": float(payload.get("subtotal") or existing_bill.get("subtotal") or 0),

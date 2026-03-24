@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import re
 from zoneinfo import ZoneInfo
 
@@ -8,6 +8,7 @@ from utils.connection_pool import get_supabase_client
 from data_access.data_access import update_both_inventory_and_product_stock
 from utils.stock_stream import publish
 from utils.discount_approval_cache import pop_discount_approval
+from utils.bill_item_snapshot import replace_bill_item_snapshots, delete_bill_item_snapshots
 
 DEFAULT_WALKIN_CUSTOMER_ID = "CUST-1754821420265"
 INVOICE_ID_REGEX = re.compile(r"^INV-(\d{8})(\d{4})$")
@@ -86,6 +87,45 @@ def _parse_positive_int(value: Any, default: int = 0) -> int:
     except (TypeError, ValueError):
         return default
     return parsed
+
+
+def _parse_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _fetch_product_snapshot_map(supabase, product_ids):
+    clean_ids = [str(pid) for pid in product_ids if pid]
+    if not clean_ids:
+        return {}
+
+    response = (
+        supabase.table("products")
+        .select("id, name, barcode, hsn_code, hsn_codes(hsn_code, tax)")
+        .in_("id", clean_ids)
+        .execute()
+    )
+
+    snapshot_map = {}
+    for row in (response.data or []):
+        hsn_ref = row.get("hsn_codes")
+        if isinstance(hsn_ref, list):
+            hsn_ref = hsn_ref[0] if hsn_ref else {}
+        if not isinstance(hsn_ref, dict):
+            hsn_ref = {}
+
+        product_id = str(row.get("id") or "").strip()
+        if not product_id:
+            continue
+        snapshot_map[product_id] = {
+            "name": row.get("name") or "",
+            "barcode": row.get("barcode") or "",
+            "hsn_code": (hsn_ref.get("hsn_code") or row.get("hsn_code") or ""),
+            "tax_percentage": _parse_float(hsn_ref.get("tax"), 0.0),
+        }
+    return snapshot_map
 
 
 def _aggregate_item_quantities(items):
@@ -328,6 +368,8 @@ def create_bill_transaction(
     replacement_save_errors = []
     replacement_stock_errors = []
     replacement_rows_created = 0
+    product_snapshot_map = _fetch_product_snapshot_map(supabase, required_quantities.keys())
+    item_snapshots_for_bill: List[Dict[str, Any]] = []
 
     for index, item in enumerate(items):
         product_id = item.get("product_id") or item.get("productId")
@@ -356,6 +398,29 @@ def create_bill_transaction(
             item_response = supabase.table("billitems").insert(bill_item_data).execute()
             _ = item_response
             bill_items_created.append(product_id)
+
+            source_tax = item.get("tax_percentage", item.get("taxPercentage"))
+            source_hsn = item.get("hsn_code", item.get("hsnCode"))
+            source_name = item.get("name", "")
+            source_barcode = item.get("barcode", item.get("barcodes", ""))
+            product_snapshot = product_snapshot_map.get(str(product_id), {})
+
+            item_snapshots_for_bill.append(
+                {
+                    "productid": product_id,
+                    "quantity": quantity,
+                    "price": _parse_float(unit_price, 0.0),
+                    "total": _parse_float(item_total, 0.0),
+                    "tax_percentage": _parse_float(
+                        source_tax if source_tax is not None else product_snapshot.get("tax_percentage"),
+                        0.0,
+                    ),
+                    "hsn_code": str(source_hsn or product_snapshot.get("hsn_code") or "").strip(),
+                    "name": str(source_name or product_snapshot.get("name") or "").strip(),
+                    "barcode": str(source_barcode or product_snapshot.get("barcode") or "").strip(),
+                    "created_at": now,
+                }
+            )
         except Exception as item_error:
             bill_item_errors.append(f"item[{index}] insert error for product {product_id}: {str(item_error)}")
             continue
@@ -450,6 +515,10 @@ def create_bill_transaction(
             store_id=store_id,
             applied_deductions=applied_stock_deductions,
         )
+        try:
+            delete_bill_item_snapshots(bill_id)
+        except Exception:
+            pass
         failure_parts = []
         if bill_item_errors:
             failure_parts.append(f"bill item errors: {bill_item_errors}")
@@ -475,6 +544,12 @@ def create_bill_transaction(
                 "ts": datetime.now(timezone.utc).isoformat(),
             }
         )
+
+    try:
+        replace_bill_item_snapshots(bill_id, item_snapshots_for_bill)
+    except Exception:
+        # Snapshot persistence is best-effort and should not block billing.
+        pass
 
     response_data = {
         "message": "Bill created successfully",
