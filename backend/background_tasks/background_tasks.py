@@ -45,7 +45,7 @@ def _is_supabase_reachable(app: Flask) -> bool:
         if getattr(supabase, "is_offline_fallback", False):
             return False
         # Lightweight probe before starting full table loop.
-        supabase.from_("app_config").select("id").limit(1).execute()
+        supabase.from_("systemsettings").select("id").limit(1).execute()
         return True
     except Exception as e:
         app.logger.warning(f"Supabase health probe failed; using local JSON only for this cycle: {e}")

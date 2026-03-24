@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
 import {
-  LogOut, Download, Bell, BellRing, Package, UserCircle, Settings
+  LogOut, Download, Bell, BellRing, Package, UserCircle, Settings, Cloud, CloudOff
 } from 'lucide-react'
 import {BillingHistory} from '@/components/billing-history'
 import BillingAndCart from '@/components/billing-and-cart'
@@ -56,6 +56,8 @@ export default function BillingPage() {
   const [currentStore, setCurrentStore] = useState<{ id: string; name: string; address?: string; phone?: string } | null>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
+  const [cloudConnected, setCloudConnected] = useState<boolean | null>(null)
+  const [syncQueueSize, setSyncQueueSize] = useState(0)
   const [activeTab, setActiveTab] = useState('billing')
   const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false)
   const [transferDialogInitialOrderId, setTransferDialogInitialOrderId] = useState<string>("")
@@ -181,6 +183,22 @@ export default function BillingPage() {
     }
   }, [])
 
+  const fetchCloudStatus = useCallback(async () => {
+    try {
+      const response = await apiClient('/api/sync/status')
+      if (!response.ok) {
+        setCloudConnected(false)
+        return
+      }
+      const payload = await response.json()
+      setCloudConnected(Boolean(payload?.database_connected))
+      setSyncQueueSize(Number(payload?.queue_size || 0))
+    } catch (error) {
+      console.error('Error fetching cloud status:', error)
+      setCloudConnected(false)
+    }
+  }, [])
+
   const handleNotificationClick = async (notification: Notification) => {
     try {
       await apiClient(`/api/notifications/${notification.id}/read`, { method: 'POST' })
@@ -220,13 +238,16 @@ export default function BillingPage() {
     fetchUserData()
     fetchCurrentStore()
     fetchNotifications()
+    fetchCloudStatus()
 
     const notificationsInterval = setInterval(fetchNotifications, 30 * 1000)
+    const cloudStatusInterval = setInterval(fetchCloudStatus, 20 * 1000)
 
     return () => {
       clearInterval(notificationsInterval)
+      clearInterval(cloudStatusInterval)
     }
-  }, [fetchUserData, fetchCurrentStore, fetchNotifications])
+  }, [fetchUserData, fetchCurrentStore, fetchNotifications, fetchCloudStatus])
 
   const handleLogout = () => {
     authManager.clearAuth()
@@ -341,6 +362,14 @@ export default function BillingPage() {
           </div>
 
           <div className="flex items-center space-x-2">
+            <div className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs ${
+              cloudConnected ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+            }`}>
+              {cloudConnected ? <Cloud className="h-3.5 w-3.5" /> : <CloudOff className="h-3.5 w-3.5" />}
+              <span>{cloudConnected ? 'Online' : 'Offline'}</span>
+              {syncQueueSize > 0 && <span className="ml-1">({syncQueueSize})</span>}
+            </div>
+
             {/* ✅ Notifications Bell */}
             <Popover>
               <PopoverTrigger asChild>

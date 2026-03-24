@@ -151,7 +151,7 @@ def get_supabase_client():
         if now - _last_probe_at >= _PROBE_INTERVAL_SECONDS:
             _last_probe_at = now
             try:
-                _supabase_client.from_("app_config").select("id").limit(1).execute()
+                _supabase_client.from_("systemsettings").select("id").limit(1).execute()
                 _mark_supabase_online()
             except Exception as e:
                 if _is_timeout_error(e):

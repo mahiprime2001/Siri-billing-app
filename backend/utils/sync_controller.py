@@ -65,8 +65,8 @@ class SyncController:
         # Attempt a simple query to verify connection if client exists
         if database_connected:
             try:
-                # Attempt to get a small piece of non-sensitive data, e.g., app_config count
-                response = supabase.from_("app_config").select("id").limit(1).execute()
+                # Attempt to get a small piece of non-sensitive data from an always-present table.
+                response = supabase.from_("systemsettings").select("id").limit(1).execute()
                 if response.data is None:  # If data is None, connection might be problematic
                     database_connected = False
             except Exception as e:

@@ -103,7 +103,7 @@ def _fetch_product_snapshot_map(supabase, product_ids):
 
     response = (
         supabase.table("products")
-        .select("id, name, barcode, hsn_code, hsn_codes(hsn_code, tax)")
+        .select("id, name, barcode, hsn_code_id, hsn_codes(hsn_code, tax)")
         .in_("id", clean_ids)
         .execute()
     )
@@ -122,7 +122,7 @@ def _fetch_product_snapshot_map(supabase, product_ids):
         snapshot_map[product_id] = {
             "name": row.get("name") or "",
             "barcode": row.get("barcode") or "",
-            "hsn_code": (hsn_ref.get("hsn_code") or row.get("hsn_code") or ""),
+            "hsn_code": (hsn_ref.get("hsn_code") or ""),
             "tax_percentage": _parse_float(hsn_ref.get("tax"), 0.0),
         }
     return snapshot_map

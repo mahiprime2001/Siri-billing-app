@@ -180,7 +180,7 @@ def _fetch_product_meta_map(supabase, product_ids):
 
     response = (
         supabase.table("products")
-        .select("id, name, barcode, price, selling_price, hsn_code, hsn_codes(hsn_code, tax)")
+        .select("id, name, barcode, price, selling_price, hsn_code_id, hsn_codes(hsn_code, tax)")
         .in_("id", clean_ids)
         .execute()
     )
@@ -198,7 +198,7 @@ def _fetch_product_meta_map(supabase, product_ids):
         mapped[product_id] = {
             **row,
             "tax": hsn_ref.get("tax", row.get("tax")),
-            "hsn_code": hsn_ref.get("hsn_code") or row.get("hsn_code"),
+            "hsn_code": hsn_ref.get("hsn_code") or "",
         }
     return mapped
 

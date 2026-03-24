@@ -11,7 +11,6 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 // Printing in history is now identical to billing-cart: direct print (no dialog)
 import { Eye, Search, Printer, Pencil, History } from "lucide-react"
-import InvoicePreview from "./invoice-preview"
 import PrintableInvoice from "./printable-invoice"
 import { apiClient } from "@/lib/api-client"
 import { isTauriApp, listPrinters, printHtmlContent } from "@/lib/tauriPrinter"
@@ -1072,14 +1071,23 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
         </CardContent>
       </Card>
 
-      {showPreview && selectedInvoice && (
-        <InvoicePreview
-          invoice={selectedInvoice}
-          isOpen={showPreview}
-          onClose={() => setShowPreview(false)}
-          initialPaperSize={printPaperSize}
-        />
-      )}
+      <Dialog open={showPreview} onOpenChange={setShowPreview}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>View Invoice</DialogTitle>
+            <DialogDescription>
+              {selectedInvoice ? `Invoice: ${selectedInvoice.id}` : "Invoice details"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[75vh] overflow-y-auto rounded border bg-muted/20 p-2">
+            {selectedInvoice ? (
+              <PrintableInvoice invoice={selectedInvoice} paperSize={printPaperSize} />
+            ) : (
+              <p className="text-sm text-muted-foreground">No invoice selected.</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Printable invoice directly used for billing-history printing */}
       <div className="hidden print:block">
