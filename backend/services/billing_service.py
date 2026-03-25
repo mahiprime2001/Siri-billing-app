@@ -96,6 +96,24 @@ def _parse_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def _normalize_event_time(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    try:
+        normalized = raw.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(normalized)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt.isoformat()
+    except Exception:
+        return None
+
+
 def _fetch_product_snapshot_map(supabase, product_ids):
     clean_ids = [str(pid) for pid in product_ids if pid]
     if not clean_ids:
@@ -226,6 +244,11 @@ def create_bill_transaction(
 
     bill_id = forced_bill_id or _generate_daily_invoice_id(supabase)
     now = datetime.now(timezone.utc).isoformat()
+    bill_event_time = (
+        _normalize_event_time(data.get("timestamp"))
+        or _normalize_event_time(data.get("created_at"))
+        or now
+    )
     customer_id = data.get("customer_id") or DEFAULT_WALKIN_CUSTOMER_ID
     created_bill = None
     skip_bill_insert = False
@@ -279,10 +302,10 @@ def create_bill_transaction(
         "discount_amount": discount_amount,
         "total": data["total_amount"],
         "paymentmethod": data.get("payment_method", "cash"),
-        "timestamp": now,
+        "timestamp": bill_event_time,
         "status": "completed",
         "createdby": current_user_id,
-        "created_at": now,
+        "created_at": bill_event_time,
         "updated_at": now,
     }
 

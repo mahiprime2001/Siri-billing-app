@@ -57,6 +57,7 @@ def _next_offline_invoice_id(existing_queue) -> str:
 
 def _upsert_local_bill_snapshot(current_user_id: str, payload: Dict[str, Any], forced_bill_id: str):
     now = _utc_now()
+    event_time = str(payload.get("timestamp") or payload.get("created_at") or now)
     bills = read_json_file(BILLS_FILE, [])
     if not isinstance(bills, list):
         bills = []
@@ -73,10 +74,10 @@ def _upsert_local_bill_snapshot(current_user_id: str, payload: Dict[str, Any], f
         "discount_amount": payload.get("discount_amount", 0),
         "total": payload.get("total_amount", 0),
         "paymentmethod": payload.get("payment_method", "Cash"),
-        "timestamp": now,
+        "timestamp": event_time,
         "status": "completed",
         "createdby": current_user_id,
-        "created_at": now,
+        "created_at": event_time,
         "updated_at": now,
     }
 

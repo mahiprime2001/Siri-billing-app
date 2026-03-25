@@ -1531,6 +1531,9 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
         total_amount: invoiceToSave.total,
         payment_method: invoiceToSave.paymentMethod,
         notes: invoiceToSave.notes || '',
+        // Preserve the original billing event time across online/offline flows.
+        timestamp: invoiceToSave.timestamp || invoiceToSave.createdAt || new Date().toISOString(),
+        created_at: invoiceToSave.createdAt || invoiceToSave.timestamp || new Date().toISOString(),
         original_bill_id: isReplacementInvoice ? replacementSession?.originalBillId || undefined : undefined,
         replacements: replacementItemsPayload,
         _client_request_id: clientRequestId,

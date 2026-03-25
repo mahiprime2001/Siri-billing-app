@@ -12,9 +12,62 @@ interface PrintableInvoiceProps {
 
 const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
   ({ invoice, paperSize }, ref) => {
+    const IST_TIMEZONE = "Asia/Kolkata";
+
     const fmt = (value: number | undefined | null | string) => {
       if (value == null || isNaN(Number(value))) return "0";
       return Number(value).toLocaleString();
+    };
+
+    const parseServerDate = (value: string | Date | undefined | null): Date | null => {
+      if (!value) return null;
+      if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? null : value;
+      }
+      const raw = String(value).trim();
+      if (!raw) return null;
+      const hasExplicitTimezone = /([zZ]|[+-]\d{2}:\d{2})$/.test(raw);
+      const normalized = !hasExplicitTimezone && raw.includes("T") ? `${raw}Z` : raw;
+      const parsed = new Date(normalized);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    };
+
+    const formatIstDate = (value: string | Date | undefined | null): string => {
+      const parsed = parseServerDate(value);
+      if (!parsed) return "-";
+      return new Intl.DateTimeFormat("en-IN", {
+        timeZone: IST_TIMEZONE,
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      }).format(parsed);
+    };
+
+    const formatIstTime = (value: string | Date | undefined | null): string => {
+      const parsed = parseServerDate(value);
+      if (!parsed) return "-";
+      return new Intl.DateTimeFormat("en-IN", {
+        timeZone: IST_TIMEZONE,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+      }).format(parsed);
+    };
+
+    const formatIstDateTime = (value: string | Date | undefined | null): string => {
+      const parsed = parseServerDate(value);
+      if (!parsed) return "-";
+      return new Intl.DateTimeFormat("en-IN", {
+        timeZone: IST_TIMEZONE,
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+      }).format(parsed);
     };
 
     const safeInvoice = {
@@ -110,9 +163,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
     const gTotalTax = computedTotalTax > 0 ? computedTotalTax : (invoiceTaxAmount || (gCGST + gSGST));
     const gAfterTax = taxRows.reduce((s, r) => s + r.totalAfterTax, 0);
 
-    const printedAt = safeInvoice.timestamp
-      ? new Date(safeInvoice.timestamp)
-      : new Date();
+    const printedAtRaw = safeInvoice.timestamp || safeInvoice.createdAt || new Date().toISOString();
 
     const divider = (
       <div style={{ borderTop: "1px dashed #000", margin: "5px 0" }} />
@@ -163,10 +214,10 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
           <div style={{ fontSize: "11px", marginBottom: "6px" }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span>Invoice #{safeInvoice.id}</span>
-              <span>{printedAt.toLocaleDateString()}</span>
+              <span>{formatIstDate(printedAtRaw)}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Time: {printedAt.toLocaleTimeString()}</span>
+              <span>Time: {formatIstTime(printedAtRaw)}</span>
               <span>Payment: {safeInvoice.paymentMethod}</span>
             </div>
             <div>Customer: {safeInvoice.customerName}</div>
@@ -362,7 +413,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
               <div>Please visit us again</div>
             </div>
             <div style={{ marginTop: "4px", fontSize: "9px" }}>
-              {printedAt.toLocaleString()}
+              {formatIstDateTime(printedAtRaw)}
             </div>
           </div>
 
