@@ -187,7 +187,7 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
             background: "#fff",
             fontFamily: "'Courier New', Courier, monospace",
             fontSize: "12px",
-            fontWeight: 500,
+            fontWeight: 600,
             color: "#000",
             lineHeight: "1.5",
           }}

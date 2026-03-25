@@ -12,7 +12,7 @@ from utils.sync_controller import SyncController  # Global instance is fine as i
 from utils.offline_bill_queue import process_offline_bill_queue
 from utils.offline_damage_return_queue import process_offline_damage_return_queue
 from utils.offline_transfer_verification_queue import process_offline_transfer_verification_queue
-from utils.connection_pool import get_supabase_client
+from utils.connection_pool import get_supabase_client, warmup_supabase_connection
 
 # Map table names to their corresponding file paths
 TABLE_FILE_MAP = {
@@ -39,6 +39,8 @@ _background_lock = threading.Lock()
 
 def _is_supabase_reachable(app: Flask) -> bool:
     try:
+        # Force a reconnect/probe attempt each scheduler cycle.
+        warmup_supabase_connection()
         supabase = get_supabase_client()
         if not supabase:
             return False

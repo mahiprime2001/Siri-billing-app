@@ -843,13 +843,12 @@ function generatePrintHTML(
           width: 100%;
           margin: 0;
           padding: 0;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
         }
 
         body {
-          display: flex;
-          justify-content: center;
-          transform: scale(${scale});
-          transform-origin: top center;
+          display: block;
         }
 
         .print-container {
@@ -859,6 +858,7 @@ function generatePrintHTML(
           padding-left: ${config?.sideMarginCompensationPx || 4}px;
           padding-right: ${config?.sideMarginCompensationPx || 4}px;
           box-sizing: border-box;
+          zoom: ${scale};
         }
       `
     }
@@ -874,13 +874,12 @@ function generatePrintHTML(
           width: 100%;
           margin: 0;
           padding: 0;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
         }
 
         body {
-          display: flex;
-          justify-content: center;
-          transform: scale(${scale});
-          transform-origin: top center;
+          display: block;
         }
 
         .print-container {
@@ -890,6 +889,7 @@ function generatePrintHTML(
           padding-left: ${config?.sideMarginCompensationPx || 3}px;
           padding-right: ${config?.sideMarginCompensationPx || 3}px;
           box-sizing: border-box;
+          zoom: ${scale};
         }
       `
     }
@@ -935,7 +935,10 @@ function generatePrintHTML(
             font-size: ${paperSize.includes("Thermal") ? "12px" : "14px"};
             line-height: 1.5;
             background: white;
-            color: black;
+            color: #000;
+            font-weight: 600;
+            text-rendering: geometricPrecision;
+            -webkit-font-smoothing: antialiased;
           }
 
           @media print {
