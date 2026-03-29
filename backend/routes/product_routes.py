@@ -14,6 +14,50 @@ _PRODUCTS_FAIL_COOLDOWN_SECONDS = 5
 _PRODUCTS_FALLBACK_CACHE_TTL_SECONDS = 8
 
 
+def _extract_store_id_from_user_store_row(row: dict):
+    if not isinstance(row, dict):
+        return None
+    return row.get("storeId") or row.get("storeid")
+
+
+def _get_user_store_rows(supabase, user_id: str):
+    """Fetch user-store mappings across schema variants."""
+    rows = []
+    seen = set()
+    for user_col in ("userId", "userid"):
+        try:
+            response = supabase.table("userstores").select("*").eq(user_col, user_id).execute()
+        except APIError:
+            continue
+
+        for row in response.data or []:
+            key = str(row.get("id") or f"{row.get('userId') or row.get('userid')}::{row.get('storeId') or row.get('storeid')}")
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append(row)
+    return rows
+
+
+def _get_store_inventory_rows(supabase, store_id: str):
+    """Fetch store inventory rows across storeid/storeId schema variants."""
+    rows = []
+    seen = set()
+    for store_col in ("storeid", "storeId"):
+        try:
+            response = supabase.table("storeinventory").select("*").eq(store_col, store_id).execute()
+        except APIError:
+            continue
+
+        for row in response.data or []:
+            key = str(row.get("id") or f"{row.get('productid') or row.get('productId')}::{row.get('assignedat') or row.get('updatedat') or ''}")
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append(row)
+    return rows
+
+
 def _extract_hsn_code(product_info: dict):
     hsn_ref = product_info.get('hsn_codes')
     if isinstance(hsn_ref, list):
@@ -178,35 +222,33 @@ def get_products():
             return _build_products_response(local_items, fallback_used=True, data_source="local_snapshot", cached=False), 200
 
         # Step 1: Get user's store ID
-        user_store_response = supabase.table('userstores') \
-            .select('storeId') \
-            .eq('userId', current_user_id) \
-            .execute()
-
-        if not user_store_response.data:
+        user_store_rows = _get_user_store_rows(supabase, str(current_user_id))
+        if not user_store_rows:
             app.logger.warning(f"No store assigned to user {current_user_id}; trying local products fallback")
             local_items = _build_local_products_response(current_user_id, search, limit)
             return _build_products_response(local_items, fallback_used=True, data_source="local_snapshot", cached=False), 200
 
-        store_id = user_store_response.data[0]['storeId']
+        store_id = _extract_store_id_from_user_store_row(user_store_rows[0])
+        if not store_id:
+            app.logger.warning(f"Store mapping row found without store ID for user {current_user_id}; trying local products fallback")
+            local_items = _build_local_products_response(current_user_id, search, limit)
+            return _build_products_response(local_items, fallback_used=True, data_source="local_snapshot", cached=False), 200
         app.logger.info(f"Fetching inventory for store: {store_id}")
 
         # Step 2: Get storeinventory data
-        inventory_query = supabase.table('storeinventory') \
-            .select('id, storeid, productid, quantity, minstocklevel, maxstocklevel, assignedat, updatedat') \
-            .eq('storeid', store_id)
-
-        inventory_response = inventory_query.execute()
-
-        if not inventory_response.data:
+        inventory_items = _get_store_inventory_rows(supabase, str(store_id))
+        if not inventory_items:
             app.logger.info(f"No inventory found for store {store_id}")
             return jsonify([]), 200
 
-        inventory_items = inventory_response.data
         app.logger.info(f"Found {len(inventory_items)} inventory items")
 
         # Step 3: Get product IDs
-        product_ids = [item['productid'] for item in inventory_items if item.get('productid')]
+        product_ids = [
+            str(item.get("productid") or item.get("productId"))
+            for item in inventory_items
+            if item.get("productid") or item.get("productId")
+        ]
         if not product_ids:
             app.logger.warning("No product IDs found in inventory")
             return jsonify([]), 200
@@ -260,7 +302,7 @@ def get_products():
         # Step 5: Build final product list
         final_products = []
         for inv_item in inventory_items:
-            product_id = inv_item.get('productid')
+            product_id = inv_item.get('productid') or inv_item.get('productId')
             if product_id not in product_info_map:
                 continue
 
@@ -282,7 +324,7 @@ def get_products():
                 'maxstocklevel': inv_item.get('maxstocklevel', None),
                 'assignedat': inv_item.get('assignedat'),
                 'updatedat': inv_item.get('updatedat'),
-                'storeid': inv_item.get('storeid'),
+                'storeid': inv_item.get('storeid') or inv_item.get('storeId'),
                 'inventory_id': inv_item.get('id'),
             }
             final_products.append(product)
@@ -312,27 +354,25 @@ def get_product(product_id):
         supabase = get_supabase_client()
 
         # Get user's store ID
-        user_store_response = supabase.table('userstores') \
-            .select('storeId') \
-            .eq('userId', current_user_id) \
-            .execute()
-
-        if not user_store_response.data:
+        user_store_rows = _get_user_store_rows(supabase, str(current_user_id))
+        if not user_store_rows:
             return jsonify({"message": "No store assigned to this user"}), 404
 
-        store_id = user_store_response.data[0]['storeId']
+        store_id = _extract_store_id_from_user_store_row(user_store_rows[0])
+        if not store_id:
+            return jsonify({"message": "No store assigned to this user"}), 404
 
         # Get from storeinventory
-        inventory_response = supabase.table('storeinventory') \
-            .select('*') \
-            .eq('storeid', store_id) \
-            .eq('productid', product_id) \
-            .execute()
+        inventory_items = _get_store_inventory_rows(supabase, str(store_id))
+        inventory_matches = [
+            row for row in inventory_items
+            if str(row.get("productid") or row.get("productId")) == str(product_id)
+        ]
 
-        if not inventory_response.data:
+        if not inventory_matches:
             return jsonify({"message": "Product not found in store inventory"}), 404
 
-        inv_item = inventory_response.data[0]
+        inv_item = inventory_matches[0]
 
         # Get product details including HSN tax
         product_response = supabase.table('products') \
@@ -359,7 +399,7 @@ def get_product(product_id):
             'quantity': inv_item.get('quantity', 0),
             'minstocklevel': inv_item.get('minstocklevel', 0),
             'maxstocklevel': inv_item.get('maxstocklevel'),
-            'storeid': inv_item.get('storeid'),
+            'storeid': inv_item.get('storeid') or inv_item.get('storeId'),
             'inventory_id': inv_item.get('id'),
         }
 
