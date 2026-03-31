@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef, type MouseEvent } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -46,6 +46,13 @@ interface BillingHistoryProps {
   onEditInvoice?: (invoiceId: string) => void
 }
 
+interface DayInvoiceGroup {
+  dateKey: string
+  invoices: Invoice[]
+  totalBills: number
+  totalValue: number
+}
+
 export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryProps) {
   const { toast } = useToast()
   const [invoices, setInvoices] = useState<Invoice[]>([])
@@ -71,6 +78,10 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
   const [isLoadingHistoryPrinters, setIsLoadingHistoryPrinters] = useState(false)
   const [isHistoryPrinting, setIsHistoryPrinting] = useState(false)
   const [historySelectedPrinter, setHistorySelectedPrinter] = useState("__SYSTEM_DEFAULT__")
+  const [showDailyReportDialog, setShowDailyReportDialog] = useState(false)
+  const [selectedDayReport, setSelectedDayReport] = useState<DayInvoiceGroup | null>(null)
+  const [dailyReportCopies, setDailyReportCopies] = useState(1)
+  const [isDailyReportPrinting, setIsDailyReportPrinting] = useState(false)
   const [clockNowMs, setClockNowMs] = useState(() => Date.now())
   const [showAuditDialog, setShowAuditDialog] = useState(false)
   const [auditEvents, setAuditEvents] = useState<BillEvent[]>([])
@@ -89,6 +100,7 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
   const IST_TIMEZONE = "Asia/Kolkata"
   const HISTORY_PRINTER_STORAGE_KEY = "siri_selected_printer_history"
   const SYSTEM_DEFAULT_PRINTER_VALUE = "__SYSTEM_DEFAULT__"
+  const REPORT_PAPER_SIZE = "A4"
 
   const parseServerDate = (value: string | Date | undefined | null): Date | null => {
     if (!value) return null
@@ -335,6 +347,22 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
   }
   }, [currentStore])
 
+  const loadHistoryPrinters = useCallback(async () => {
+    if (!isTauriRuntime) return
+    setIsLoadingHistoryPrinters(true)
+    try {
+      const printers = await listPrinters()
+      setHistoryPrinters(printers)
+      setHistorySelectedPrinter((prev) =>
+        prev !== SYSTEM_DEFAULT_PRINTER_VALUE && prev && !printers.includes(prev)
+          ? SYSTEM_DEFAULT_PRINTER_VALUE
+          : prev,
+      )
+    } finally {
+      setIsLoadingHistoryPrinters(false)
+    }
+  }, [isTauriRuntime])
+
   const fetchBillItems = useCallback(async (billId: string) => {
     try {
       const response = await apiClient(`/api/bills/${billId}/items`, { method: "GET" })
@@ -455,7 +483,7 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
     setFilteredInvoices(filtered)
   }, [searchTerm, invoices])
 
-  const groupedInvoices = useMemo(() => {
+  const groupedInvoices = useMemo<DayInvoiceGroup[]>(() => {
     const map = new Map<string, Invoice[]>()
     filteredInvoices.forEach((invoice) => {
       const dateKey = getIstDateKey(invoice.timestamp || invoice.createdAt || "")
@@ -547,17 +575,7 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
       setHistoryPrintInvoice(printable)
       setHistoryPrintCopies(1)
       setShowPrintDialog(true)
-
-      if (isTauriRuntime) {
-        setIsLoadingHistoryPrinters(true)
-        const printers = await listPrinters()
-        setHistoryPrinters(printers)
-        setHistorySelectedPrinter((prev) =>
-          prev !== SYSTEM_DEFAULT_PRINTER_VALUE && prev && !printers.includes(prev)
-            ? SYSTEM_DEFAULT_PRINTER_VALUE
-            : prev,
-        )
-      }
+      await loadHistoryPrinters()
     } catch (error) {
       console.error("❌ [BillingHistory] Failed to prepare print preview:", error)
       toast({
@@ -566,7 +584,6 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
         variant: "destructive",
       })
     } finally {
-      setIsLoadingHistoryPrinters(false)
       setPrintingInvoiceId(null)
     }
   }
@@ -701,6 +718,147 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
         </body>
       </html>
     `
+  }
+
+  const getPrintableDayInvoices = (group: DayInvoiceGroup): Invoice[] =>
+    group.invoices.filter((invoice) => {
+      const status = String(invoice.status || "").toLowerCase()
+      return status === "completed" || status === "paid"
+    })
+
+  const formatCurrency = (value: number) => `₹${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
+
+  const buildDayReportData = (group: DayInvoiceGroup) => {
+    const printableInvoices = getPrintableDayInvoices(group)
+    const totalBills = printableInvoices.length
+    const totalAmount = printableInvoices.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0)
+    const totalDiscountAmount = printableInvoices.reduce((sum, invoice) => sum + Number(invoice.discountAmount || 0), 0)
+    const totalSubtotal = printableInvoices.reduce((sum, invoice) => sum + Number(invoice.subtotal || 0), 0)
+    const effectiveDiscountPercentage = totalSubtotal > 0 ? (totalDiscountAmount / totalSubtotal) * 100 : 0
+
+    return {
+      companyName: settings?.companyName || currentStore?.name || "Company",
+      reportTitle: `${formatIstDateKey(group.dateKey)} Billing Report`,
+      rows: printableInvoices.map((invoice) => ({
+        id: invoice.id,
+        amount: Number(invoice.total || 0),
+      })),
+      totalBills,
+      totalAmount,
+      totalDiscountAmount,
+      effectiveDiscountPercentage,
+    }
+  }
+
+  const escapeHtml = (value: string) =>
+    String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;")
+
+  const generateDailyReportHTML = (group: DayInvoiceGroup): string => {
+    const report = buildDayReportData(group)
+    const rows = report.rows
+      .map(
+        (row) => `
+        <tr>
+          <td>${escapeHtml(row.id)}</td>
+          <td class="amount">${escapeHtml(formatCurrency(row.amount))}</td>
+        </tr>
+      `,
+      )
+      .join("")
+
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+        <head>
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>${escapeHtml(report.reportTitle)}</title>
+          <style>
+            @page { size: A4 portrait; margin: 10mm; }
+            body { font-family: Arial, sans-serif; color: #111; margin: 0; }
+            .container { width: 100%; max-width: 760px; margin: 0 auto; }
+            h1 { margin: 0; text-align: center; font-size: 22px; font-weight: 700; }
+            h2 { margin: 6px 0 20px 0; text-align: center; font-size: 14px; font-weight: 500; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            th, td { border: 1px solid #111; padding: 8px; font-size: 13px; }
+            th { background: #f1f5f9; text-align: left; }
+            td.amount { text-align: right; white-space: nowrap; }
+            .summary { font-size: 14px; line-height: 1.7; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>${escapeHtml(report.companyName)}</h1>
+            <h2>${escapeHtml(report.reportTitle)}</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Invoice ID</th>
+                  <th>Bill Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows || `<tr><td colspan="2">No completed bills for this date.</td></tr>`}
+              </tbody>
+            </table>
+            <div class="summary">
+              <div>Total no of bills: ${escapeHtml(String(report.totalBills))}</div>
+              <div>Total sum amount: ${escapeHtml(formatCurrency(report.totalAmount))}</div>
+              <div>Total discount (${escapeHtml(report.effectiveDiscountPercentage.toFixed(2))}%): ${escapeHtml(formatCurrency(report.totalDiscountAmount))}</div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `
+  }
+
+  const handleOpenDayReportDialog = async (group: DayInvoiceGroup, event?: MouseEvent) => {
+    event?.preventDefault()
+    event?.stopPropagation()
+    setSelectedDayReport(group)
+    setDailyReportCopies(1)
+    setShowDailyReportDialog(true)
+    await loadHistoryPrinters()
+  }
+
+  const handleConfirmDailyReportPrint = async () => {
+    if (!selectedDayReport) return
+    setIsDailyReportPrinting(true)
+    try {
+      const reportHtml = generateDailyReportHTML(selectedDayReport)
+      const copies = Math.max(1, Math.trunc(Number(dailyReportCopies || 1)))
+      if (isTauriRuntime) {
+        const printerName = historySelectedPrinter === SYSTEM_DEFAULT_PRINTER_VALUE ? "" : historySelectedPrinter
+        await printHtmlContent(reportHtml, {
+          paperSize: REPORT_PAPER_SIZE,
+          printerName,
+          copies,
+        })
+        toast({
+          title: "Report print queued",
+          description: `Printer: ${printerName || "System default"} • Copies: ${copies}`,
+          variant: "default",
+        })
+      } else {
+        const result = await safePrint(reportHtml, REPORT_PAPER_SIZE)
+        if (!result.success) throw new Error(result.error || "Browser print failed")
+      }
+      setShowDailyReportDialog(false)
+    } catch (error) {
+      console.error("❌ [BillingHistory] Day report print failed:", error)
+      toast({
+        title: "Print Failed",
+        description: error instanceof Error ? error.message : "Could not print billing report.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsDailyReportPrinting(false)
+    }
   }
 
   const getStatusColor = (status: string) => {
@@ -969,9 +1127,19 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
                   >
                     <summary className="list-none cursor-pointer px-4 py-3 flex items-center justify-between gap-4">
                       <span className="font-medium text-sm">{formatIstDateKey(group.dateKey)}</span>
-                      <span className="text-xs text-muted-foreground">
-                        Total Bills: {group.totalBills} • Total Value: ₹{group.totalValue.toLocaleString()}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-muted-foreground">
+                          Total Bills: {group.totalBills} • Total Value: ₹{group.totalValue.toLocaleString()}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(event) => handleOpenDayReportDialog(group, event)}
+                        >
+                          <Printer className="h-4 w-4 mr-1" />
+                          Print
+                        </Button>
+                      </div>
                     </summary>
                     <div className="px-3 pb-3">
                       <Table>
@@ -1167,6 +1335,118 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
             </Button>
             <Button onClick={handleConfirmHistoryPrint} disabled={!historyPrintInvoice || isHistoryPrinting}>
               {isHistoryPrinting ? "Printing..." : "Print"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showDailyReportDialog} onOpenChange={setShowDailyReportDialog}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Print Billing Report</DialogTitle>
+            <DialogDescription>
+              {selectedDayReport
+                ? `${formatIstDateKey(selectedDayReport.dateKey)} Billing Report`
+                : "Select printer and copies to print billing report."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-3 md:border-r md:pr-4">
+              <div className="space-y-2">
+                <Label htmlFor="daily-report-copies">No. of Copies</Label>
+                <Input
+                  id="daily-report-copies"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={dailyReportCopies}
+                  onChange={(e) => {
+                    const value = Number(e.target.value)
+                    setDailyReportCopies(Number.isFinite(value) && value > 0 ? Math.trunc(value) : 1)
+                  }}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="daily-report-printer-select">Printer</Label>
+                {isTauriRuntime ? (
+                  <Select
+                    value={historySelectedPrinter}
+                    onValueChange={setHistorySelectedPrinter}
+                    disabled={isLoadingHistoryPrinters}
+                  >
+                    <SelectTrigger id="daily-report-printer-select">
+                      <SelectValue placeholder={isLoadingHistoryPrinters ? "Loading printers..." : "Select printer"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={SYSTEM_DEFAULT_PRINTER_VALUE}>System Default</SelectItem>
+                      {historyPrinters.map((printer) => (
+                        <SelectItem key={printer} value={printer}>
+                          {printer}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input id="daily-report-printer-select" value="Browser Print Dialog" disabled />
+                )}
+              </div>
+            </div>
+
+            <div className="md:col-span-2 max-h-[70vh] overflow-y-auto rounded border bg-muted/20 p-3">
+              {selectedDayReport ? (
+                (() => {
+                  const report = buildDayReportData(selectedDayReport)
+                  return (
+                    <div className="bg-white p-4 rounded border text-sm text-black">
+                      <h3 className="text-xl font-bold text-center">{report.companyName}</h3>
+                      <p className="text-center text-sm mb-4">{report.reportTitle}</p>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Invoice ID</TableHead>
+                            <TableHead className="text-right">Bill Amount</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {report.rows.length > 0 ? (
+                            report.rows.map((row) => (
+                              <TableRow key={row.id}>
+                                <TableCell>{row.id}</TableCell>
+                                <TableCell className="text-right">{formatCurrency(row.amount)}</TableCell>
+                              </TableRow>
+                            ))
+                          ) : (
+                            <TableRow>
+                              <TableCell colSpan={2}>No completed bills for this date.</TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                      <div className="mt-4 space-y-1">
+                        <p>Total no of bills: {report.totalBills}</p>
+                        <p>Total sum amount: {formatCurrency(report.totalAmount)}</p>
+                        <p>
+                          Total discount ({report.effectiveDiscountPercentage.toFixed(2)}%):{" "}
+                          {formatCurrency(report.totalDiscountAmount)}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })()
+              ) : (
+                <p className="text-sm text-muted-foreground">No day selected for report printing.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowDailyReportDialog(false)} disabled={isDailyReportPrinting}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmDailyReportPrint} disabled={!selectedDayReport || isDailyReportPrinting}>
+              {isDailyReportPrinting ? "Printing..." : "Print"}
             </Button>
           </div>
         </DialogContent>
