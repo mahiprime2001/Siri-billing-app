@@ -639,29 +639,57 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
       if (paperSize === "Thermal 58mm") {
         return `
           @page { size: 58mm auto; margin: 0; }
-          body { width: 58mm; margin: 0; padding: 0; }
-          .print-container { width: 50mm !important; margin: 0 auto !important; padding: 0 !important; box-sizing: border-box !important; }
+          html, body {
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          body { display: block; }
+          .print-container {
+            width: 100% !important;
+            max-width: 50mm !important;
+            margin: 0 auto !important;
+            padding-left: 3px !important;
+            padding-right: 2px !important;
+            box-sizing: border-box !important;
+          }
         `
       } else if (paperSize === "Thermal 80mm") {
         return `
           @page { size: 80mm auto; margin: 0; }
-          body { width: 80mm; margin: 0; padding: 0; }
-          .print-container { width: 72mm !important; margin: 0 0 0 2mm !important; padding: 0 !important; box-sizing: border-box !important; }
+          html, body {
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          body { display: block; }
+          .print-container {
+            width: 100% !important;
+            max-width: 72mm !important;
+            margin: 0 auto !important;
+            padding-left: 5px !important;
+            padding-right: 2px !important;
+            box-sizing: border-box !important;
+          }
         `
       } else if (paperSize === "A4") {
         return `
-          @page { size: A4 portrait; margin: 0; }
-          body { margin: 0; padding: 15mm 10mm; }
+          @page { size: A4 portrait; margin: 5mm 8mm 8mm 8mm; }
+          body { margin: 0; padding: 0; }
         `
       } else if (paperSize === "Letter") {
         return `
-          @page { size: Letter portrait; margin: 0; }
-          body { margin: 0; padding: 0.6in 0.4in; }
+          @page { size: Letter portrait; margin: 0.2in 0.25in 0.25in 0.25in; }
+          body { margin: 0; padding: 0; }
         `
       }
       return `
-        @page { size: A4 portrait; margin: 0; }
-        body { margin: 0; padding: 15mm 10mm; }
+        @page { size: A4 portrait; margin: 5mm 8mm 8mm 8mm; }
+        body { margin: 0; padding: 0; }
       `
     }
 
@@ -779,16 +807,24 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
           <meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <title>${escapeHtml(report.reportTitle)}</title>
           <style>
-            @page { size: A4 portrait; margin: 10mm; }
-            body { font-family: Arial, sans-serif; color: #111; margin: 0; }
-            .container { width: 100%; max-width: 760px; margin: 0 auto; }
-            h1 { margin: 0; text-align: center; font-size: 22px; font-weight: 700; }
-            h2 { margin: 6px 0 20px 0; text-align: center; font-size: 14px; font-weight: 500; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            @page { size: A4 portrait; margin: 4mm 6mm 6mm 6mm; }
+            html, body {
+              margin: 0;
+              padding: 0;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            body { font-family: Arial, sans-serif; color: #111; }
+            .container { width: 100%; margin: 0; padding: 0; }
+            h1 { margin: 0 0 4px 0; text-align: center; font-size: 22px; font-weight: 700; }
+            h2 { margin: 0 0 12px 0; text-align: center; font-size: 14px; font-weight: 500; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 14px; table-layout: fixed; }
             th, td { border: 1px solid #111; padding: 8px; font-size: 13px; }
             th { background: #f1f5f9; text-align: left; }
+            th:first-child, td:first-child { width: 68%; word-break: break-word; }
+            th:last-child, td:last-child { width: 32%; }
             td.amount { text-align: right; white-space: nowrap; }
-            .summary { font-size: 14px; line-height: 1.7; }
+            .summary { font-size: 14px; line-height: 1.6; margin-top: 2px; }
           </style>
         </head>
         <body>
