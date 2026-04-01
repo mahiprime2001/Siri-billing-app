@@ -82,6 +82,7 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
   const [selectedDayReport, setSelectedDayReport] = useState<DayInvoiceGroup | null>(null)
   const [dailyReportCopies, setDailyReportCopies] = useState(1)
   const [isDailyReportPrinting, setIsDailyReportPrinting] = useState(false)
+  const [historySelectedPaperSize, setHistorySelectedPaperSize] = useState<string>("Thermal 80mm")
   const [clockNowMs, setClockNowMs] = useState(() => Date.now())
   const [showAuditDialog, setShowAuditDialog] = useState(false)
   const [auditEvents, setAuditEvents] = useState<BillEvent[]>([])
@@ -99,8 +100,8 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
 
   const IST_TIMEZONE = "Asia/Kolkata"
   const HISTORY_PRINTER_STORAGE_KEY = "siri_selected_printer_history"
+  const REPORT_PAPER_SIZE_KEY = "siri_report_paper_size"
   const SYSTEM_DEFAULT_PRINTER_VALUE = "__SYSTEM_DEFAULT__"
-  const REPORT_PAPER_SIZE = "A4"
 
   const parseServerDate = (value: string | Date | undefined | null): Date | null => {
     if (!value) return null
@@ -181,8 +182,21 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
 
   useEffect(() => {
     if (typeof window === "undefined") return
+    const savedPaper = window.localStorage.getItem(REPORT_PAPER_SIZE_KEY)
+    if (savedPaper?.trim()) {
+      setHistorySelectedPaperSize(savedPaper)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
     window.localStorage.setItem(HISTORY_PRINTER_STORAGE_KEY, historySelectedPrinter)
   }, [historySelectedPrinter])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    window.localStorage.setItem(REPORT_PAPER_SIZE_KEY, historySelectedPaperSize)
+  }, [historySelectedPaperSize])
 
   useEffect(() => {
     const ticker = setInterval(() => setClockNowMs(Date.now()), 1000)
@@ -786,143 +800,296 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;")
 
-  const generateDailyReportHTML = (group: DayInvoiceGroup): string => {
-  const report = buildDayReportData(group)
-  const printableInvoices = getPrintableDayInvoices(group)
+  const generateDailyReportHTML = (group: DayInvoiceGroup, paperSize: string = "Thermal 80mm"): string => {
+    const report = buildDayReportData(group)
+    const printableInvoices = getPrintableDayInvoices(group)
 
-  // Payment method breakdown
-  const paymentBreakdown = new Map<string, { count: number; amount: number }>()
-  printableInvoices.forEach((invoice) => {
-    const method = invoice.paymentMethod || "Cash"
-    const existing = paymentBreakdown.get(method) || { count: 0, amount: 0 }
-    paymentBreakdown.set(method, {
-      count: existing.count + 1,
-      amount: existing.amount + Number(invoice.total || 0),
+    const isThermal = paperSize === "Thermal 80mm" || paperSize === "Thermal 58mm"
+    const is58mm = paperSize === "Thermal 58mm"
+    const thermalWidth = is58mm ? "58mm" : "80mm"
+    const thermalContent = is58mm ? "52mm" : "72mm"
+    const baseFontSize = is58mm ? 11 : 13
+    const headerFontSize = is58mm ? 14 : 16
+    const totalFontSize = is58mm ? 13 : 14
+
+    const paymentBreakdown = new Map<string, { count: number; amount: number }>()
+    printableInvoices.forEach((invoice) => {
+      const method = invoice.paymentMethod || "Cash"
+      const existing = paymentBreakdown.get(method) || { count: 0, amount: 0 }
+      paymentBreakdown.set(method, {
+        count: existing.count + 1,
+        amount: existing.amount + Number(invoice.total || 0),
+      })
     })
-  })
 
-  const paymentRows = Array.from(paymentBreakdown.entries())
-    .map(([method, data]) => `
+    const now = new Date()
+    const printedAt = new Intl.DateTimeFormat("en-IN", {
+      timeZone: IST_TIMEZONE,
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }).format(now)
+
+    const storePhone = printableInvoices[0] ? getStorePhone(printableInvoices[0]) : ""
+    const storeAddress = printableInvoices[0] ? getStoreAddress(printableInvoices[0]) : ""
+
+    const paymentRows = Array.from(paymentBreakdown.entries())
+      .map(
+        ([method, data]) => `
       <tr>
-        <td>${escapeHtml(method)}</td>
-        <td style="text-align:right">${escapeHtml(String(data.count))} bill${data.count !== 1 ? "s" : ""}</td>
-        <td style="text-align:right">Rs. ${escapeHtml(data.amount.toLocaleString("en-IN", { maximumFractionDigits: 2 }))}</td>
-      </tr>`)
-    .join("")
+        <td style="padding:2px 0;font-size:${baseFontSize}px;">${escapeHtml(method)} (${data.count})</td>
+        <td style="padding:2px 0;font-size:${baseFontSize}px;text-align:right;font-weight:600;">Rs.${escapeHtml(
+          data.amount.toLocaleString("en-IN", { maximumFractionDigits: 2 }),
+        )}</td>
+      </tr>`,
+      )
+      .join("")
 
-  const now = new Date()
-  const printedAt = new Intl.DateTimeFormat("en-IN", {
-    timeZone: "Asia/Kolkata",
-    day: "2-digit", month: "short", year: "numeric",
-    hour: "2-digit", minute: "2-digit", hour12: true,
-  }).format(now)
+    if (isThermal) {
+      const tableRows = printableInvoices
+        .map((invoice, idx) => {
+          const time = (() => {
+            const d = parseServerDate(invoice.timestamp || invoice.createdAt || "")
+            if (!d) return "-"
+            return new Intl.DateTimeFormat("en-IN", {
+              timeZone: IST_TIMEZONE,
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+            }).format(d)
+          })()
+          const customer = getCustomerName(invoice) || "Walk-in"
+          const payment = invoice.paymentMethod || "Cash"
+          const discount = Number(invoice.discountAmount || 0)
+          const amount = Number(invoice.total || 0)
+          return `
+        <tr>
+          <td style="padding:3px 2px;border-bottom:1px dashed #ccc;font-size:${baseFontSize}px;">${idx + 1}. ${escapeHtml(
+            invoice.id,
+          )}</td>
+          <td style="padding:3px 2px;border-bottom:1px dashed #ccc;font-size:${baseFontSize}px;text-align:right;font-weight:600;">Rs.${escapeHtml(
+            amount.toLocaleString("en-IN", { maximumFractionDigits: 2 }),
+          )}</td>
+        </tr>
+        <tr>
+          <td colspan="2" style="padding:0 2px 5px 2px;font-size:${baseFontSize - 1}px;color:#555;">
+            ${escapeHtml(customer)} | ${escapeHtml(time)} | ${escapeHtml(payment)}${
+              discount > 0
+                ? ` | Disc: Rs.${discount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
+                : ""
+            }
+          </td>
+        </tr>`
+        })
+        .join("")
 
-  const storePhone = printableInvoices[0] ? getStorePhone(printableInvoices[0]) : ""
-  const storeAddress = printableInvoices[0] ? getStoreAddress(printableInvoices[0]) : ""
-
-  const tableRows = printableInvoices.map((invoice, idx) => {
-    const time = (() => {
-      const d = parseServerDate(invoice.timestamp || invoice.createdAt || "")
-      if (!d) return "-"
-      return new Intl.DateTimeFormat("en-IN", {
-        timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: true,
-      }).format(d)
-    })()
-    const customer = getCustomerName(invoice) || "Walk-in Customer"
-    const payment = invoice.paymentMethod || "Cash"
-    const discount = Number(invoice.discountAmount || 0)
-    const amount = Number(invoice.total || 0)
-    const bg = idx % 2 === 1 ? 'background:#fafafa;' : ''
-    return `
-      <tr style="${bg}">
-        <td style="border:1px solid #ddd;padding:6px 8px;text-align:center;color:#888;">${idx + 1}</td>
-        <td style="border:1px solid #ddd;padding:6px 8px;font-size:11px;">${escapeHtml(invoice.id)}</td>
-        <td style="border:1px solid #ddd;padding:6px 8px;">${escapeHtml(customer)}</td>
-        <td style="border:1px solid #ddd;padding:6px 8px;color:#666;font-size:11px;">${escapeHtml(time)}</td>
-        <td style="border:1px solid #ddd;padding:6px 8px;text-align:center;">${escapeHtml(payment)}</td>
-        <td style="border:1px solid #ddd;padding:6px 8px;text-align:right;color:#666;">Rs. ${escapeHtml(discount.toLocaleString("en-IN", { maximumFractionDigits: 2 }))}</td>
-        <td style="border:1px solid #ddd;padding:6px 8px;text-align:right;font-weight:600;">Rs. ${escapeHtml(amount.toLocaleString("en-IN", { maximumFractionDigits: 2 }))}</td>
-      </tr>`
-  }).join("")
-
-  return `<!DOCTYPE html>
+      return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <title>${escapeHtml(report.reportTitle)}</title>
   <style>
-    @page { size: A4 portrait; margin: 10mm 12mm 12mm 12mm; }
-    body { font-family: Arial, sans-serif; color: #111; font-size: 13px; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    @page { size: ${thermalWidth} auto; margin: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: ${thermalWidth}; margin: 0; padding: 0; font-family: 'Courier New', monospace; font-size: ${baseFontSize}px; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .wrap { width: ${thermalContent}; margin: 0 auto; padding: 4mm 0 6mm 0; }
     table { width: 100%; border-collapse: collapse; }
-    th { background: #f1f5f9; border: 1px solid #ccc; padding: 7px 8px; font-size: 12px; text-align: left; }
-    .summary-table td { padding: 4px 8px; font-size: 12px; border: none; }
-    .breakdown-table td { padding: 4px 8px; font-size: 12px; border: none; }
-    .two-col { display: flex; gap: 16px; margin-top: 14px; }
-    .box { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; }
-    .box-title { font-size: 11px; color: #666; margin-bottom: 6px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-    .total-row td { font-weight: 700; font-size: 13px; border-top: 1px solid #ccc; padding-top: 6px; }
-    .footer { text-align: center; margin-top: 14px; font-size: 11px; color: #aaa; border-top: 1px dashed #ddd; padding-top: 10px; }
+    .divider-solid { border: none; border-top: 1.5px solid #000; margin: 5px 0; }
+    .divider-dashed { border: none; border-top: 1px dashed #999; margin: 4px 0; }
   </style>
 </head>
 <body>
-  <div style="text-align:center; margin-bottom:4px;">
-    <div style="font-size:20px;font-weight:700;">${escapeHtml(report.companyName)}</div>
-    <div style="font-size:12px;color:#555;">${escapeHtml(storeAddress)}${storePhone ? " | Ph: " + escapeHtml(storePhone) : ""}</div>
-    <div style="font-size:15px;font-weight:600;margin-top:6px;">${escapeHtml(formatIstDateKey(group.dateKey))} — Daily Billing Report</div>
-    <div style="font-size:11px;color:#888;margin-top:2px;">Printed: ${escapeHtml(printedAt)}</div>
+<div class="wrap">
+  <div style="text-align:center;margin-bottom:5px;">
+    <div style="font-size:${headerFontSize}px;font-weight:700;letter-spacing:0.5px;">${escapeHtml(
+      report.companyName,
+    )}</div>
+    ${storeAddress ? `<div style="font-size:${baseFontSize - 1}px;">${escapeHtml(storeAddress)}</div>` : ""}
+    ${storePhone ? `<div style="font-size:${baseFontSize - 1}px;">Ph: ${escapeHtml(storePhone)}</div>` : ""}
   </div>
+  <hr class="divider-solid"/>
+  <div style="text-align:center;font-size:${baseFontSize + 1}px;font-weight:700;margin:3px 0;">DAILY BILLING REPORT</div>
+  <div style="text-align:center;font-size:${baseFontSize}px;margin-bottom:2px;">${escapeHtml(
+    formatIstDateKey(group.dateKey),
+  )}</div>
+  <div style="text-align:center;font-size:${baseFontSize - 2}px;color:#555;margin-bottom:3px;">Printed: ${escapeHtml(
+    printedAt,
+  )}</div>
+  <hr class="divider-solid"/>
+  <table><tbody>
+    ${tableRows || `<tr><td colspan="2" style="text-align:center;padding:6px;font-size:${baseFontSize}px;">No completed bills.</td></tr>`}
+  </tbody></table>
+  <hr class="divider-solid"/>
+  <div style="font-size:${baseFontSize}px;font-weight:700;margin-bottom:3px;">PAYMENT BREAKDOWN</div>
+  <table><tbody>${paymentRows}</tbody></table>
+  <hr class="divider-dashed"/>
+  <table><tbody>
+    <tr>
+      <td style="font-size:${baseFontSize}px;padding:2px 0;">Total bills</td>
+      <td style="font-size:${baseFontSize}px;padding:2px 0;text-align:right;font-weight:700;">${escapeHtml(
+        String(report.totalBills),
+      )}</td>
+    </tr>
+    <tr>
+      <td style="font-size:${baseFontSize}px;padding:2px 0;">Discount (${escapeHtml(
+        report.effectiveDiscountPercentage.toFixed(2),
+      )}%)</td>
+      <td style="font-size:${baseFontSize}px;padding:2px 0;text-align:right;">Rs.${escapeHtml(
+        report.totalDiscountAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 }),
+      )}</td>
+    </tr>
+  </tbody></table>
+  <hr class="divider-solid"/>
+  <table><tbody>
+    <tr>
+      <td style="font-size:${totalFontSize}px;font-weight:700;padding:2px 0;">TOTAL AMOUNT</td>
+      <td style="font-size:${totalFontSize}px;font-weight:700;padding:2px 0;text-align:right;">Rs.${escapeHtml(
+        report.totalAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 }),
+      )}</td>
+    </tr>
+  </tbody></table>
+  <hr class="divider-solid"/>
+  <div style="text-align:center;font-size:${baseFontSize - 1}px;color:#555;margin-top:6px;">*** End of Report ***</div>
+</div>
+</body>
+</html>`
+    }
 
-  <div style="border-top:2px solid #111;border-bottom:1px solid #ccc;margin:12px 0 0 0;"></div>
+    const isLetter = paperSize === "Letter"
+    const pageSize = isLetter ? "Letter portrait" : "A4 portrait"
+    const pageMargin = isLetter ? "0.5in 0.6in 0.6in 0.6in" : "12mm 14mm 14mm 14mm"
 
+    const tableRows = printableInvoices
+      .map((invoice, idx) => {
+        const time = (() => {
+          const d = parseServerDate(invoice.timestamp || invoice.createdAt || "")
+          if (!d) return "-"
+          return new Intl.DateTimeFormat("en-IN", {
+            timeZone: IST_TIMEZONE,
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          }).format(d)
+        })()
+        const customer = getCustomerName(invoice) || "Walk-in Customer"
+        const payment = invoice.paymentMethod || "Cash"
+        const discount = Number(invoice.discountAmount || 0)
+        const amount = Number(invoice.total || 0)
+        const bg = idx % 2 === 1 ? "background:#fafafa;" : ""
+        return `
+      <tr style="${bg}">
+        <td style="border:1px solid #ddd;padding:8px 10px;text-align:center;color:#888;font-size:13px;">${idx + 1}</td>
+        <td style="border:1px solid #ddd;padding:8px 10px;font-size:13px;">${escapeHtml(invoice.id)}</td>
+        <td style="border:1px solid #ddd;padding:8px 10px;font-size:14px;">${escapeHtml(customer)}</td>
+        <td style="border:1px solid #ddd;padding:8px 10px;font-size:13px;color:#555;">${escapeHtml(time)}</td>
+        <td style="border:1px solid #ddd;padding:8px 10px;text-align:center;font-size:13px;">${escapeHtml(payment)}</td>
+        <td style="border:1px solid #ddd;padding:8px 10px;text-align:right;font-size:13px;color:#666;">Rs.${escapeHtml(
+          discount.toLocaleString("en-IN", { maximumFractionDigits: 2 }),
+        )}</td>
+        <td style="border:1px solid #ddd;padding:8px 10px;text-align:right;font-size:14px;font-weight:600;">Rs.${escapeHtml(
+          amount.toLocaleString("en-IN", { maximumFractionDigits: 2 }),
+        )}</td>
+      </tr>`
+      })
+      .join("")
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>${escapeHtml(report.reportTitle)}</title>
+  <style>
+    @page { size: ${pageSize}; margin: ${pageMargin}; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; color: #111; font-size: 14px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #f1f5f9; border: 1px solid #ccc; padding: 9px 10px; font-size: 13px; text-align: left; }
+    .two-col { display: flex; gap: 16px; margin-top: 16px; }
+    .box { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 16px; }
+    .box-title { font-size: 12px; color: #666; margin-bottom: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+  </style>
+</head>
+<body>
+  <div style="text-align:center;margin-bottom:6px;">
+    <div style="font-size:22px;font-weight:700;">${escapeHtml(report.companyName)}</div>
+    ${storeAddress ? `<div style="font-size:13px;color:#555;">${escapeHtml(storeAddress)}${storePhone ? " | Ph: " + escapeHtml(storePhone) : ""}</div>` : ""}
+    <div style="font-size:16px;font-weight:600;margin-top:8px;">${escapeHtml(
+      formatIstDateKey(group.dateKey),
+    )} ? Daily Billing Report</div>
+    <div style="font-size:12px;color:#888;margin-top:3px;">Printed: ${escapeHtml(printedAt)}</div>
+  </div>
+  <div style="border-top:2px solid #111;border-bottom:1px solid #ccc;margin:10px 0;"></div>
   <table>
     <thead>
       <tr>
-        <th style="width:28px;text-align:center;">#</th>
+        <th style="width:36px;text-align:center;">#</th>
         <th>Invoice ID</th>
         <th>Customer</th>
-        <th style="width:70px;">Time</th>
-        <th style="width:60px;text-align:center;">Payment</th>
+        <th style="width:80px;">Time</th>
+        <th style="width:70px;text-align:center;">Payment</th>
         <th style="text-align:right;">Discount</th>
         <th style="text-align:right;">Amount</th>
       </tr>
     </thead>
     <tbody>
-      ${tableRows || `<tr><td colspan="7" style="text-align:center;padding:12px;border:1px solid #ddd;color:#888;">No completed bills for this date.</td></tr>`}
+      ${tableRows || `<tr><td colspan="7" style="text-align:center;padding:14px;border:1px solid #ddd;color:#888;">No completed bills.</td></tr>`}
     </tbody>
   </table>
-
-  <div style="border-top:1px solid #ccc;"></div>
-
+  <div style="border-top:1px solid #ccc;margin-top:0;"></div>
   <div class="two-col">
     <div class="box">
       <div class="box-title">Payment Breakdown</div>
-      <table class="breakdown-table">
+      <table style="border:none;">
         <tbody>
-          ${paymentRows || `<tr><td colspan="3" style="color:#888;">No data</td></tr>`}
+          ${Array.from(paymentBreakdown.entries())
+            .map(
+              ([method, data]) => `
+            <tr>
+              <td style="padding:4px 0;font-size:13px;">${escapeHtml(method)}</td>
+              <td style="padding:4px 0;font-size:13px;text-align:center;color:#666;">${data.count} bill${
+                data.count !== 1 ? "s" : ""
+              }</td>
+              <td style="padding:4px 0;font-size:13px;text-align:right;font-weight:600;">Rs.${escapeHtml(
+                data.amount.toLocaleString("en-IN", { maximumFractionDigits: 2 }),
+              )}</td>
+            </tr>`,
+            )
+            .join("")}
         </tbody>
       </table>
     </div>
     <div class="box">
       <div class="box-title">Summary</div>
-      <table class="summary-table">
+      <table style="border:none;">
         <tbody>
-          <tr><td>Total bills</td><td style="text-align:right;font-weight:600;">${escapeHtml(String(report.totalBills))}</td></tr>
-          <tr><td>Total discount (${escapeHtml(report.effectiveDiscountPercentage.toFixed(2))}%)</td><td style="text-align:right;font-weight:600;">Rs. ${escapeHtml(report.totalDiscountAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 }))}</td></tr>
-          <tr class="total-row"><td>Total amount</td><td style="text-align:right;">Rs. ${escapeHtml(report.totalAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 }))}</td></tr>
+          <tr><td style="padding:4px 0;font-size:13px;">Total bills</td><td style="padding:4px 0;font-size:13px;text-align:right;font-weight:600;">${escapeHtml(
+            String(report.totalBills),
+          )}</td></tr>
+          <tr><td style="padding:4px 0;font-size:13px;">Discount (${escapeHtml(
+            report.effectiveDiscountPercentage.toFixed(2),
+          )}%)</td><td style="padding:4px 0;font-size:13px;text-align:right;">Rs.${escapeHtml(
+            report.totalDiscountAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 }),
+          )}</td></tr>
+          <tr style="border-top:1px solid #ddd;">
+            <td style="padding:6px 0 4px;font-size:15px;font-weight:700;">Total Amount</td>
+            <td style="padding:6px 0 4px;font-size:15px;font-weight:700;text-align:right;">Rs.${escapeHtml(
+              report.totalAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 }),
+            )}</td>
+          </tr>
         </tbody>
       </table>
     </div>
   </div>
-
-  <div class="footer">— End of Report —</div>
+  <div style="text-align:center;margin-top:16px;font-size:12px;color:#aaa;border-top:1px dashed #ddd;padding-top:10px;">? End of Report ?</div>
 </body>
 </html>`
-}
+  }
 
 
-
-
-  const handleOpenDayReportDialog = async (group: DayInvoiceGroup, event?: MouseEvent) => {
+const handleOpenDayReportDialog = async (group: DayInvoiceGroup, event?: MouseEvent) => {
     event?.preventDefault()
     event?.stopPropagation()
     setSelectedDayReport(group)
@@ -935,12 +1102,12 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
     if (!selectedDayReport) return
     setIsDailyReportPrinting(true)
     try {
-      const reportHtml = generateDailyReportHTML(selectedDayReport)
+      const reportHtml = generateDailyReportHTML(selectedDayReport, historySelectedPaperSize)
       const copies = Math.max(1, Math.trunc(Number(dailyReportCopies || 1)))
       if (isTauriRuntime) {
         const printerName = historySelectedPrinter === SYSTEM_DEFAULT_PRINTER_VALUE ? "" : historySelectedPrinter
         await printHtmlContent(reportHtml, {
-          paperSize: REPORT_PAPER_SIZE,
+          paperSize: historySelectedPaperSize,
           printerName,
           copies,
         })
@@ -950,7 +1117,7 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
           variant: "default",
         })
       } else {
-        const result = await safePrint(reportHtml, REPORT_PAPER_SIZE)
+        const result = await safePrint(reportHtml, historySelectedPaperSize)
         if (!result.success) throw new Error(result.error || "Browser print failed")
       }
       setShowDailyReportDialog(false)
@@ -1496,6 +1663,21 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
                 ) : (
                   <Input id="daily-report-printer-select" value="Browser Print Dialog" disabled />
                 )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="daily-report-paper-size">Paper Size</Label>
+                <Select value={historySelectedPaperSize} onValueChange={setHistorySelectedPaperSize}>
+                  <SelectTrigger id="daily-report-paper-size">
+                    <SelectValue placeholder="Select paper size" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Thermal 80mm">Thermal 80mm</SelectItem>
+                    <SelectItem value="Thermal 58mm">Thermal 58mm</SelectItem>
+                    <SelectItem value="A4">A4</SelectItem>
+                    <SelectItem value="Letter">Letter</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
