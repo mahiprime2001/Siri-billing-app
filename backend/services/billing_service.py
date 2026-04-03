@@ -105,11 +105,13 @@ def _normalize_event_time(value: Any) -> Optional[str]:
     try:
         normalized = raw.replace("Z", "+00:00")
         dt = datetime.fromisoformat(normalized)
+        # bills.timestamp is stored as "timestamp without time zone" in Supabase.
+        # Keep the IST wall-clock value to avoid UTC-shifted invoice times.
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=IST_ZONE)
         else:
-            dt = dt.astimezone(timezone.utc)
-        return dt.isoformat()
+            dt = dt.astimezone(IST_ZONE)
+        return dt.replace(tzinfo=None).isoformat(timespec="milliseconds")
     except Exception:
         return None
 
@@ -244,10 +246,11 @@ def create_bill_transaction(
 
     bill_id = forced_bill_id or _generate_daily_invoice_id(supabase)
     now = datetime.now(timezone.utc).isoformat()
+    local_now = datetime.now(IST_ZONE).replace(tzinfo=None).isoformat(timespec="milliseconds")
     bill_event_time = (
         _normalize_event_time(data.get("timestamp"))
         or _normalize_event_time(data.get("created_at"))
-        or now
+        or local_now
     )
     customer_id = data.get("customer_id") or DEFAULT_WALKIN_CUSTOMER_ID
     created_bill = None

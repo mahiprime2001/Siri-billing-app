@@ -4,6 +4,7 @@ from auth.auth import require_auth
 from postgrest.exceptions import APIError
 from utils.connection_pool import get_supabase_client
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 import threading
 import traceback
 import time
@@ -20,6 +21,7 @@ EDIT_WINDOW_HOURS = 24
 EDITABLE_STATUSES = {"completed", "paid", "pending"}
 _bill_idempotency_lock = threading.Lock()
 _BILL_IDEMPOTENCY_TTL_HOURS = 48
+IST_ZONE = ZoneInfo("Asia/Kolkata")
 
 
 def _idempotency_key(user_id, client_request_id):
@@ -36,7 +38,7 @@ def _parse_iso_datetime(raw_value):
     try:
         parsed = datetime.fromisoformat(str(raw_value).replace("Z", "+00:00"))
         if parsed.tzinfo is None:
-            return parsed.replace(tzinfo=timezone.utc)
+            return parsed.replace(tzinfo=IST_ZONE).astimezone(timezone.utc)
         return parsed.astimezone(timezone.utc)
     except Exception:
         return None
