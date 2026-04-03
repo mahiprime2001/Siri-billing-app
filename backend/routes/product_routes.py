@@ -192,7 +192,7 @@ def _build_products_response(items, fallback_used: bool, data_source: str, cache
     return response
 
 
-@product_bp.route('/products', methods=['GET'])
+@product_bp.route('/products', methods=['GET'], strict_slashes=False)
 @require_auth
 def get_products():
     """Get products from current user's store inventory"""
@@ -328,6 +328,15 @@ def get_products():
                 'inventory_id': inv_item.get('id'),
             }
             final_products.append(product)
+
+        # Deduplicate by product_id in case a product has multiple inventory records
+        seen_final_ids = set()
+        deduped = []
+        for p in final_products:
+            if p['id'] not in seen_final_ids:
+                seen_final_ids.add(p['id'])
+                deduped.append(p)
+        final_products = deduped
 
         app.logger.info(f"Returning {len(final_products)} products from store inventory")
         _PRODUCTS_CLOUD_FAIL_UNTIL.pop(cache_key, None)

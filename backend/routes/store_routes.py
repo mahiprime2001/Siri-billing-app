@@ -145,7 +145,7 @@ def _update_local_storeinventory(store_id: str, product_id: str, delta_qty: int,
 
     write_json_file(STOREINVENTORY_FILE, rows)
 
-@store_bp.route('/stores', methods=['GET'])
+@store_bp.route('/stores', methods=['GET'], strict_slashes=False)
 @require_auth
 def get_stores():
     """Get all stores"""

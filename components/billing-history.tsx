@@ -111,7 +111,9 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
     const raw = String(value).trim()
     if (!raw) return null
     const hasExplicitTimezone = /([zZ]|[+-]\d{2}:\d{2})$/.test(raw)
-    const normalized = !hasExplicitTimezone && raw.includes("T") ? `${raw}Z` : raw
+    // Backend stores bare timestamps as IST wall-clock (no tz suffix). Append +05:30
+    // so the browser treats them as IST rather than UTC (which would shift dates by +5:30).
+    const normalized = !hasExplicitTimezone && raw.includes("T") ? `${raw}+05:30` : raw
     const parsed = new Date(normalized)
     return Number.isNaN(parsed.getTime()) ? null : parsed
   }
