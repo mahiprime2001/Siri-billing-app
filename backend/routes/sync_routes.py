@@ -6,7 +6,7 @@ from utils.sync_controller import SyncController
 sync_bp = Blueprint('sync', __name__)
 sync_controller = SyncController()
 
-@sync_bp.route('/sync/status', methods=['GET'])
+@sync_bp.route('/sync/status', methods=['GET'], strict_slashes=False)
 @require_auth
 def get_sync_status():
     """Get current sync status"""
@@ -21,7 +21,7 @@ def get_sync_status():
         return jsonify({"message": "An error occurred"}), 500
 
 
-@sync_bp.route('/sync/trigger', methods=['POST'])
+@sync_bp.route('/sync/trigger', methods=['POST'], strict_slashes=False)
 @require_auth
 def trigger_sync():
     """Manually trigger a sync operation"""
@@ -48,7 +48,7 @@ def trigger_sync():
         return jsonify({"message": "An error occurred"}), 500
 
 
-@sync_bp.route('/sync/history', methods=['GET'])
+@sync_bp.route('/sync/history', methods=['GET'], strict_slashes=False)
 @require_auth
 def get_sync_history():
     """Get sync history"""

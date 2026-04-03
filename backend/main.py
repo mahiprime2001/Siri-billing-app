@@ -9,9 +9,9 @@ import tempfile
 import glob
 from datetime import datetime, timedelta, timezone, date
 from decimal import Decimal
-from urllib.parse import urlparse
 from pathlib import Path
 from flask import Flask, request, jsonify, make_response, g
+from flask_cors import CORS
 from flask_jwt_extended import (
     JWTManager,
     get_jwt,
@@ -65,6 +65,23 @@ if sys.platform == 'win32':
     os.environ['PYTHONIOENCODING'] = 'utf-8'
 
 app = Flask(__name__)
+
+# ==================== CORS CONFIGURATION ====================
+CORS(app,
+    origins=[
+        "http://localhost:3000",
+        "http://localhost:1420",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:1420",
+        "tauri://localhost",
+        "https://tauri.localhost",
+    ],
+    supports_credentials=True,
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+    expose_headers=["X-Access-Token", "Set-Cookie"],
+    automatic_options=True,
+)
 
 if getattr(sys, 'frozen', False):
     # Running in PyInstaller bundle
@@ -205,33 +222,7 @@ def missing_token_callback(error):
         'error': 'authorization_required'
     }), 401
 
-# ==================== CORS HELPER FUNCTION ====================
-def is_local_origin(origin):
-    if not origin:
-        return False
-    try:
-        parsed = urlparse(origin)
-        hostname = parsed.hostname
-        
-        if parsed.scheme == 'file':
-            return True
-        
-        if hostname in ['localhost', '127.0.0.1', '0.0.0.0', '[::1]', 'tauri.localhost']:
-            return True
-        
-        if hostname and (
-            hostname.startswith('192.168.') or
-            hostname.startswith('10.') or
-            hostname.startswith('172.')
-        ):
-            return True
-        
-        return False
-    except Exception as e:
-        app.logger.warning(f"[CORS] Error parsing origin {origin}: {e}")
-        return False
-
-# ==================== CORS CONFIGURATION ====================
+# ==================== SLIDING SESSION REFRESH ====================
 @app.after_request
 def after_request(response):
     # Sliding-session refresh: if a valid JWT is near expiry and user is active,
@@ -260,42 +251,7 @@ def after_request(response):
         # Never break the response for refresh issues.
         pass
 
-    origin = request.headers.get('Origin')
-    app.logger.debug(f"[CORS] Request from origin: {origin}")
-    app.logger.debug(f"[CORS] Request path: {request.path}")
-    
-    if not origin:
-        origin = 'http://localhost:1420'
-    
-    if is_local_origin(origin) or not request.headers.get('Origin'):
-        response.headers['Access-Control-Allow-Origin'] = origin
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
-        response.headers['Access-Control-Expose-Headers'] = 'Content-Type, Set-Cookie, X-Access-Token'
-        app.logger.debug(f"[CORS] Added CORS headers for origin: {origin}")
-    
     return response
-
-@app.before_request
-def handle_preflight():
-    if request.method == 'OPTIONS':
-        app.logger.debug(f"[CORS-PREFLIGHT] Handling OPTIONS request for {request.path}")
-        response = make_response()
-        origin = request.headers.get('Origin')
-        
-        if not origin:
-            origin = 'http://localhost:1420'
-        
-        if is_local_origin(origin) or not request.headers.get('Origin'):
-            response.headers['Access-Control-Allow-Origin'] = origin
-            response.headers['Access-Control-Allow-Credentials'] = 'true'
-            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
-            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
-            response.headers['Access-Control-Max-Age'] = '3600'
-            app.logger.debug(f"[CORS-PREFLIGHT] Allowed for origin: {origin}")
-        
-        return response
 
 @atexit.register
 def cleanup():

@@ -864,7 +864,6 @@ def revise_bill(bill_id):
 
         update_data = {
             "subtotal": float(payload.get("subtotal") or existing_bill.get("subtotal") or 0),
-            "tax_amount": float(payload.get("tax_amount") or existing_bill.get("tax_amount") or 0),
             "discount_percentage": float(payload.get("discount_percentage") or 0),
             "discount_amount": float(payload.get("discount_amount") or 0),
             "total": float(payload.get("total_amount") or payload.get("total") or existing_bill.get("total") or 0),
@@ -872,7 +871,19 @@ def revise_bill(bill_id):
             "status": existing_bill.get("status") or "completed",
             "updated_at": now,
         }
-        bill_update_response = supabase.table("bills").update(update_data).eq("id", bill_id).execute()
+        update_data["tax_amount"] = float(payload.get("tax_amount") or existing_bill.get("tax_amount") or 0)
+        try:
+            bill_update_response = supabase.table("bills").update(update_data).eq("id", bill_id).execute()
+        except APIError as err:
+            err_payload = err.args[0] if err.args else {}
+            err_code = str(err_payload.get("code") or "")
+            err_message = str(err_payload.get("message") or "")
+            if err_code == "PGRST204" and "tax_amount" in err_message and "tax_amount" in update_data:
+                app.logger.warning(f"bills.tax_amount not found; retrying revise without tax_amount for {bill_id}")
+                update_data.pop("tax_amount", None)
+                bill_update_response = supabase.table("bills").update(update_data).eq("id", bill_id).execute()
+            else:
+                raise
         updated_bill = bill_update_response.data[0] if bill_update_response.data else None
         _log_bill_event(
             supabase=supabase,
