@@ -29,8 +29,8 @@ interface Invoice {
   gstin: string;
   billFormat: string;
   items: any[];
-  canEdit?: boolean;
-  canCancel?: boolean;
+  canEdit?: boolean | null;
+  canCancel?: boolean | null;
   editExpiresAt?: string;
   secondsRemaining?: number;
   cancelledAt?: string;

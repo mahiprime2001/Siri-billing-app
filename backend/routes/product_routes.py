@@ -44,17 +44,32 @@ def _get_store_inventory_rows(supabase, store_id: str):
     rows = []
     seen = set()
     for store_col in ("storeid", "storeId"):
-        try:
-            response = supabase.table("storeinventory").select("*").eq(store_col, store_id).execute()
-        except APIError:
-            continue
+        # Paginate in batches of 1000 to bypass Supabase's default row cap
+        offset = 0
+        batch_size = 1000
+        while True:
+            try:
+                response = (
+                    supabase.table("storeinventory")
+                    .select("*")
+                    .eq(store_col, store_id)
+                    .range(offset, offset + batch_size - 1)
+                    .execute()
+                )
+            except APIError:
+                break
 
-        for row in response.data or []:
-            key = str(row.get("id") or f"{row.get('productid') or row.get('productId')}::{row.get('assignedat') or row.get('updatedat') or ''}")
-            if key in seen:
-                continue
-            seen.add(key)
-            rows.append(row)
+            batch = response.data or []
+            for row in batch:
+                key = str(row.get("id") or f"{row.get('productid') or row.get('productId')}::{row.get('assignedat') or row.get('updatedat') or ''}")
+                if key in seen:
+                    continue
+                seen.add(key)
+                rows.append(row)
+
+            if len(batch) < batch_size:
+                break  # no more pages
+            offset += batch_size
     return rows
 
 
@@ -171,7 +186,10 @@ def _build_local_products_response(user_id: str, search: str, limit: int):
         )
 
     final_products.sort(key=lambda row: str(row.get("name", "")).lower())
-    return final_products[:limit]
+    # Only apply limit for search queries; return all products for the full listing
+    if search and limit:
+        return final_products[:limit]
+    return final_products
 
 
 def _chunk_list(values, size):
@@ -198,7 +216,7 @@ def get_products():
     """Get products from current user's store inventory"""
     current_user_id = get_jwt_identity()
     search = request.args.get('search', '').strip()
-    limit = request.args.get('limit', 100, type=int)
+    limit = request.args.get('limit', 5000, type=int)
 
     cache_key = _products_cache_key(str(current_user_id), search, limit)
     now_ts = time.time()
@@ -235,79 +253,144 @@ def get_products():
             return _build_products_response(local_items, fallback_used=True, data_source="local_snapshot", cached=False), 200
         app.logger.info(f"Fetching inventory for store: {store_id}")
 
-        # Step 2: Get storeinventory data
-        inventory_items = _get_store_inventory_rows(supabase, str(store_id))
-        if not inventory_items:
-            app.logger.info(f"No inventory found for store {store_id}")
-            return jsonify([]), 200
+        # Steps 2-4: Paginated JOIN — storeinventory + products (no nested hsn embed to stay
+        # compatible with all PostgREST versions). HSN data is fetched in one separate call.
+        select_expr = (
+            'id, quantity, minstocklevel, maxstocklevel, assignedat, updatedat, storeid, productid, '
+            'products!productid(id, name, barcode, selling_price, price, hsn_code_id)'
+        )
+        all_inv_rows = []
+        seen_inv_keys = set()
+        batch_size = 1000
 
-        app.logger.info(f"Found {len(inventory_items)} inventory items")
-
-        # Step 3: Get product IDs
-        product_ids = [
-            str(item.get("productid") or item.get("productId"))
-            for item in inventory_items
-            if item.get("productid") or item.get("productId")
-        ]
-        if not product_ids:
-            app.logger.warning("No product IDs found in inventory")
-            return jsonify([]), 200
-
-        # Step 4: Get product details WITH HSN tax (products.tax removed)
-        # Fetch in chunks + retry to reduce intermittent 502s from large/complex edge queries.
-        chunked_products = []
-        seen_ids = set()
-        max_retries = 2
-        for ids_chunk in _chunk_list(product_ids, 40):
-            query = supabase.table('products') \
-                .select('id, name, barcode, selling_price, price, hsn_code_id, hsn_codes(hsn_code, tax)') \
-                .in_('id', ids_chunk)
-            if search:
-                query = query.or_(f"name.ilike.%{search}%,barcode.ilike.%{search}%")
-
-            chunk_response = None
-            for attempt in range(max_retries + 1):
+        # storeinventory schema uses lowercase 'storeid' — try that first, then camelCase
+        # as a fallback for schema variants. Stop as soon as one succeeds.
+        for store_col in ("storeid", "storeId"):
+            col_offset = 0
+            col_rows: list = []
+            col_ok = True
+            while True:
                 try:
-                    chunk_response = query.limit(limit).order('name').execute()
+                    resp = (
+                        supabase.table('storeinventory')
+                        .select(select_expr)
+                        .eq(store_col, store_id)
+                        .range(col_offset, col_offset + batch_size - 1)
+                        .execute()
+                    )
+                except APIError as join_err:
+                    app.logger.debug(f"JOIN col={store_col} failed (likely wrong case): {join_err}")
+                    col_ok = False
                     break
-                except APIError as chunk_error:
-                    is_last_attempt = attempt >= max_retries
-                    if is_last_attempt:
-                        app.logger.warning(
-                            f"Products cloud query failed for store {store_id}; serving local snapshot fallback. Error: {chunk_error}"
-                        )
-                        _PRODUCTS_CLOUD_FAIL_UNTIL[cache_key] = time.time() + _PRODUCTS_FAIL_COOLDOWN_SECONDS
-                        local_items = _build_local_products_response(current_user_id, search, limit)
-                        _PRODUCTS_FALLBACK_CACHE[cache_key] = {"ts": time.time(), "items": local_items}
-                        return _build_products_response(local_items, fallback_used=True, data_source="local_snapshot", cached=False), 200
-                    time.sleep(0.15 * (attempt + 1))
 
-            if not chunk_response or not chunk_response.data:
-                continue
+                batch = resp.data or []
+                for row in batch:
+                    key = str(row.get("id") or f"{row.get('productid')}::{row.get('assignedat') or ''}")
+                    if key not in seen_inv_keys:
+                        seen_inv_keys.add(key)
+                        col_rows.append(row)
+                        all_inv_rows.append(row)
 
-            for product in chunk_response.data:
-                pid = product.get("id")
-                if not pid or pid in seen_ids:
-                    continue
-                seen_ids.add(pid)
-                chunked_products.append(product)
+                if len(batch) < batch_size:
+                    break
+                col_offset += batch_size
 
-        if not chunked_products:
-            app.logger.info("No products found matching criteria")
-            return _build_products_response([], fallback_used=False, data_source="cloud"), 200
+            if col_ok and col_rows:
+                break  # got data from this column variant — no need to try the other
 
-        products = chunked_products
-        product_info_map = {p['id']: p for p in products}
+        # Fall back to the original two-step fetch only when JOIN returned nothing usable
+        first_with_product = next((r for r in all_inv_rows if r.get('products')), None)
+        if not all_inv_rows or first_with_product is None:
+            app.logger.warning(
+                f"JOIN path unavailable (join_failed={join_failed}, rows={len(all_inv_rows)}, "
+                f"has_product_data={first_with_product is not None}) — using two-step fetch"
+            )
+            # Re-fetch inventory the plain way (no join)
+            if not all_inv_rows:
+                all_inv_rows = _get_store_inventory_rows(supabase, str(store_id))
+            if not all_inv_rows:
+                app.logger.info(f"No inventory found for store {store_id}")
+                return jsonify([]), 200
 
-        # Step 5: Build final product list
+            product_ids = list({
+                str(item.get("productid") or item.get("productId"))
+                for item in all_inv_rows
+                if item.get("productid") or item.get("productId")
+            })
+            chunked_products = []
+            seen_pids: set = set()
+            for ids_chunk in _chunk_list(product_ids, 100):
+                try:
+                    q = (
+                        supabase.table('products')
+                        .select('id, name, barcode, selling_price, price, hsn_code_id, hsn_codes(hsn_code, tax)')
+                        .in_('id', ids_chunk)
+                    )
+                    if search:
+                        q = q.or_(f"name.ilike.%{search}%,barcode.ilike.%{search}%")
+                    chunk_resp = q.limit(5000).execute()
+                    for p in chunk_resp.data or []:
+                        if p.get('id') not in seen_pids:
+                            seen_pids.add(p['id'])
+                            chunked_products.append(p)
+                except Exception as ce:
+                    app.logger.warning(f"Fallback chunk query failed: {ce}")
+            product_map = {p['id']: p for p in chunked_products}
+            for row in all_inv_rows:
+                pid = str(row.get('productid') or row.get('productId') or '')
+                if pid in product_map:
+                    row['products'] = product_map[pid]
+        else:
+            app.logger.info(f"JOIN succeeded: {len(all_inv_rows)} inventory rows fetched")
+            # Fetch HSN tax rates in one separate query by unique hsn_code_id values
+            hsn_ids = list({
+                p_info.get('hsn_code_id')
+                for row in all_inv_rows
+                for p_info in [row.get('products') or {}]
+                if p_info.get('hsn_code_id') is not None
+            })
+            hsn_tax_map: dict = {}
+            hsn_code_map: dict = {}
+            if hsn_ids:
+                try:
+                    hsn_resp = supabase.table('hsn_codes').select('id, hsn_code, tax').in_('id', hsn_ids).execute()
+                    for h in hsn_resp.data or []:
+                        hsn_tax_map[h['id']] = h.get('tax', 0) or 0
+                        hsn_code_map[h['id']] = h.get('hsn_code', '')
+                except Exception as he:
+                    app.logger.warning(f"HSN fetch failed: {he}")
+            # Attach HSN info onto each embedded product dict
+            for row in all_inv_rows:
+                p_info = row.get('products')
+                if isinstance(p_info, dict):
+                    hid = p_info.get('hsn_code_id')
+                    p_info['hsn_codes'] = {'hsn_code': hsn_code_map.get(hid, ''), 'tax': hsn_tax_map.get(hid, 0)}
+
+        # Step 5: Build final product list from joined rows
+        search_lower = search.lower() if search else ""
         final_products = []
-        for inv_item in inventory_items:
-            product_id = inv_item.get('productid') or inv_item.get('productId')
-            if product_id not in product_info_map:
+        seen_final_ids = set()
+
+        for inv_item in all_inv_rows:
+            product_info = inv_item.get('products')
+            if isinstance(product_info, list):
+                product_info = product_info[0] if product_info else None
+            if not product_info:
                 continue
 
-            product_info = product_info_map[product_id]
-            product = {
+            product_id = str(product_info.get('id') or inv_item.get('productid') or inv_item.get('productId') or '')
+            if not product_id or product_id in seen_final_ids:
+                continue
+
+            # Apply search filter client-side (avoids extra per-chunk API calls)
+            if search_lower:
+                name_match = search_lower in str(product_info.get('name', '')).lower()
+                barcode_match = search_lower in str(product_info.get('barcode', ''))
+                if not name_match and not barcode_match:
+                    continue
+
+            seen_final_ids.add(product_id)
+            final_products.append({
                 'id': product_id,
                 'name': product_info.get('name', 'Unknown Product'),
                 'barcode': product_info.get('barcode', ''),
@@ -326,19 +409,14 @@ def get_products():
                 'updatedat': inv_item.get('updatedat'),
                 'storeid': inv_item.get('storeid') or inv_item.get('storeId'),
                 'inventory_id': inv_item.get('id'),
-            }
-            final_products.append(product)
+            })
 
-        # Deduplicate by product_id in case a product has multiple inventory records
-        seen_final_ids = set()
-        deduped = []
-        for p in final_products:
-            if p['id'] not in seen_final_ids:
-                seen_final_ids.add(p['id'])
-                deduped.append(p)
-        final_products = deduped
+        final_products.sort(key=lambda p: str(p.get('name', '')).lower())
 
-        app.logger.info(f"Returning {len(final_products)} products from store inventory")
+        # Diagnostic: log stock distribution to debug display issues
+        nonzero = sum(1 for p in final_products if (p.get('stock') or 0) > 0)
+        sample = [(p['name'], p.get('stock')) for p in final_products[:3]]
+        app.logger.info(f"Returning {len(final_products)} products — {nonzero} with stock>0, sample: {sample}")
         _PRODUCTS_CLOUD_FAIL_UNTIL.pop(cache_key, None)
         return _build_products_response(final_products, fallback_used=False, data_source="cloud"), 200
 

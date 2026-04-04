@@ -383,6 +383,8 @@ def get_bills():
         cached_bills = read_json_file(BILLS_FILE, [])
         if store_id:
             cached_bills = [b for b in cached_bills if str(b.get("storeid")) == str(store_id)]
+        for bill in cached_bills:
+            bill.update(_build_edit_window_meta(bill))
         result = jsonify(cached_bills[:limit])
         result.headers["X-Bills-Fallback-Used"] = "1"
         return result, 200

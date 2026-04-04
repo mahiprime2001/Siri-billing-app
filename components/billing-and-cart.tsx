@@ -591,12 +591,14 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
   const calculateTotalTax = useCallback(() => {
     if (!activeBillingInstance) return { cgst: 0, sgst: 0, total: 0 }
 
-    // Tax is computed on original pre-discount base amount.
-    // Discount affects only the amount-before-tax, not CGST/SGST.
+    // Tax is computed on the post-discount taxable base (GST applies after discount).
+    const subtotal = activeBillingInstance.cartItems.reduce((sum, item) => sum + item.total, 0)
+    const discountFactor = subtotal > 0 ? (1 - activeBillingInstance.discount / 100) : 1
     let totalTaxAmount = 0
 
     activeBillingInstance.cartItems.forEach(item => {
-      const itemTaxAmount = (item.total * item.taxPercentage) / 100
+      const itemTaxableBase = item.total * discountFactor
+      const itemTaxAmount = (itemTaxableBase * item.taxPercentage) / 100
       totalTaxAmount += itemTaxAmount
     })
 
@@ -756,10 +758,15 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
     if (searchTerm.trim() === "") {
       setFilteredProducts(showAllProducts ? products : [])
     } else {
+      const normalizedSearch = searchTerm.trim().replace(/^0+/, "")
       const filtered = sortProductsByName(products.filter(
         (product) =>
           product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (product.barcodes && product.barcodes.includes(searchTerm)),
+          (product.barcodes &&
+            product.barcodes
+              .split(",")
+              .map((b: string) => b.trim().replace(/^0+/, ""))
+              .some((b: string) => b.includes(normalizedSearch) || normalizedSearch.includes(b))),
       ))
       setFilteredProducts(filtered)
     }
@@ -920,7 +927,7 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
     }
   }
 
-  const addToCart = (productId: string, qty = 1): boolean => {
+  const addToCart = (productId: string, qty = 1, productOverride?: Product): boolean => {
     if (!activeBillingInstance) {
       toast({
         title: "Billing Unavailable",
@@ -929,7 +936,7 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
       })
       return false
     }
-    const product = products.find((p) => p.id === productId)
+    const product = productOverride || products.find((p) => p.id === productId)
     if (!product) {
       toast({
         title: "Product Unavailable",
@@ -1123,7 +1130,7 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
           return sortProductsByName(next)
         })
 
-        const added = addToCart(serverMatchedProduct.id, 1)
+        const added = addToCart(serverMatchedProduct.id, 1, serverMatchedProduct)
         if (added) {
           setLastScanned(serverMatchedProduct)
         }
@@ -1145,7 +1152,7 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
       } else {
         setMissingBarcodeAlert({
           barcode: rawInput,
-          message: "This barcode is not available in this store inventory.",
+          message: `Product with barcode "${rawInput}" was not found in this store's inventory.`,
         })
       }
 
