@@ -45,8 +45,11 @@ def _parse_iso_datetime(raw_value):
 
 
 def _get_bill_created_at_utc(bill):
-    return _parse_iso_datetime(
-        bill.get("created_at") or bill.get("timestamp") or bill.get("createdAt")
+    return (
+        _parse_iso_datetime(bill.get("created_at"))
+        or _parse_iso_datetime(bill.get("timestamp"))
+        or _parse_iso_datetime(bill.get("createdAt"))
+        or _parse_iso_datetime(bill.get("updated_at"))
     )
 
 

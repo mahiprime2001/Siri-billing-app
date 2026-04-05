@@ -1164,14 +1164,24 @@ const handleOpenDayReportDialog = async (group: DayInvoiceGroup, event?: MouseEv
   }
 
   const canEditInvoice = (invoice: Invoice) => {
-    if (typeof invoice.canEdit === "boolean") {
-      return invoice.canEdit && getSecondsRemaining(invoice) > 0
-    }
     const status = String(invoice.status || "").toLowerCase()
-    if (!["completed", "paid", "pending"].includes(status)) return false
-    const createdAtMs = new Date(invoice.createdAt || invoice.timestamp).getTime()
-    if (Number.isNaN(createdAtMs)) return false
-    return createdAtMs + 24 * 60 * 60 * 1000 > clockNowMs
+    const isEligibleStatus = ["completed", "paid", "pending"].includes(status)
+
+    if (typeof invoice.canEdit === "boolean") {
+      if (!invoice.canEdit) return false
+      // Backend confirmed editable — verify with real-time remaining time
+      if (getSecondsRemaining(invoice) > 0) return true
+      // Fallback: re-check from createdAt in case editExpiresAt is stale or missing
+      const createdDate = parseServerDate(invoice.createdAt || invoice.timestamp)
+      if (!createdDate) return false
+      return isEligibleStatus && createdDate.getTime() + 24 * 60 * 60 * 1000 > clockNowMs
+    }
+
+    // No canEdit from backend — compute locally
+    if (!isEligibleStatus) return false
+    const createdDate = parseServerDate(invoice.createdAt || invoice.timestamp)
+    if (!createdDate) return false
+    return createdDate.getTime() + 24 * 60 * 60 * 1000 > clockNowMs
   }
 
   const formatRemaining = (totalSeconds: number): string => {
