@@ -442,6 +442,9 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
     const raw = window.sessionStorage.getItem("invoice-edit-session")
     if (!raw) return
 
+    // Clear immediately to prevent duplicate hydration from event + mount
+    window.sessionStorage.removeItem("invoice-edit-session")
+
     let parsed: InvoiceEditSession | null = null
     try {
       parsed = JSON.parse(raw)
@@ -467,7 +470,18 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
 
       const bill = payload?.bill || {}
       const items = Array.isArray(payload?.items) ? payload.items : []
-      const targetTabId = activeTabRef.current || "bill-1"
+      const editTabId = `edit-${parsed.billId}-${Date.now()}`
+      const targetTabId = editTabId
+
+      // Check tab limit before creating a new edit tab
+      if (billingTabsRef.current.length >= MAX_BILL_TABS) {
+        toast({
+          title: "Tab Limit Reached",
+          description: `Close a tab before editing. Maximum ${MAX_BILL_TABS} tabs allowed.`,
+          variant: "destructive",
+        })
+        return
+      }
 
       const mappedItems: CartItem[] = items.map((item: any) => {
         const taxPercentage = Number(item.taxPercentage || 0)
@@ -853,8 +867,11 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
         return acc
       }
 
+      // Do not auto-remove items when live stock briefly reports 0.
+      // This can happen during refresh/fallback races and causes cart flicker.
+      // Keep the line in cart; final stock enforcement happens on bill submit.
       if (stock <= 0) {
-        changed = true
+        acc.push(item)
         return acc
       }
 
@@ -1932,7 +1949,7 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
 
               <div className="max-h-96 overflow-y-auto border rounded-md">
                 {(searchTerm.trim() ? filteredProducts : products)
-                  .filter((product) => product.stock > 0)
+                  .filter((product) => product.stock > 0 || isInvoiceEditMode)
                   .map((product) => (
                   <div
                     key={product.id}
@@ -1964,7 +1981,7 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
               <TabsList className={isMobile ? "w-full grid grid-cols-3" : "flex flex-wrap gap-2 flex-1 min-w-0"}>
                 {billingTabs.map((tab, index) => (
                   <TabsTrigger key={tab.id} value={tab.id} className="relative pr-7">
-                    {tab.id === replacementTabId ? "Replacement" : `Bill ${index + 1}`}
+                    {tab.id === replacementTabId ? "Replacement" : tab.id.startsWith("edit-") ? `Edit ${tab.id.split("-")[1]}` : `Bill ${index + 1}`}
                     {billingTabs.length > 1 && (
                       <span
                         className="absolute top-1/2 right-1 transform -translate-y-1/2 rounded-full p-0.5 hover:bg-gray-200 dark:hover:bg-gray-700"
@@ -2198,6 +2215,16 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
                         <ShoppingCart className="h-12 w-12 mx-auto mb-4 opacity-50" />
                         <p>Cart is empty</p>
                         <p className="text-sm">Search or scan products to add them</p>
+                        {isEditingInvoiceTab && (
+                          <Button
+                            onClick={() => setIsCancelInvoiceDialogOpen(true)}
+                            variant="destructive"
+                            className="mt-4"
+                            size="lg"
+                          >
+                            Cancel Invoice
+                          </Button>
+                        )}
                       </div>
                     )}
                   </CardContent>
