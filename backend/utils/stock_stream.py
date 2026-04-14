@@ -3,6 +3,7 @@ import queue
 import threading
 import time
 from typing import Dict, List
+from utils.products_cache import invalidate_products_cache_for_store
 
 _subscribers: List[queue.Queue] = []
 _lock = threading.Lock()
@@ -22,6 +23,8 @@ def unsubscribe(q: queue.Queue) -> None:
 
 
 def publish(event: Dict) -> None:
+    if isinstance(event, dict) and event.get("type") == "stock_update":
+        invalidate_products_cache_for_store(event.get("store_id"))
     payload = json.dumps(event)
     with _lock:
         for q in list(_subscribers):

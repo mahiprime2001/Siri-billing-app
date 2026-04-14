@@ -13,6 +13,7 @@ from helpers.utils import read_json_file, write_json_file
 from data_access.supabase_data_access import (
     get_supabase_data, sync_to_supabase_immediately, get_product_barcodes_supabase
 )
+from utils.products_cache import invalidate_products_cache_for_store
 
 def get_or_create_customer(customer_name: str, customer_phone: str, customer_email: str = '', customer_address: str = '') -> str:
     """
@@ -376,6 +377,7 @@ def update_both_inventory_and_product_stock(store_id: str, product_id: str, quan
     products_table_updated = update_product_stock_supabase(product_id, quantity_sold)
     
     if store_inventory_updated and products_table_updated:
+        invalidate_products_cache_for_store(store_id)
         print(f"✅ Successfully updated BOTH storeinventory and products table for {product_id}")
         return True
     
@@ -388,6 +390,8 @@ def update_both_inventory_and_product_stock(store_id: str, product_id: str, quan
     if not store_inventory_updated:
         print(f"❌ CRITICAL: STORE INVENTORY DID NOT UPDATE for {product_id} !")
         return False
+
+    invalidate_products_cache_for_store(store_id)
     
     # If store worked but global failed → we now FAIL the whole operation
     if not products_table_updated:

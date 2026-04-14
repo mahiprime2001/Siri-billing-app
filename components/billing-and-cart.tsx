@@ -201,6 +201,7 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
   const [lastScanned, setLastScanned] = useState<Product | null>(null)
   const [showAllProducts, setShowAllProducts] = useState(false)
   const [isLoadingProducts, setIsLoadingProducts] = useState(false)
+  const [isCloudStockVerified, setIsCloudStockVerified] = useState(false)
 
   const [users, setUsers] = useState<User[]>([])
   const [stores, setStores] = useState<Store[]>([])
@@ -237,6 +238,8 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
 
   const barcodeInputRef = useRef<HTMLInputElement>(null)
   const saveInFlightRef = useRef(false)
+  const fetchProductsReqIdRef = useRef(0)
+  const fallbackRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const idleFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const IDLE_FOCUS_DELAY_MS = 5000
   const billingTabsRef = useRef<BillingInstance[]>([])
@@ -247,6 +250,15 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
   useEffect(() => {
     billingTabsRef.current = billingTabs
   }, [billingTabs])
+
+  useEffect(() => {
+    return () => {
+      if (fallbackRetryTimerRef.current) {
+        clearTimeout(fallbackRetryTimerRef.current)
+        fallbackRetryTimerRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     activeTabRef.current = activeTab
@@ -643,7 +655,6 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
   }, [activeBillingInstance?.cartItems, activeBillingInstance?.discount, calculateFinalTotal, activeTab, activeBillingInstance?.isEditingTotal, activeBillingInstance?.editableTotal]);
 
   useEffect(() => {
-    fetchProducts()
     fetchSettings()
     fetchUserData()
   }, [isOnline])
@@ -700,7 +711,6 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
           console.error("Failed to fetch current store:", err);
         }
 
-        fetchProducts();
         fetchSettings();
 
       } catch (error) {
@@ -793,49 +803,140 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
   }
 
   const fetchProducts = async () => {
+    const reqId = ++fetchProductsReqIdRef.current;
     try {
       setIsLoadingProducts(true);
       const response = await apiClient("/api/products");
-      
+
+      if (reqId !== fetchProductsReqIdRef.current) return;
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const data = await response.json();
       const fallbackUsed = response.headers.get("X-Fallback-Used") === "1"
       const source = response.headers.get("X-Data-Source") || ""
+      const isCloudSource = !fallbackUsed && source.toLowerCase() === "cloud"
+      setIsCloudStockVerified(isCloudSource)
       if (fallbackUsed) {
         console.warn(`⚠️ Products served from fallback source: ${source || "local_snapshot"}`)
       }
       console.log("✅ Fetched store inventory products:", data.length, "items");
-      console.log("📦 Sample product with tax:", data[0]);
-      
-      setProducts(sortProductsByName(data));
+
+      if (reqId !== fetchProductsReqIdRef.current) return;
+
+      // Don't let a stale fallback snapshot overwrite an already-populated list.
+      setProducts((prev) => {
+        if (fallbackUsed && prev.length > 0 && data.length < prev.length) {
+          console.warn("⚠️ Ignoring fallback snapshot — keeping current product list");
+          return prev;
+        }
+        return sortProductsByName(data);
+      });
       setFilteredProducts([]);
+
+      // If the backend served a fallback snapshot, its stock values may be stale.
+      // Schedule a single retry so we pick up the real data without requiring
+      // the user to navigate away and back.
+      if (fallbackUsed) {
+        if (fallbackRetryTimerRef.current) {
+          clearTimeout(fallbackRetryTimerRef.current)
+        }
+        fallbackRetryTimerRef.current = setTimeout(() => {
+          fallbackRetryTimerRef.current = null
+          console.log("🔁 Retrying products fetch after fallback response");
+          fetchProducts()
+        }, 3000)
+      } else if (fallbackRetryTimerRef.current) {
+        clearTimeout(fallbackRetryTimerRef.current)
+        fallbackRetryTimerRef.current = null
+      }
     } catch (error) {
+      if (reqId !== fetchProductsReqIdRef.current) return;
       console.error("❌ Error fetching store inventory products:", error);
       toast({
         title: "Network Error",
         description: "Failed to fetch store products. Check your connection.",
         variant: "destructive",
       });
-      setProducts([]);
     } finally {
-      setIsLoadingProducts(false);
+      if (reqId === fetchProductsReqIdRef.current) {
+        setIsLoadingProducts(false);
+      }
     }
   };
 
   useEffect(() => {
     if (!currentStore) return
 
+    fetchProducts()
+
     const streamUrl = "http://localhost:8080/api/stock/stream"
     const source = new EventSource(streamUrl, { withCredentials: true })
+
+    // Cap delta fetches. Bigger bursts fall back to a full refresh.
+    const DELTA_MAX = 10
+
+    const applyDeltaForIds = async (productIds: string[]) => {
+      const unique = Array.from(new Set(productIds.filter(Boolean)))
+      if (unique.length === 0) return
+
+      if (unique.length > DELTA_MAX) {
+        fetchProducts()
+        return
+      }
+
+      try {
+        const results = await Promise.all(
+          unique.map(async (id) => {
+            try {
+              const res = await apiClient(`/api/products/${encodeURIComponent(id)}`)
+              if (!res.ok) return { id, product: null as Product | null, missing: res.status === 404 }
+              const product = (await res.json()) as Product
+              return { id, product, missing: false }
+            } catch (err) {
+              console.warn(`⚠️ Delta fetch failed for ${id}:`, err)
+              return { id, product: null as Product | null, missing: false }
+            }
+          })
+        )
+
+        setProducts((prev) => {
+          const byId = new Map(prev.map((p) => [p.id, p]))
+          let changed = false
+          for (const { id, product, missing } of results) {
+            if (missing) {
+              if (byId.delete(id)) changed = true
+              continue
+            }
+            if (!product) continue
+            const existing = byId.get(id)
+            if (!existing || existing.stock !== product.stock || existing.selling_price !== product.selling_price) {
+              byId.set(id, { ...existing, ...product })
+              changed = true
+            }
+          }
+          if (!changed) return prev
+          return sortProductsByName(Array.from(byId.values()))
+        })
+      } catch (error) {
+        console.error("❌ Delta apply failed, falling back to full refresh:", error)
+        fetchProducts()
+      }
+    }
 
     source.addEventListener("stock", (event) => {
       try {
         const data = JSON.parse((event as MessageEvent).data || "{}")
         if (data.store_id && data.store_id !== currentStore.id) return
-        fetchProducts()
+
+        const ids: string[] = Array.isArray(data.product_ids) ? data.product_ids.map(String) : []
+        if (ids.length > 0) {
+          applyDeltaForIds(ids)
+        } else {
+          fetchProducts()
+        }
       } catch (error) {
         console.error("❌ Failed to parse stock event:", error)
       }
@@ -1943,7 +2044,7 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
                   />
                 </div>
                 <Badge variant="secondary" className="whitespace-nowrap">
-                  Verified Stock: {totalVerifiedStoreStock.toLocaleString()}
+                  {isCloudStockVerified ? "Verified Stock" : "Snapshot Stock"}: {totalVerifiedStoreStock.toLocaleString()}
                 </Badge>
               </div>
 
