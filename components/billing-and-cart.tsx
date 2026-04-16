@@ -37,6 +37,8 @@ import {
   Receipt,
   CreditCard,
   Store as StoreIcon,
+  Loader2,
+  AlertCircle,
 } from "lucide-react"
 import InvoicePreview from "./invoice-preview"
 import ReturnsDialog from "./returns-dialog"
@@ -202,6 +204,8 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
   const [showAllProducts, setShowAllProducts] = useState(false)
   const [isLoadingProducts, setIsLoadingProducts] = useState(false)
   const [isCloudStockVerified, setIsCloudStockVerified] = useState(false)
+  const [productsFirstStableLoad, setProductsFirstStableLoad] = useState(false)
+  const [productsLoadError, setProductsLoadError] = useState<string | null>(null)
 
   const [users, setUsers] = useState<User[]>([])
   const [stores, setStores] = useState<Store[]>([])
@@ -841,6 +845,10 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
         return sortProductsByName(data);
       });
       setFilteredProducts([]);
+      setProductsLoadError(null);
+      if (!fallbackUsed && !partial) {
+        setProductsFirstStableLoad(true);
+      }
 
       // Schedule a single retry when the backend served fallback or partial data,
       // so the user picks up the real list without manual refresh.
@@ -860,6 +868,7 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
     } catch (error) {
       if (reqId !== fetchProductsReqIdRef.current) return;
       console.error("❌ Error fetching store inventory products:", error);
+      setProductsLoadError(error instanceof Error ? error.message : "Failed to fetch products");
       toast({
         title: "Network Error",
         description: "Failed to fetch store products. Check your connection.",
@@ -1990,8 +1999,48 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
     return sum + (Number.isFinite(stock) && stock > 0 ? stock : 0)
   }, 0)
 
+  const blockUI = !productsFirstStableLoad
+
   return (
     <>
+      {blockUI && (
+        <div className="fixed inset-0 z-[100] bg-white/80 backdrop-blur-sm flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4 max-w-md text-center px-6 py-8 bg-white border rounded-xl shadow-xl">
+            {productsLoadError ? (
+              <>
+                <AlertCircle className="h-10 w-10 text-red-500" />
+                <div>
+                  <p className="font-semibold text-gray-900">Couldn't load products</p>
+                  <p className="text-sm text-gray-600 mt-1">{productsLoadError}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProductsLoadError(null)
+                    fetchProducts()
+                  }}
+                  className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+                >
+                  Retry
+                </button>
+              </>
+            ) : (
+              <>
+                <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
+                <div>
+                  <p className="font-semibold text-gray-900">Loading store products...</p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {isLoadingProducts
+                      ? "Fetching the latest inventory from cloud."
+                      : "Waiting for a verified stock snapshot."}
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className={`grid ${isMobile ? "grid-cols-1" : "grid-cols-1 lg:grid-cols-2"} gap-6`}>
         {/* Left Column - Product Search & Barcode Scanner */}
         <div className="space-y-6">
@@ -2006,13 +2055,14 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
             <CardContent className="space-y-3">
               <Input
                 ref={barcodeInputRef}
-                placeholder="Scan barcode here..."
+                placeholder={blockUI ? "Loading products..." : "Scan barcode here..."}
                 value={barcodeInput}
                 onChange={(e) => setBarcodeInput(e.target.value)}
                 onKeyDown={handleBarcodeKeyPress}
                 className="text-lg font-mono"
                 autoComplete="off"
                 onFocus={(e) => e.target.select()}
+                disabled={blockUI}
               />
               <p className="text-sm text-green-600">
                 Scanner ready – scan continuously, press Enter to add
@@ -2040,12 +2090,13 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                   <Input
-                    placeholder="Search products or click to see all..."
+                    placeholder={blockUI ? "Loading products..." : "Search products or click to see all..."}
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     onFocus={handleSearchFocus}
                     onBlur={handleSearchBlur}
                     className="pl-10"
+                    disabled={blockUI}
                   />
                 </div>
                 <Badge variant="secondary" className="whitespace-nowrap">
@@ -2059,8 +2110,11 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
                   .map((product) => (
                   <div
                     key={product.id}
-                    className="p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0 flex justify-between items-center"
-                    onClick={() => addToCart(product.id, 1)}
+                    className={`p-3 border-b last:border-b-0 flex justify-between items-center ${blockUI ? "opacity-60 cursor-not-allowed" : "hover:bg-gray-50 cursor-pointer"}`}
+                    onClick={() => {
+                      if (blockUI) return
+                      addToCart(product.id, 1)
+                    }}
                   >
                     <div>
                       <p className="font-medium">{product.name}</p>

@@ -714,40 +714,6 @@ def _apply_transfer_order_verification(supabase, current_user_id: str, store_id:
                 }
             )
 
-        if delta_verified > 0 and not inventory_applied:
-            # Skip persisting verified bump when inventory write failed
-            damaged_delta = max(0, new_damaged - old_damaged)
-            if damaged_delta > 0:
-                damaged_event_rows.append(
-                    {
-                        "id": f"DMG-{datetime.now(timezone.utc).timestamp()}-{item.get('id')}",
-                        "store_id": store_id,
-                        "product_id": item.get("product_id"),
-                        "quantity": damaged_delta,
-                        "source_type": "transfer_verification",
-                        "source_id": item.get("id"),
-                        "reason": update.get("damage_reason") or "Damaged during transfer verification",
-                        "status": "reported",
-                        "reported_by": current_user_id,
-                        "created_at": now_iso,
-                        "updated_at": now_iso,
-                    }
-                )
-            try:
-                supabase.table("inventory_transfer_items").update(
-                    {
-                        "damaged_qty": new_damaged,
-                        "wrong_store_qty": new_wrong,
-                        "updated_at": now_iso,
-                    }
-                ).eq("id", item.get("id")).execute()
-            except Exception as partial_err:
-                app.logger.error(
-                    f"❌ Partial item update failed for {item.get('id')}: {partial_err}"
-                )
-            updated_items.append({"item_id": item.get("id"), "delta_verified_applied": 0, "inventory_failed": True})
-            continue
-
         damaged_delta = max(0, new_damaged - old_damaged)
         if damaged_delta > 0:
             damaged_event_rows.append(
@@ -766,11 +732,16 @@ def _apply_transfer_order_verification(supabase, current_user_id: str, store_id:
                 }
             )
 
+        # Persist verified_qty regardless of inventory write outcome.
+        # applied_verified_qty only advances when inventory write succeeded, so any
+        # residual delta (verified_qty - applied_verified_qty) stays available for
+        # the reconciliation pass to pick up and retry safely.
+        applied_verified_after = old_applied_verified + (delta_verified if inventory_applied else 0)
         item_payload = {
             "verified_qty": new_verified,
             "damaged_qty": new_damaged,
             "wrong_store_qty": new_wrong,
-            "applied_verified_qty": old_applied_verified + delta_verified,
+            "applied_verified_qty": applied_verified_after,
             "status": _derive_transfer_item_state(
                 {
                     "assigned_qty": assigned_qty,
@@ -781,8 +752,19 @@ def _apply_transfer_order_verification(supabase, current_user_id: str, store_id:
             ),
             "updated_at": now_iso,
         }
-        supabase.table("inventory_transfer_items").update(item_payload).eq("id", item.get("id")).execute()
-        updated_items.append({"item_id": item.get("id"), **item_payload, "delta_verified_applied": delta_verified})
+        try:
+            supabase.table("inventory_transfer_items").update(item_payload).eq("id", item.get("id")).execute()
+        except Exception as persist_err:
+            app.logger.error(f"❌ Failed to persist transfer item {item.get('id')}: {persist_err}")
+        updated_items.append(
+            {
+                "item_id": item.get("id"),
+                **item_payload,
+                "delta_verified_requested": delta_verified,
+                "delta_verified_applied": delta_verified if inventory_applied else 0,
+                "inventory_applied": inventory_applied,
+            }
+        )
 
     if local_inventory_deltas:
         for product_id, delta_qty in local_inventory_deltas.items():
@@ -987,6 +969,12 @@ def verify_transfer_orders_batch():
         response_status = 200 if failed_count == 0 else (207 if success_count > 0 or duplicate_count > 0 or queued_count > 0 else 400)
         if failed_count == 0 and queued_count > 0 and success_count == 0 and duplicate_count == 0:
             response_status = 202
+        reconcile_summary = None
+        try:
+            reconcile_summary = _reconcile_store_inventory(supabase, store_id)
+        except Exception as rec_err:
+            app.logger.warning(f"⚠️ Post-batch inventory reconcile failed: {rec_err}")
+
         return jsonify(
             {
                 "message": "Batch verification processed",
@@ -997,8 +985,155 @@ def verify_transfer_orders_batch():
                 "queued_count": queued_count,
                 "queued": queued_count > 0,
                 "results": results,
+                "reconcile": reconcile_summary,
             }
         ), response_status
     except Exception as e:
         app.logger.error(f"❌ Error verifying transfer orders in batch: {str(e)}")
+        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+
+
+def _reconcile_store_inventory(supabase, store_id: str) -> dict:
+    """
+    Delta-based inventory reconciliation for a single store.
+
+    Idempotency rule: only rows where `verified_qty > applied_verified_qty` are
+    processed, and `applied_verified_qty` is advanced only on successful inventory
+    write. Running repeatedly cannot double-count.
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+    order_response = (
+        supabase.table("inventory_transfer_orders")
+        .select("id")
+        .eq("store_id", store_id)
+        .execute()
+    )
+    order_ids = [o.get("id") for o in (order_response.data or []) if o.get("id")]
+    if not order_ids:
+        return {
+            "items_considered": 0,
+            "items_applied": 0,
+            "items_failed": 0,
+            "delta_applied_total": 0,
+            "results": [],
+        }
+
+    items: list = []
+    for chunk in _chunk_list(order_ids, 100):
+        try:
+            response = (
+                supabase.table("inventory_transfer_items")
+                .select("id, product_id, transfer_order_id, assigned_qty, verified_qty, applied_verified_qty")
+                .in_("transfer_order_id", chunk)
+                .execute()
+            )
+            items.extend(response.data or [])
+        except Exception as chunk_err:
+            app.logger.warning(f"⚠️ Failed to fetch transfer items chunk during reconcile: {chunk_err}")
+
+    results = []
+    items_considered = 0
+    items_applied = 0
+    items_failed = 0
+    delta_applied_total = 0
+
+    for item in items:
+        product_id = item.get("product_id")
+        verified_qty = int(item.get("verified_qty") or 0)
+        applied_verified = int(item.get("applied_verified_qty") or 0)
+        delta = max(0, verified_qty - applied_verified)
+        if delta <= 0 or not product_id:
+            continue
+        items_considered += 1
+
+        applied_ok = False
+        error_message = None
+        try:
+            inv_response = (
+                supabase.table("storeinventory")
+                .select("id, quantity")
+                .eq("storeid", store_id)
+                .eq("productid", product_id)
+                .limit(1)
+                .execute()
+            )
+            if inv_response.data:
+                inv = inv_response.data[0]
+                new_qty = int(inv.get("quantity") or 0) + delta
+                supabase.table("storeinventory").update(
+                    {"quantity": new_qty, "updatedat": now_iso}
+                ).eq("id", inv.get("id")).execute()
+            else:
+                supabase.table("storeinventory").insert(
+                    {
+                        "id": f"INV-{datetime.now(timezone.utc).timestamp()}-{product_id}",
+                        "storeid": store_id,
+                        "productid": product_id,
+                        "quantity": delta,
+                        "assignedat": now_iso,
+                        "updatedat": now_iso,
+                    }
+                ).execute()
+
+            confirm_response = (
+                supabase.table("storeinventory")
+                .select("id")
+                .eq("storeid", store_id)
+                .eq("productid", product_id)
+                .limit(1)
+                .execute()
+            )
+            if not confirm_response.data:
+                raise Exception("Inventory row not found after reconcile upsert")
+
+            supabase.table("inventory_transfer_items").update(
+                {"applied_verified_qty": applied_verified + delta, "updated_at": now_iso}
+            ).eq("id", item.get("id")).execute()
+
+            _update_local_storeinventory(store_id, product_id, int(delta), now_iso)
+            applied_ok = True
+            items_applied += 1
+            delta_applied_total += delta
+        except Exception as rec_err:
+            error_message = str(rec_err)
+            items_failed += 1
+            app.logger.error(
+                f"❌ Reconcile failed for transfer_item {item.get('id')} / product {product_id}: {rec_err}"
+            )
+
+        results.append(
+            {
+                "transfer_item_id": item.get("id"),
+                "product_id": product_id,
+                "delta": delta,
+                "success": applied_ok,
+                "message": None if applied_ok else (error_message or "Reconcile failed"),
+            }
+        )
+
+    return {
+        "items_considered": items_considered,
+        "items_applied": items_applied,
+        "items_failed": items_failed,
+        "delta_applied_total": delta_applied_total,
+        "results": results,
+    }
+
+
+@store_bp.route('/stores/current/transfer-orders/reconcile-inventory', methods=['POST'])
+@require_auth
+def reconcile_store_inventory_route():
+    """Manually trigger delta-based inventory reconciliation for the current store."""
+    try:
+        current_user_id = get_jwt_identity()
+        supabase = get_supabase_client()
+        store_id = _get_current_store_id(supabase, current_user_id)
+        if not store_id:
+            return jsonify({"message": "No store assigned to this user"}), 404
+
+        summary = _reconcile_store_inventory(supabase, store_id)
+        status_code = 200 if summary.get("items_failed", 0) == 0 else 207
+        return jsonify({"message": "Reconciliation complete", **summary}), status_code
+    except Exception as e:
+        app.logger.error(f"❌ Error reconciling store inventory: {str(e)}")
         return jsonify({"message": "An error occurred", "error": str(e)}), 500

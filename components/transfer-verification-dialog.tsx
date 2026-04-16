@@ -149,6 +149,24 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     })[]
   >([])
   const [loadingHistory, setLoadingHistory] = useState(false)
+  const [ordersInitialLoaded, setOrdersInitialLoaded] = useState(false)
+  const [historyInitialLoaded, setHistoryInitialLoaded] = useState(false)
+  const [reconciling, setReconciling] = useState(false)
+  const [lastReconcileSummary, setLastReconcileSummary] = useState<{
+    at: string
+    items_considered: number
+    items_applied: number
+    items_failed: number
+    delta_applied_total: number
+    results: {
+      transfer_item_id: string | null
+      product_id: string | null
+      product_name: string
+      delta: number
+      success: boolean
+      message?: string | null
+    }[]
+  } | null>(null)
   const [expandedHistoryOrderIds, setExpandedHistoryOrderIds] = useState<Record<string, boolean>>({})
 
   const clearAnimationTimers = () => {
@@ -225,6 +243,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       })
     } finally {
       setLoadingOrders(false)
+      setOrdersInitialLoaded(true)
     }
   }
 
@@ -240,6 +259,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       setHistoryOrders([])
     } finally {
       setLoadingHistory(false)
+      setHistoryInitialLoaded(true)
     }
   }
 
@@ -259,6 +279,9 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       setInventoryFailures([])
       setHistoryOrders([])
       setExpandedHistoryOrderIds({})
+      setOrdersInitialLoaded(false)
+      setHistoryInitialLoaded(false)
+      setLastReconcileSummary(null)
       inFlightDetailPromises.current.clear()
       clearAnimationTimers()
       loadOrders()
@@ -708,6 +731,113 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       })
     })
     return failures
+  }
+
+  const resolveProductNameForItem = (transferItemId: string | null, productId: string | null): string => {
+    const nameFromItem = (it: TransferItem | undefined): string | undefined => it?.products?.name
+    if (transferItemId) {
+      for (const details of Object.values(orderDetailsById)) {
+        const hit = details?.items?.find((it) => it.id === transferItemId)
+        const name = nameFromItem(hit)
+        if (name) return name
+      }
+      for (const order of historyOrders) {
+        const hit = order?.items?.find((it) => it.id === transferItemId)
+        const name = nameFromItem(hit)
+        if (name) return name
+      }
+    }
+    if (productId) {
+      for (const details of Object.values(orderDetailsById)) {
+        const hit = details?.items?.find((it) => it.product_id === productId)
+        const name = nameFromItem(hit)
+        if (name) return name
+      }
+      for (const order of historyOrders) {
+        const hit = order?.items?.find((it) => it.product_id === productId)
+        const name = nameFromItem(hit)
+        if (name) return name
+      }
+    }
+    return productId || "Unknown product"
+  }
+
+  const handleReconcileInventory = async () => {
+    if (reconciling) return
+    setReconciling(true)
+    try {
+      const response = await apiClient("/api/stores/current/transfer-orders/reconcile-inventory", {
+        method: "POST",
+      })
+      if (!response.ok && response.status !== 207) throw new Error("Reconcile request failed")
+      const data = await response.json().catch(() => ({} as any))
+
+      const considered = Number(data?.items_considered ?? 0)
+      const applied = Number(data?.items_applied ?? 0)
+      const failed = Number(data?.items_failed ?? 0)
+      const deltaTotal = Number(data?.delta_applied_total ?? 0)
+      const rawResults: any[] = Array.isArray(data?.results) ? data.results : []
+
+      const enrichedResults = rawResults.map((r) => ({
+        transfer_item_id: r?.transfer_item_id ?? null,
+        product_id: r?.product_id ?? null,
+        product_name: resolveProductNameForItem(r?.transfer_item_id ?? null, r?.product_id ?? null),
+        delta: Number(r?.delta ?? 0),
+        success: !!r?.success,
+        message: r?.message ?? null,
+      }))
+
+      setLastReconcileSummary({
+        at: new Date().toISOString(),
+        items_considered: considered,
+        items_applied: applied,
+        items_failed: failed,
+        delta_applied_total: deltaTotal,
+        results: enrichedResults,
+      })
+
+      if (considered === 0) {
+        toast({
+          title: "Nothing to Reconcile",
+          description: "Store inventory is already in sync with verified items.",
+        })
+      } else if (failed === 0) {
+        toast({
+          title: "Reconcile Complete",
+          description: `Reconciled ${applied} item${applied === 1 ? "" : "s"} • ${deltaTotal} unit${deltaTotal === 1 ? "" : "s"} pushed to inventory.`,
+        })
+      } else {
+        toast({
+          title: "Reconcile Completed With Failures",
+          description: `${applied} applied • ${failed} failed. See details below.`,
+          variant: "destructive",
+        })
+      }
+
+      const failures = enrichedResults.filter((r) => !r.success)
+      if (failures.length > 0) {
+        setInventoryFailures(
+          failures.map((f) => ({
+            product_name: f.product_name,
+            barcode: "-",
+            order_id: f.transfer_item_id || "-",
+            message: f.message || "Inventory write failed",
+          })),
+        )
+      }
+
+      await loadOrders()
+      await loadHistoryOrders()
+    } catch (error) {
+      console.error("Reconcile inventory failed:", error)
+      toast({
+        title: "Reconcile Failed",
+        description: "Could not reconcile store inventory. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setReconciling(false)
+    }
   }
 
   const finalizeAfterSave = ({
@@ -1245,6 +1375,30 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
             </DialogDescription>
           </DialogHeader>
 
+          {(() => {
+            const selectedOrderPending = !!selectedOrderId && !orderDetailsById[selectedOrderId]
+            const dialogBlockUI =
+              !ordersInitialLoaded || !historyInitialLoaded || selectedOrderPending
+            if (!dialogBlockUI) return null
+            return (
+              <div className="absolute inset-0 z-40 bg-white/85 backdrop-blur-sm flex items-center justify-center rounded-lg">
+                <div className="flex flex-col items-center gap-3 text-center px-6 py-6 bg-white border rounded-xl shadow-xl">
+                  <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                  <div>
+                    <p className="font-semibold text-gray-900">Preparing verification dialog...</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {!ordersInitialLoaded
+                        ? "Loading active orders"
+                        : !historyInitialLoaded
+                        ? "Loading verification history"
+                        : "Loading selected order details"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+
           {saving && (
             <div className="sticky top-0 z-30 -mx-6 -mt-2 mb-2 px-6 py-2 bg-gradient-to-r from-blue-500 via-indigo-500 to-blue-500 bg-[length:200%_100%] animate-[shimmer_2s_linear_infinite] text-white shadow-md">
               <div className="flex items-center justify-center gap-3 text-sm font-medium">
@@ -1266,6 +1420,59 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {lastReconcileSummary && (
+            <div
+              className={`rounded-md border p-3 text-sm space-y-2 ${
+                lastReconcileSummary.items_failed > 0
+                  ? "border-red-300 bg-red-50 text-red-800"
+                  : lastReconcileSummary.items_considered === 0
+                  ? "border-slate-300 bg-slate-50 text-slate-700"
+                  : "border-emerald-300 bg-emerald-50 text-emerald-800"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-semibold">
+                  {lastReconcileSummary.items_considered === 0
+                    ? "Nothing to reconcile"
+                    : lastReconcileSummary.items_failed > 0
+                    ? "Reconciled with failures"
+                    : "Reconciliation complete"}
+                </div>
+                <button
+                  type="button"
+                  className="text-xs underline opacity-70 hover:opacity-100"
+                  onClick={() => setLastReconcileSummary(null)}
+                >
+                  Dismiss
+                </button>
+              </div>
+              <div className="text-xs opacity-80">
+                Considered {lastReconcileSummary.items_considered}
+                {" • "}Applied {lastReconcileSummary.items_applied}
+                {" • "}Failed {lastReconcileSummary.items_failed}
+                {" • "}Units pushed {lastReconcileSummary.delta_applied_total}
+              </div>
+              {lastReconcileSummary.items_considered === 0 ? (
+                <div className="text-xs opacity-80">
+                  Every verified item is already reflected in store inventory.
+                </div>
+              ) : (
+                <ul className="list-disc pl-5 space-y-0.5">
+                  {lastReconcileSummary.results.map((r, idx) => (
+                    <li key={`${r.transfer_item_id || r.product_id || "row"}-${idx}`}>
+                      <span className="font-medium">{r.product_name}</span>
+                      {" "}— {r.success ? "+" : ""}{r.delta} unit{r.delta === 1 ? "" : "s"}
+                      {" "}
+                      <span className={r.success ? "text-emerald-700" : "text-red-700"}>
+                        ({r.success ? "applied" : `failed${r.message ? `: ${r.message}` : ""}`})
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 
@@ -1482,6 +1689,21 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
             <p className="text-xs text-muted-foreground mr-auto">
               {saving ? "Saving verification..." : canSave ? "Click Save to apply verification and refresh billing cart." : "Scan a product to start verification."}
             </p>
+            <Button
+              variant="outline"
+              onClick={handleReconcileInventory}
+              disabled={saving || reconciling}
+              title="Re-apply any verified items that haven't made it into store inventory yet."
+            >
+              {reconciling ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Reconciling...
+                </span>
+              ) : (
+                "Reconcile Inventory"
+              )}
+            </Button>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Close
             </Button>
