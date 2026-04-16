@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useToast } from "@/hooks/use-toast"
 import { apiClient } from "@/lib/api-client"
-import { Loader2, MoreVertical, ScanLine } from "lucide-react"
+import { ChevronDown, ChevronRight, Loader2, MoreVertical, ScanLine } from "lucide-react"
 
 type TransferOrder = {
   id: string
@@ -54,6 +54,7 @@ type TransferItem = {
   damaged_qty: number
   wrong_store_qty: number
   missing_qty: number
+  last_verified_at?: string | null
   products?: {
     name?: string
     barcode?: string
@@ -133,6 +134,22 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   const [touchedOrderIds, setTouchedOrderIds] = useState<string[]>([])
   const [confirmDamagedRowId, setConfirmDamagedRowId] = useState<string | null>(null)
   const [scanErrorDialog, setScanErrorDialog] = useState<{ title: string; description: string } | null>(null)
+  const [removingRowIds, setRemovingRowIds] = useState<Set<string>>(new Set())
+  const [inventoryFailures, setInventoryFailures] = useState<
+    { product_name: string; barcode: string; order_id: string; message: string }[]
+  >([])
+  const [historyOrders, setHistoryOrders] = useState<
+    (TransferOrderDetails & {
+      verified_at?: string | null
+      assigned_qty_total?: number
+      verified_qty_total?: number
+      damaged_qty_total?: number
+      wrong_store_qty_total?: number
+      missing_qty_total?: number
+    })[]
+  >([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
+  const [expandedHistoryOrderIds, setExpandedHistoryOrderIds] = useState<Record<string, boolean>>({})
 
   const clearAnimationTimers = () => {
     timerRefs.current.forEach((id) => clearTimeout(id))
@@ -211,6 +228,21 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     }
   }
 
+  const loadHistoryOrders = async () => {
+    setLoadingHistory(true)
+    try {
+      const response = await apiClient("/api/stores/current/transfer-orders/history")
+      if (!response.ok) throw new Error("Failed to fetch transfer history")
+      const data = (await response.json()) as TransferOrderDetails[]
+      setHistoryOrders(data as any)
+    } catch (error) {
+      console.error("Error loading transfer history:", error)
+      setHistoryOrders([])
+    } finally {
+      setLoadingHistory(false)
+    }
+  }
+
   useEffect(() => {
     if (open) {
       setSelectedOrderId(initialSelectedOrderId || "")
@@ -223,9 +255,14 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       setScanInput("")
       setActiveViewTab("scan")
       setConfirmDamagedRowId(null)
+      setRemovingRowIds(new Set())
+      setInventoryFailures([])
+      setHistoryOrders([])
+      setExpandedHistoryOrderIds({})
       inFlightDetailPromises.current.clear()
       clearAnimationTimers()
       loadOrders()
+      loadHistoryOrders()
     }
     return () => {
       clearAnimationTimers()
@@ -252,7 +289,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
 
   const findMatchingItem = (
     enteredBarcode: string,
-  ): { match: { orderId: string; item: TransferItem } | null; alreadyProcessed: boolean } => {
+  ): { match: { orderId: string; item: TransferItem } | null; alreadyProcessed: boolean; alreadyOrderId?: string } => {
     const normalized = normalizeBarcode(enteredBarcode)
     const matches: { orderId: string; item: TransferItem }[] = []
 
@@ -282,7 +319,11 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     })
 
     if (pendingMatches.length === 0) {
-      return { match: null, alreadyProcessed: matches.length > 0 }
+      return {
+        match: null,
+        alreadyProcessed: matches.length > 0,
+        alreadyOrderId: matches[0]?.orderId,
+      }
     }
     if (pendingMatches.length === 1) return { match: pendingMatches[0], alreadyProcessed: false }
 
@@ -304,7 +345,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   const findMatchInDetails = (
     enteredBarcode: string,
     details: TransferOrderDetails,
-  ): { match: TransferItem | null; alreadyProcessed: boolean } => {
+  ): { match: TransferItem | null; alreadyProcessed: boolean; alreadyOrderId?: string } => {
     const normalized = normalizeBarcode(enteredBarcode)
     const matches: TransferItem[] = []
     details.items.forEach((item) => {
@@ -329,7 +370,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       return verified + damaged + wrong < assigned
     })
 
-    if (pending.length === 0) return { match: null, alreadyProcessed: true }
+    if (pending.length === 0) return { match: null, alreadyProcessed: true, alreadyOrderId: details.id }
     return { match: pending[0], alreadyProcessed: false }
   }
 
@@ -382,9 +423,10 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     })
 
     if (!didUpdate) {
+      const displayBarcode = (item.products?.barcode || barcode).split(",")[0]?.trim() || barcode
       setScanErrorDialog({
-        title: "Stock Fully Scanned",
-        description: "Assigned quantity for this product is already completed. No more units can be scanned.",
+        title: "Already Verified",
+        description: `The product with ${displayBarcode} is already verified from the order ${orderId}.`,
       })
       return
     }
@@ -443,7 +485,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     const entered = scanInput.trim()
     if (!entered) return
 
-    let { match, alreadyProcessed } = findMatchingItem(entered)
+    let { match, alreadyProcessed, alreadyOrderId } = findMatchingItem(entered)
 
     if (!match && !alreadyProcessed) {
       try {
@@ -454,9 +496,10 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
           const barcodeStatus = await barcodeResponse.json()
           if (barcodeStatus?.already_verified) {
             setScanInput("")
+            const verifiedOrderId = String(barcodeStatus?.order_id || "")
             setScanErrorDialog({
               title: "Already Verified",
-              description: "This product is already fully verified for assigned quantity.",
+              description: `The product with ${entered} is already verified from the order ${verifiedOrderId || "Unknown"}.`,
             })
             return
           }
@@ -477,6 +520,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
                 match = { orderId: resolvedOrderId, item: resolved.match }
               } else if (resolved.alreadyProcessed) {
                 alreadyProcessed = true
+                alreadyOrderId = resolved.alreadyOrderId || resolvedOrderId
               }
             }
           }
@@ -491,7 +535,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       if (alreadyProcessed) {
         setScanErrorDialog({
           title: "Already Verified",
-          description: "This product is already fully verified for assigned quantity.",
+          description: `The product with ${entered} is already verified from the order ${alreadyOrderId || "Unknown"}.`,
         })
         return
       }
@@ -615,6 +659,85 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     return <Badge className="bg-green-600 hover:bg-green-600">Verified</Badge>
   }
 
+  const animateRemoveScanRows = (rowIdsToRemove: string[]) => {
+    if (!rowIdsToRemove.length) return
+    rowIdsToRemove.forEach((rowId, index) => {
+      const fadeDelay = index * 220
+      const fadeTimer = setTimeout(() => {
+        setRemovingRowIds((prev) => {
+          const next = new Set(prev)
+          next.add(rowId)
+          return next
+        })
+      }, fadeDelay)
+      timerRefs.current.push(fadeTimer)
+
+      const removeTimer = setTimeout(() => {
+        setScanRows((prev) => prev.filter((row) => row.id !== rowId))
+        setRemovingRowIds((prev) => {
+          const next = new Set(prev)
+          next.delete(rowId)
+          return next
+        })
+      }, fadeDelay + 360)
+      timerRefs.current.push(removeTimer)
+    })
+  }
+
+  const collectInventoryFailures = (
+    batchResult: any,
+  ): { product_name: string; barcode: string; order_id: string; message: string }[] => {
+    const failures: { product_name: string; barcode: string; order_id: string; message: string }[] = []
+    const results = Array.isArray(batchResult?.results) ? batchResult.results : []
+    results.forEach((row: any) => {
+      const orderId = String(row?.order_id || "")
+      const inventoryResults = Array.isArray(row?.inventory_results) ? row.inventory_results : []
+      inventoryResults.forEach((entry: any) => {
+        if (entry?.success) return
+        const transferItemId = entry?.transfer_item_id || entry?.item_id
+        const details = orderDetailsById[orderId]
+        const item = details?.items.find((it) => it.id === transferItemId)
+        const productName = item?.products?.name || entry?.product_name || entry?.product_id || "Unknown product"
+        const barcode = (item?.products?.barcode || entry?.barcode || "").split(",")[0]?.trim() || "N/A"
+        failures.push({
+          product_name: productName,
+          barcode,
+          order_id: orderId,
+          message: entry?.message || "Failed to add to store inventory.",
+        })
+      })
+    })
+    return failures
+  }
+
+  const finalizeAfterSave = ({
+    closeOnSuccess,
+    inventoryFailuresList,
+  }: {
+    closeOnSuccess: boolean
+    inventoryFailuresList: { product_name: string; barcode: string; order_id: string; message: string }[]
+  }) => {
+    setInventoryFailures(inventoryFailuresList)
+    setTouchedOrderIds([])
+    setScanLogs([])
+    const failedKeys = new Set(
+      inventoryFailuresList.map((f) => `${f.order_id}::${f.barcode}`),
+    )
+    if (closeOnSuccess) {
+      setScanRows([])
+      onOpenChange(false)
+      return
+    }
+    const rowsToAnimate = scanRows
+      .filter((row) => {
+        const key = `${row.order_id}::${(row.barcode || "").split(",")[0]?.trim() || row.barcode}`
+        return !failedKeys.has(key)
+      })
+      .map((row) => row.id)
+    animateRemoveScanRows(rowsToAnimate)
+    loadHistoryOrders()
+  }
+
   const handleSubmit = async ({ closeOnSuccess = true, silentSuccess = false }: { closeOnSuccess?: boolean; silentSuccess?: boolean } = {}) => {
     const orderIdsToSubmit = selectedOrderId
       ? touchedOrderIds.includes(selectedOrderId)
@@ -638,6 +761,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
         : `ver-${Date.now()}`
 
     setSaving(true)
+    setInventoryFailures([])
     const failures: { orderId: string; message: string }[] = []
     const verifications: {
       order_id: string
@@ -734,19 +858,22 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
           const queuedCount = Number(batchResult?.queued_count || 0)
 
           if ((successCount > 0 || queuedCount > 0) && failedCount === 0) {
+            const invFailures = collectInventoryFailures(batchResult)
             if (!silentSuccess) {
               toast({
                 title: queuedCount > 0 ? "Verification Queued" : "Verification Saved",
                 description:
                   queuedCount > 0
                     ? `Queued ${queuedCount} order${queuedCount > 1 ? "s" : ""}. Sync will continue automatically when online.`
-                    : `Updated ${successCount} order${successCount > 1 ? "s" : ""}.`,
+                    : `Updated ${successCount} order${successCount > 1 ? "s" : ""}.${
+                        invFailures.length
+                          ? ` ${invFailures.length} product(s) failed to add to store inventory.`
+                          : ""
+                      }`,
+                variant: invFailures.length ? "destructive" : "default",
               })
             }
-            clearSubmissionBuffers()
-            if (closeOnSuccess) {
-              onOpenChange(false)
-            }
+            finalizeAfterSave({ closeOnSuccess, inventoryFailuresList: invFailures })
             onVerificationSaved?.()
             return
           }
@@ -812,10 +939,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
             description: `Updated ${successCount} order${successCount > 1 ? "s" : ""}.`,
           })
         }
-        clearSubmissionBuffers()
-        if (closeOnSuccess) {
-          onOpenChange(false)
-        }
+        finalizeAfterSave({ closeOnSuccess, inventoryFailuresList: [] })
         onVerificationSaved?.()
         return
       }
@@ -967,18 +1091,32 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     return { assigned, verified, damaged, wrong, missing }
   }, [summaryOrderIds, orderDetailsById, itemEditsByOrder, orders])
 
-  const historyOrderIds = useMemo(() => {
-    const allOrderIds = selectedOrderId ? [selectedOrderId] : Object.keys(orderDetailsById)
-    return allOrderIds.filter((orderId) => {
-      const details = orderDetailsById[orderId]
-      if (!details) return false
-      return details.items.some((item) => {
-        const edit = itemEditsByOrder[orderId]?.[item.id]
-        const verifiedQty = Number(edit?.verified_qty ?? item.verified_qty ?? 0)
-        return verifiedQty > 0
+  const historyOrdersWithVerifiedItems = useMemo(() => {
+    return historyOrders
+      .map((order) => {
+        const verifiedItems = (order.items || [])
+          .map((item) => ({ item, verifiedQty: Number(item.verified_qty || 0) }))
+          .filter(({ verifiedQty }) => verifiedQty > 0)
+
+        const verifiedTotal = verifiedItems.reduce((sum, row) => sum + row.verifiedQty, 0)
+        const assignedTotal = Number(order.assigned_qty_total || 0)
+        const damagedTotal = Number(order.damaged_qty_total || 0)
+        const wrongStoreTotal = Number(order.wrong_store_qty_total || 0)
+        const neededTotal = Math.max(0, assignedTotal - verifiedTotal - damagedTotal - wrongStoreTotal)
+
+        return {
+          orderId: order.id,
+          verifiedItems,
+          verifiedTotal,
+          neededTotal,
+        }
       })
-    })
-  }, [selectedOrderId, orderDetailsById, itemEditsByOrder])
+      .filter((entry) => !!entry.orderId && entry.verifiedItems.length > 0)
+  }, [historyOrders])
+
+  const toggleHistoryOrderExpanded = (orderId: string) => {
+    setExpandedHistoryOrderIds((prev) => ({ ...prev, [orderId]: !prev[orderId] }))
+  }
 
   const formatHistoryTime = (iso: string) => {
     const date = new Date(iso)
@@ -1107,6 +1245,30 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
             </DialogDescription>
           </DialogHeader>
 
+          {saving && (
+            <div className="sticky top-0 z-30 -mx-6 -mt-2 mb-2 px-6 py-2 bg-gradient-to-r from-blue-500 via-indigo-500 to-blue-500 bg-[length:200%_100%] animate-[shimmer_2s_linear_infinite] text-white shadow-md">
+              <div className="flex items-center justify-center gap-3 text-sm font-medium">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Adding products to the store inventory...</span>
+              </div>
+              <style>{`@keyframes shimmer { 0% { background-position: 0% 0%; } 100% { background-position: 200% 0%; } }`}</style>
+            </div>
+          )}
+
+          {inventoryFailures.length > 0 && (
+            <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800 space-y-1">
+              <div className="font-semibold">Some products were not added to the store inventory:</div>
+              <ul className="list-disc pl-5 space-y-0.5">
+                {inventoryFailures.map((failure, idx) => (
+                  <li key={`${failure.order_id}-${failure.barcode}-${idx}`}>
+                    <span className="font-medium">{failure.product_name}</span>
+                    {" "}(barcode {failure.barcode}, order {failure.order_id}) - {failure.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Order Scope (Optional)</Label>
@@ -1179,7 +1341,14 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
                         </div>
                       ) : (
                         visibleScanRows.map((row) => (
-                          <div key={row.id} className="bg-white border rounded-md p-2 flex items-center justify-between gap-3">
+                          <div
+                            key={row.id}
+                            className={`bg-white border rounded-md p-2 flex items-center justify-between gap-3 transition-all duration-300 ease-out ${
+                              removingRowIds.has(row.id)
+                                ? "opacity-0 -translate-x-6 scale-95"
+                                : "opacity-100 translate-x-0 scale-100"
+                            }`}
+                          >
                             <div className="flex items-center gap-3 min-w-0">
                               <ScanLine className={`h-4 w-4 ${row.status === "pending" ? "animate-pulse text-blue-600" : "text-slate-700"}`} />
                               <div className="min-w-0">
@@ -1217,92 +1386,52 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
                   </CardContent>
                 </Card>
               </TabsContent>
-
               <TabsContent value="history" className="mt-3">
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-base">Verification History</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2">
-                    {historyOrderIds.length === 0 ? (
+                    {loadingHistory ? (
+                      <div className="text-sm text-muted-foreground">Loading verification history...</div>
+                    ) : historyOrdersWithVerifiedItems.length === 0 ? (
                       <div className="text-sm text-muted-foreground">No verification history yet.</div>
                     ) : (
-                      historyOrderIds.map((orderId) => {
-                        const details = orderDetailsById[orderId]
-                        if (!details) return null
-
-                        const orderItems = details.items || []
-                        const orderCounts = orderItems.reduce(
-                          (acc, item) => {
-                            const edit = itemEditsByOrder[orderId]?.[item.id]
-                            const assigned = Number(item.assigned_qty || 0)
-                            const verified = Number(edit?.verified_qty ?? item.verified_qty ?? 0)
-                            const damaged = Number(edit?.damaged_qty ?? item.damaged_qty ?? 0)
-                            const wrong = Number(edit?.wrong_store_qty ?? item.wrong_store_qty ?? 0)
-                            acc.verified += verified
-                            acc.needed += Math.max(0, assigned - verified - damaged - wrong)
-                            return acc
-                          },
-                          { verified: 0, needed: 0 },
-                        )
-
-                        const verifiedItems = orderItems
-                          .map((item) => {
-                            const edit = itemEditsByOrder[orderId]?.[item.id]
-                            const verifiedQty = Number(edit?.verified_qty ?? item.verified_qty ?? 0)
-                            return { item, verifiedQty }
-                          })
-                          .filter(({ verifiedQty }) => verifiedQty > 0)
-
+                      historyOrdersWithVerifiedItems.map(({ orderId, verifiedItems, verifiedTotal, neededTotal }) => {
+                        const isExpanded = !!expandedHistoryOrderIds[orderId]
                         return (
-                          <details key={orderId} className="border rounded-md bg-slate-50/50">
-                            <summary className="list-none cursor-pointer p-3 flex items-center justify-between">
-                              <span className="font-medium text-sm">Order: {orderId}</span>
-                              <span className="text-xs text-muted-foreground">
-                                Verified: {orderCounts.verified} • Needed: {orderCounts.needed}
+                          <div key={orderId} className="border rounded-md bg-slate-50/50">
+                            <button
+                              type="button"
+                              onClick={() => toggleHistoryOrderExpanded(orderId)}
+                              className="w-full p-3 flex items-center justify-between text-left"
+                            >
+                              <span className="font-medium text-sm inline-flex items-center gap-2">
+                                {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                Order: {orderId}
                               </span>
-                            </summary>
-                            <div className="px-3 pb-3 space-y-2">
-                              {verifiedItems.length === 0 ? (
-                                <div className="text-xs text-muted-foreground">No verified products in this order.</div>
-                              ) : (
-                                verifiedItems.map(({ item, verifiedQty }) => {
+                              <span className="text-xs text-muted-foreground">Verified: {verifiedTotal} | Needed: {neededTotal}</span>
+                            </button>
+                            {isExpanded && (
+                              <div className="px-3 pb-3 space-y-2">
+                                {verifiedItems.map(({ item, verifiedQty }) => {
                                   const barcode = (item.products?.barcode || "").split(",")[0]?.trim() || "N/A"
-                                  const lastVerified = getLastVerifiedTimeForItem(orderId, item.id)
+                                  const lastVerified = item.last_verified_at || getLastVerifiedTimeForItem(orderId, item.id)
                                   return (
-                                    <div key={item.id} className="bg-white border rounded-md p-2 flex items-center justify-between gap-2">
+                                    <div key={item.id} className="bg-white border rounded-md p-2">
                                       <div className="min-w-0">
                                         <p className="text-sm font-medium truncate">{item.products?.name || item.product_id}</p>
+                                        <p className="text-xs text-muted-foreground">Price: {formatPrice(getItemPrice(item))} | Barcode: {barcode}</p>
                                         <p className="text-xs text-muted-foreground">
-                                          Price: {formatPrice(getItemPrice(item))} • Barcode: {barcode}
+                                          Verified Qty: {verifiedQty} | Last Verified: {lastVerified ? formatHistoryTime(lastVerified) : "N/A"}
                                         </p>
-                                        <p className="text-xs text-muted-foreground">
-                                          Verified Qty: {verifiedQty} • Last Verified: {lastVerified ? formatHistoryTime(lastVerified) : "N/A"}
-                                        </p>
-                                      </div>
-                                      <div className="flex items-center gap-2 shrink-0">
-                                        <DropdownMenu>
-                                          <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                                              <MoreVertical className="h-4 w-4" />
-                                            </Button>
-                                          </DropdownMenuTrigger>
-                                          <DropdownMenuContent align="end">
-                                            <DropdownMenuItem onClick={() => markVerifiedUnitReturnToAdmin(orderId, item)}>
-                                              Return to Admin
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => markVerifiedUnitDamaged(orderId, item)}>
-                                              Damaged
-                                            </DropdownMenuItem>
-                                          </DropdownMenuContent>
-                                        </DropdownMenu>
                                       </div>
                                     </div>
                                   )
-                                })
-                              )}
-                            </div>
-                          </details>
+                                })}
+                              </div>
+                            )}
+                          </div>
                         )
                       })
                     )}
@@ -1356,8 +1485,15 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Close
             </Button>
-            <Button onClick={() => handleSubmit()} disabled={saving || !canSave}>
-              Save & Close
+            <Button onClick={() => handleSubmit({ closeOnSuccess: false })} disabled={saving || !canSave}>
+              {saving ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Saving...
+                </span>
+              ) : (
+                "Save"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1394,3 +1530,4 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     </>
   )
 }
+

@@ -116,6 +116,13 @@ def _normalize_transfer_barcode(value: str) -> str:
     return str(value or "").strip().lstrip("0")
 
 
+def _chunk_list(values, chunk_size: int = 100):
+    if not values:
+        return
+    for idx in range(0, len(values), chunk_size):
+        yield values[idx: idx + chunk_size]
+
+
 def _update_local_storeinventory(store_id: str, product_id: str, delta_qty: int, now_iso: str):
     if not delta_qty:
         return
@@ -313,6 +320,108 @@ def get_current_store_transfer_orders():
         return jsonify(enriched), 200
     except Exception as e:
         app.logger.error(f"❌ Error fetching current store transfer orders: {str(e)}")
+        return jsonify({"message": "An error occurred", "error": str(e)}), 500
+
+
+@store_bp.route('/stores/current/transfer-orders/history', methods=['GET'])
+@require_auth
+def get_transfer_orders_history():
+    """List ALL transfer orders for the current user's store with item details and last verified time per item."""
+    try:
+        current_user_id = get_jwt_identity()
+        supabase = get_supabase_client()
+        store_id = _get_current_store_id(supabase, current_user_id)
+        if not store_id:
+            return jsonify({"message": "No store assigned to this user"}), 404
+
+        order_response = (
+            supabase.table("inventory_transfer_orders")
+            .select("*")
+            .eq("store_id", store_id)
+            .order("created_at", desc=True)
+            .limit(500)
+            .execute()
+        )
+        orders = order_response.data or []
+        if not orders:
+            return jsonify([]), 200
+
+        order_ids = [o.get("id") for o in orders if o.get("id")]
+        items = []
+        for order_id_batch in _chunk_list(order_ids, 80):
+            items_response = (
+                supabase.table("inventory_transfer_items")
+                .select("*, products(name, barcode, price, selling_price)")
+                .in_("transfer_order_id", order_id_batch)
+                .execute()
+            )
+            items.extend(items_response.data or [])
+        item_ids = [it.get("id") for it in items if it.get("id")]
+
+        last_verified_by_item = {}
+        if item_ids:
+            try:
+                for item_id_batch in _chunk_list(item_ids, 80):
+                    scans_response = (
+                        supabase.table("inventory_transfer_scans")
+                        .select("transfer_item_id, event_type, created_at")
+                        .in_("transfer_item_id", item_id_batch)
+                        .eq("event_type", "verified")
+                        .order("created_at", desc=True)
+                        .execute()
+                    )
+                    for scan in scans_response.data or []:
+                        tid = scan.get("transfer_item_id")
+                        if not tid:
+                            continue
+                        if tid not in last_verified_by_item:
+                            last_verified_by_item[tid] = scan.get("created_at")
+            except Exception as scan_err:
+                app.logger.warning(f"⚠️ Failed to load scan history: {scan_err}")
+
+        items_by_order = {}
+        for item in items:
+            product_ref = item.get("products")
+            if isinstance(product_ref, list):
+                product_ref = product_ref[0] if product_ref else {}
+            if not isinstance(product_ref, dict):
+                product_ref = {}
+
+            normalized = {
+                **item,
+                "products": {
+                    **product_ref,
+                    "price": product_ref.get("price"),
+                    "selling_price": product_ref.get("selling_price"),
+                },
+                "last_verified_at": last_verified_by_item.get(item.get("id")),
+                "status": _derive_transfer_item_state(item),
+            }
+            items_by_order.setdefault(item.get("transfer_order_id"), []).append(normalized)
+
+        history = []
+        for order in orders:
+            order_items = items_by_order.get(order.get("id"), [])
+            assigned = sum(int(i.get("assigned_qty") or 0) for i in order_items)
+            verified = sum(int(i.get("verified_qty") or 0) for i in order_items)
+            damaged = sum(int(i.get("damaged_qty") or 0) for i in order_items)
+            wrong_store = sum(int(i.get("wrong_store_qty") or 0) for i in order_items)
+            missing = max(0, assigned - verified - damaged - wrong_store)
+            history.append(
+                {
+                    **order,
+                    "items": order_items,
+                    "assigned_qty_total": assigned,
+                    "verified_qty_total": verified,
+                    "damaged_qty_total": damaged,
+                    "wrong_store_qty_total": wrong_store,
+                    "missing_qty_total": missing,
+                }
+            )
+
+        return jsonify(history), 200
+    except Exception as e:
+        app.logger.error(f"❌ Error fetching transfer orders history: {str(e)}")
         return jsonify({"message": "An error occurred", "error": str(e)}), 500
 
 
@@ -514,6 +623,7 @@ def _apply_transfer_order_verification(supabase, current_user_id: str, store_id:
     updated_items = []
     damaged_event_rows = []
     local_inventory_deltas = {}
+    inventory_results = []
 
     for update in item_updates:
         item_id = update.get("transfer_item_id") or update.get("transferItemId")
@@ -554,29 +664,89 @@ def _apply_transfer_order_verification(supabase, current_user_id: str, store_id:
                 new_verified = max(0, new_verified - remainder)
 
         delta_verified = max(0, new_verified - old_applied_verified)
+        inventory_applied = False
+        inventory_error_message = None
         if delta_verified > 0:
             product_key = str(item.get("product_id"))
-            local_inventory_deltas[product_key] = int(local_inventory_deltas.get(product_key, 0)) + int(delta_verified)
-            inv_response = supabase.table("storeinventory").select("*").eq("storeid", store_id).eq(
-                "productid", item.get("product_id")
-            ).limit(1).execute()
-            if inv_response.data:
-                inv = inv_response.data[0]
-                new_qty = int(inv.get("quantity") or 0) + delta_verified
-                supabase.table("storeinventory").update({"quantity": new_qty, "updatedat": now_iso}).eq(
-                    "id", inv.get("id")
-                ).execute()
-            else:
-                supabase.table("storeinventory").insert(
+            try:
+                inv_response = supabase.table("storeinventory").select("*").eq("storeid", store_id).eq(
+                    "productid", item.get("product_id")
+                ).limit(1).execute()
+                if inv_response.data:
+                    inv = inv_response.data[0]
+                    new_qty = int(inv.get("quantity") or 0) + delta_verified
+                    supabase.table("storeinventory").update({"quantity": new_qty, "updatedat": now_iso}).eq(
+                        "id", inv.get("id")
+                    ).execute()
+                else:
+                    supabase.table("storeinventory").insert(
+                        {
+                            "id": f"INV-{datetime.now(timezone.utc).timestamp()}-{item.get('product_id')}",
+                            "storeid": store_id,
+                            "productid": item.get("product_id"),
+                            "quantity": delta_verified,
+                            "assignedat": now_iso,
+                            "updatedat": now_iso,
+                        }
+                    ).execute()
+
+                # Confirm the row exists in storeinventory after upsert
+                confirm_response = supabase.table("storeinventory").select("id, quantity").eq("storeid", store_id).eq(
+                    "productid", item.get("product_id")
+                ).limit(1).execute()
+                if not confirm_response.data:
+                    raise Exception("Inventory row not found after upsert")
+                inventory_applied = True
+                local_inventory_deltas[product_key] = int(local_inventory_deltas.get(product_key, 0)) + int(delta_verified)
+            except Exception as inv_error:
+                inventory_error_message = str(inv_error)
+                app.logger.error(
+                    f"❌ Inventory upsert failed for product {item.get('product_id')} in order {order_id}: {inv_error}"
+                )
+
+            inventory_results.append(
+                {
+                    "transfer_item_id": item.get("id"),
+                    "product_id": item.get("product_id"),
+                    "delta_verified": delta_verified,
+                    "success": inventory_applied,
+                    "message": None if inventory_applied else (inventory_error_message or "Failed to add to store inventory."),
+                }
+            )
+
+        if delta_verified > 0 and not inventory_applied:
+            # Skip persisting verified bump when inventory write failed
+            damaged_delta = max(0, new_damaged - old_damaged)
+            if damaged_delta > 0:
+                damaged_event_rows.append(
                     {
-                        "id": f"INV-{datetime.now(timezone.utc).timestamp()}-{item.get('product_id')}",
-                        "storeid": store_id,
-                        "productid": item.get("product_id"),
-                        "quantity": delta_verified,
-                        "assignedat": now_iso,
-                        "updatedat": now_iso,
+                        "id": f"DMG-{datetime.now(timezone.utc).timestamp()}-{item.get('id')}",
+                        "store_id": store_id,
+                        "product_id": item.get("product_id"),
+                        "quantity": damaged_delta,
+                        "source_type": "transfer_verification",
+                        "source_id": item.get("id"),
+                        "reason": update.get("damage_reason") or "Damaged during transfer verification",
+                        "status": "reported",
+                        "reported_by": current_user_id,
+                        "created_at": now_iso,
+                        "updated_at": now_iso,
                     }
-                ).execute()
+                )
+            try:
+                supabase.table("inventory_transfer_items").update(
+                    {
+                        "damaged_qty": new_damaged,
+                        "wrong_store_qty": new_wrong,
+                        "updated_at": now_iso,
+                    }
+                ).eq("id", item.get("id")).execute()
+            except Exception as partial_err:
+                app.logger.error(
+                    f"❌ Partial item update failed for {item.get('id')}: {partial_err}"
+                )
+            updated_items.append({"item_id": item.get("id"), "delta_verified_applied": 0, "inventory_failed": True})
+            continue
 
         damaged_delta = max(0, new_damaged - old_damaged)
         if damaged_delta > 0:
@@ -677,6 +847,7 @@ def _apply_transfer_order_verification(supabase, current_user_id: str, store_id:
             "missing_qty_total": missing_total,
         },
         "updated_items": updated_items,
+        "inventory_results": inventory_results,
     }, 200
 
 
