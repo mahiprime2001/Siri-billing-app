@@ -116,6 +116,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   const { toast } = useToast()
   const scanInputRef = useRef<HTMLInputElement | null>(null)
   const timerRefs = useRef<ReturnType<typeof setTimeout>[]>([])
+  const inFlightDetailPromises = useRef<Map<string, Promise<TransferOrderDetails | null>>>(new Map())
 
   const [loadingOrders, setLoadingOrders] = useState(false)
   const [loadingOrderDetails, setLoadingOrderDetails] = useState(false)
@@ -163,34 +164,31 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     return (await response.json()) as TransferOrderDetails
   }
 
-  const preloadOrderDetails = async (orderList: TransferOrder[]) => {
-    if (!orderList.length) {
-      setOrderDetailsById({})
-      setItemEditsByOrder({})
-      return
-    }
+  const ensureOrderDetails = async (orderId: string): Promise<TransferOrderDetails | null> => {
+    if (!orderId) return null
+    const cached = orderDetailsById[orderId]
+    if (cached) return cached
+    const inflight = inFlightDetailPromises.current.get(orderId)
+    if (inflight) return inflight
 
-    setLoadingOrderDetails(true)
-    try {
-      const detailResults = await Promise.allSettled(orderList.map((order) => loadOrderDetails(order.id)))
-      const detailMap: Record<string, TransferOrderDetails> = {}
-      const editsMap: Record<string, Record<string, ItemEdit>> = {}
+    const promise = (async () => {
+      setLoadingOrderDetails(true)
+      try {
+        const details = await loadOrderDetails(orderId)
+        setOrderDetailsById((prev) => ({ ...prev, [details.id]: details }))
+        setItemEditsByOrder((prev) => (prev[details.id] ? prev : { ...prev, [details.id]: createInitialEdits(details) }))
+        return details
+      } catch (error) {
+        console.error("Error loading transfer order details:", orderId, error)
+        return null
+      } finally {
+        setLoadingOrderDetails(false)
+        inFlightDetailPromises.current.delete(orderId)
+      }
+    })()
 
-      detailResults.forEach((result, idx) => {
-        if (result.status === "fulfilled") {
-          const details = result.value
-          detailMap[details.id] = details
-          editsMap[details.id] = createInitialEdits(details)
-        } else {
-          console.error("Error loading transfer order details:", orderList[idx]?.id, result.reason)
-        }
-      })
-
-      setOrderDetailsById(detailMap)
-      setItemEditsByOrder(editsMap)
-    } finally {
-      setLoadingOrderDetails(false)
-    }
+    inFlightDetailPromises.current.set(orderId, promise)
+    return promise
   }
 
   const loadOrders = async () => {
@@ -201,7 +199,6 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       const data = (await response.json()) as TransferOrder[]
       setOrders(data)
       setSessionScopeOrderIds(data.map((order) => order.id).filter(Boolean))
-      await preloadOrderDetails(data)
     } catch (error) {
       console.error("Error loading transfer orders:", error)
       toast({
@@ -226,6 +223,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       setScanInput("")
       setActiveViewTab("scan")
       setConfirmDamagedRowId(null)
+      inFlightDetailPromises.current.clear()
       clearAnimationTimers()
       loadOrders()
     }
@@ -233,6 +231,11 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       clearAnimationTimers()
     }
   }, [open, initialSelectedOrderId])
+
+  useEffect(() => {
+    if (!open || !selectedOrderId) return
+    ensureOrderDetails(selectedOrderId)
+  }, [open, selectedOrderId])
 
   useEffect(() => {
     if (!open) return
@@ -296,6 +299,38 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       return aPriority - bPriority
     })[0]
     return { match: picked, alreadyProcessed: false }
+  }
+
+  const findMatchInDetails = (
+    enteredBarcode: string,
+    details: TransferOrderDetails,
+  ): { match: TransferItem | null; alreadyProcessed: boolean } => {
+    const normalized = normalizeBarcode(enteredBarcode)
+    const matches: TransferItem[] = []
+    details.items.forEach((item) => {
+      const barcodes = (item.products?.barcode || "")
+        .split(",")
+        .map((code) => normalizeBarcode(code))
+        .filter(Boolean)
+      if (barcodes.includes(normalized)) {
+        matches.push(item)
+      }
+    })
+
+    if (matches.length === 0) return { match: null, alreadyProcessed: false }
+
+    const orderId = details.id
+    const pending = matches.filter((item) => {
+      const edit = itemEditsByOrder[orderId]?.[item.id]
+      const assigned = Number(item.assigned_qty || 0)
+      const verified = Number(edit?.verified_qty ?? item.verified_qty ?? 0)
+      const damaged = Number(edit?.damaged_qty ?? item.damaged_qty ?? 0)
+      const wrong = Number(edit?.wrong_store_qty ?? item.wrong_store_qty ?? 0)
+      return verified + damaged + wrong < assigned
+    })
+
+    if (pending.length === 0) return { match: null, alreadyProcessed: true }
+    return { match: pending[0], alreadyProcessed: false }
   }
 
   const scheduleStatusToVerified = (rowId: string) => {
@@ -408,7 +443,49 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     const entered = scanInput.trim()
     if (!entered) return
 
-    const { match, alreadyProcessed } = findMatchingItem(entered)
+    let { match, alreadyProcessed } = findMatchingItem(entered)
+
+    if (!match && !alreadyProcessed) {
+      try {
+        const barcodeResponse = await apiClient(
+          `/api/stores/current/transfer-orders/barcode-status?barcode=${encodeURIComponent(entered)}`,
+        )
+        if (barcodeResponse.ok) {
+          const barcodeStatus = await barcodeResponse.json()
+          if (barcodeStatus?.already_verified) {
+            setScanInput("")
+            setScanErrorDialog({
+              title: "Already Verified",
+              description: "This product is already fully verified for assigned quantity.",
+            })
+            return
+          }
+          if (barcodeStatus?.found && barcodeStatus?.order_id) {
+            const resolvedOrderId = String(barcodeStatus.order_id)
+            if (selectedOrderId && selectedOrderId !== resolvedOrderId) {
+              setScanInput("")
+              setScanErrorDialog({
+                title: "Wrong Order",
+                description: "This barcode belongs to a different transfer order than the one selected.",
+              })
+              return
+            }
+            const details = await ensureOrderDetails(resolvedOrderId)
+            if (details) {
+              const resolved = findMatchInDetails(entered, details)
+              if (resolved.match) {
+                match = { orderId: resolvedOrderId, item: resolved.match }
+              } else if (resolved.alreadyProcessed) {
+                alreadyProcessed = true
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Barcode status lookup failed:", error)
+      }
+    }
+
     if (!match) {
       setScanInput("")
       if (alreadyProcessed) {
@@ -418,25 +495,6 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
         })
         return
       }
-
-      try {
-        const barcodeResponse = await apiClient(
-          `/api/stores/current/transfer-orders/barcode-status?barcode=${encodeURIComponent(entered)}`,
-        )
-        if (barcodeResponse.ok) {
-          const barcodeStatus = await barcodeResponse.json()
-          if (barcodeStatus?.already_verified) {
-            setScanErrorDialog({
-              title: "Already Verified",
-              description: "This product is already fully verified for assigned quantity.",
-            })
-            return
-          }
-        }
-      } catch (error) {
-        console.error("Barcode status lookup failed:", error)
-      }
-
       setScanErrorDialog({
         title: "Wrong Stock",
         description: "This barcode does not belong to your active transfer orders.",
@@ -863,9 +921,9 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   const selectableOrders = orders.filter((order) => getOrderMissingQty(order.id) > 0)
 
   const visibleOrderIds = useMemo(() => {
-    if (selectedOrderId) return [selectedOrderId]
-    return selectableOrders.map((order) => order.id)
-  }, [selectedOrderId, selectableOrders])
+    if (selectedOrderId) return orderDetailsById[selectedOrderId] ? [selectedOrderId] : []
+    return selectableOrders.map((order) => order.id).filter((id) => orderDetailsById[id])
+  }, [selectedOrderId, selectableOrders, orderDetailsById])
 
   const summaryOrderIds = useMemo(() => {
     if (selectedOrderId) return [selectedOrderId]
@@ -881,24 +939,33 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
 
     summaryOrderIds.forEach((orderId) => {
       const details = orderDetailsById[orderId]
-      if (!details) return
-      details.items.forEach((item) => {
-        const edit = itemEditsByOrder[orderId]?.[item.id]
-        const baseVerified = Number(item.verified_qty || 0)
-        const currentVerified = Number(edit?.verified_qty ?? item.verified_qty ?? 0)
-        assigned += Number(item.assigned_qty || 0)
-        // Session-only verified count: show only what was scanned/changed in this dialog session.
-        verified += Math.max(0, currentVerified - baseVerified)
-        verifiedTotal += currentVerified
-        damaged += Number(edit?.damaged_qty ?? item.damaged_qty ?? 0)
-        wrong += Number(edit?.wrong_store_qty ?? item.wrong_store_qty ?? 0)
-      })
+      if (details) {
+        details.items.forEach((item) => {
+          const edit = itemEditsByOrder[orderId]?.[item.id]
+          const baseVerified = Number(item.verified_qty || 0)
+          const currentVerified = Number(edit?.verified_qty ?? item.verified_qty ?? 0)
+          assigned += Number(item.assigned_qty || 0)
+          // Session-only verified count: show only what was scanned/changed in this dialog session.
+          verified += Math.max(0, currentVerified - baseVerified)
+          verifiedTotal += currentVerified
+          damaged += Number(edit?.damaged_qty ?? item.damaged_qty ?? 0)
+          wrong += Number(edit?.wrong_store_qty ?? item.wrong_store_qty ?? 0)
+        })
+        return
+      }
+      // Fallback to list-endpoint aggregates when details haven't been lazy-loaded yet.
+      const order = orders.find((entry) => entry.id === orderId)
+      if (!order) return
+      assigned += Number(order.assigned_qty_total || 0)
+      verifiedTotal += Number(order.verified_qty_total || 0)
+      damaged += Number(order.damaged_qty_total || 0)
+      wrong += Number(order.wrong_store_qty_total || 0)
     })
 
     // Pending/Missing should represent true remaining stock, not just this-session scans.
     const missing = Math.max(0, assigned - verifiedTotal - damaged - wrong)
     return { assigned, verified, damaged, wrong, missing }
-  }, [summaryOrderIds, orderDetailsById, itemEditsByOrder])
+  }, [summaryOrderIds, orderDetailsById, itemEditsByOrder, orders])
 
   const historyOrderIds = useMemo(() => {
     const allOrderIds = selectedOrderId ? [selectedOrderId] : Object.keys(orderDetailsById)
@@ -1089,7 +1156,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
                         value={scanInput}
                         onChange={(e) => setScanInput(e.target.value)}
                         placeholder="Scan barcode or type manually"
-                        disabled={loadingOrderDetails || orders.length === 0}
+                        disabled={loadingOrders || orders.length === 0}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             e.preventDefault()
@@ -1097,7 +1164,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
                           }
                         }}
                       />
-                      <Button type="button" variant="outline" disabled={loadingOrderDetails || orders.length === 0} onClick={() => handleBarcodeSubmit("manual")}>
+                      <Button type="button" variant="outline" disabled={loadingOrders || orders.length === 0} onClick={() => handleBarcodeSubmit("manual")}>
                         Add
                       </Button>
                     </div>

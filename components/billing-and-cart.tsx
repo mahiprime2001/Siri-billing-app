@@ -816,36 +816,41 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
 
       const data = await response.json();
       const fallbackUsed = response.headers.get("X-Fallback-Used") === "1"
+      const partial = response.headers.get("X-Partial") === "1"
       const source = response.headers.get("X-Data-Source") || ""
-      const isCloudSource = !fallbackUsed && source.toLowerCase() === "cloud"
-      setIsCloudStockVerified(isCloudSource)
+      // Both "cloud" and "cloud_cache" reflect a recent Supabase read; only
+      // "local_snapshot" (fallback_used=1) is truly stale disk data.
+      // A partial response means some pages failed — don't trust it as "verified".
+      setIsCloudStockVerified(!fallbackUsed && !partial)
       if (fallbackUsed) {
         console.warn(`⚠️ Products served from fallback source: ${source || "local_snapshot"}`)
+      }
+      if (partial) {
+        console.warn(`⚠️ Products response was partial — some pages failed; will retry.`)
       }
       console.log("✅ Fetched store inventory products:", data.length, "items");
 
       if (reqId !== fetchProductsReqIdRef.current) return;
 
-      // Don't let a stale fallback snapshot overwrite an already-populated list.
+      // Don't let a stale fallback snapshot OR a partial response shrink an already-populated list.
       setProducts((prev) => {
-        if (fallbackUsed && prev.length > 0 && data.length < prev.length) {
-          console.warn("⚠️ Ignoring fallback snapshot — keeping current product list");
+        if ((fallbackUsed || partial) && prev.length > 0 && data.length < prev.length) {
+          console.warn("⚠️ Ignoring incomplete response — keeping current product list");
           return prev;
         }
         return sortProductsByName(data);
       });
       setFilteredProducts([]);
 
-      // If the backend served a fallback snapshot, its stock values may be stale.
-      // Schedule a single retry so we pick up the real data without requiring
-      // the user to navigate away and back.
-      if (fallbackUsed) {
+      // Schedule a single retry when the backend served fallback or partial data,
+      // so the user picks up the real list without manual refresh.
+      if (fallbackUsed || partial) {
         if (fallbackRetryTimerRef.current) {
           clearTimeout(fallbackRetryTimerRef.current)
         }
         fallbackRetryTimerRef.current = setTimeout(() => {
           fallbackRetryTimerRef.current = null
-          console.log("🔁 Retrying products fetch after fallback response");
+          console.log(`🔁 Retrying products fetch after ${partial ? "partial" : "fallback"} response`);
           fetchProducts()
         }, 3000)
       } else if (fallbackRetryTimerRef.current) {

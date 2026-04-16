@@ -19,6 +19,25 @@ def get_cloud_products_cache(cache_key: str, ttl_seconds: int = _DEFAULT_TTL_SEC
         return entry.get("items", [])
 
 
+def get_cloud_products_cache_with_age(
+    cache_key: str, ttl_seconds: int = _DEFAULT_TTL_SECONDS
+) -> tuple:
+    """Returns (items, age_seconds) if cache is valid, else (None, None).
+    Lets callers implement stale-while-revalidate by spawning a background refresh
+    when age exceeds half-life.
+    """
+    now_ts = time.time()
+    with _LOCK:
+        entry = _CACHE.get(cache_key)
+        if not entry:
+            return None, None
+        age = now_ts - float(entry.get("ts", 0))
+        if age > ttl_seconds:
+            _CACHE.pop(cache_key, None)
+            return None, None
+        return entry.get("items", []), age
+
+
 def set_cloud_products_cache(cache_key: str, store_id: str, items: List[Dict]) -> None:
     with _LOCK:
         _CACHE[cache_key] = {

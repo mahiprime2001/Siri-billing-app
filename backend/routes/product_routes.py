@@ -5,7 +5,11 @@ from postgrest.exceptions import APIError
 from utils.connection_pool import get_supabase_client
 from helpers.utils import read_json_file, write_json_file
 from config.config import PRODUCTS_FILE, STOREINVENTORY_FILE, USER_STORES_FILE, HSN_CODES_FILE
-from utils.products_cache import get_cloud_products_cache, set_cloud_products_cache
+from utils.products_cache import (
+    get_cloud_products_cache_with_age,
+    set_cloud_products_cache,
+)
+import threading
 import time
 
 product_bp = Blueprint('product', __name__)
@@ -13,9 +17,33 @@ _PRODUCTS_CLOUD_FAIL_UNTIL = {}
 _PRODUCTS_FALLBACK_CACHE = {}
 _PRODUCTS_FAIL_COOLDOWN_SECONDS = 5
 _PRODUCTS_FALLBACK_CACHE_TTL_SECONDS = 8
-_PRODUCTS_CLOUD_CACHE_TTL_SECONDS = 300
+_PRODUCTS_CLOUD_CACHE_TTL_SECONDS = 60
+_PRODUCTS_CACHE_STALE_AFTER_SECONDS = 30
 _STORE_INVENTORY_PAGE_SIZE = 100
-_PRODUCT_IDS_CHUNK_SIZE = 100
+_RETRY_ATTEMPTS = 3
+_RETRY_BASE_DELAY = 0.2
+_PRODUCTS_BG_REFRESH_INFLIGHT = set()
+_PRODUCTS_BG_REFRESH_LOCK = threading.Lock()
+
+
+def _execute_with_retry(operation, max_attempts: int = _RETRY_ATTEMPTS, base_delay: float = _RETRY_BASE_DELAY):
+    """Run a Supabase call with exponential backoff. Returns (data, error)."""
+    last_err = None
+    for attempt in range(max_attempts):
+        try:
+            return operation(), None
+        except APIError as err:
+            last_err = err
+            code = getattr(err, 'code', '') or ''
+            message = (str(err) or '').lower()
+            # Don't retry hard errors (auth/permission/schema-mismatch).
+            if code in ('PGRST301', 'PGRST302') or 'permission' in message or 'denied' in message:
+                break
+        except Exception as err:
+            last_err = err
+        if attempt < max_attempts - 1:
+            time.sleep(base_delay * (2 ** attempt))
+    return None, last_err
 
 
 def _extract_store_id_from_user_store_row(row: dict):
@@ -43,38 +71,81 @@ def _get_user_store_rows(supabase, user_id: str):
     return rows
 
 
+_INVENTORY_JOIN_SELECT = (
+    "*, products(id, name, barcode, selling_price, price, hsn_code_id, "
+    "hsn_codes(hsn_code, tax))"
+)
+
+
 def _get_store_inventory_rows(supabase, store_id: str):
-    """Fetch store inventory rows across storeid/storeId schema variants."""
+    """Plain inventory fetch (no product join). Kept for callers that don't need the join."""
+    rows, _partial = _get_store_inventory_with_products(supabase, store_id, with_products=False)
+    return rows
+
+
+def _get_store_inventory_with_products(supabase, store_id: str, with_products: bool = True):
+    """Fetch storeinventory rows (optionally joined with products+hsn_codes) in fixed pages.
+
+    Returns (rows, partial_flag). partial_flag is True when one or more pages failed
+    after retry exhaustion — caller must NOT cache the result in that case.
+    """
     rows = []
     seen = set()
+    partial = False
+    select_clause = _INVENTORY_JOIN_SELECT if with_products else "*"
+
     for store_col in ("storeid", "storeId"):
-        # Paginate in small batches to avoid large response latency/timeouts.
         offset = 0
-        batch_size = _STORE_INVENTORY_PAGE_SIZE
+        first_page_seen = False
+        consecutive_failures = 0
         while True:
-            try:
-                response = (
+            captured_offset = offset
+            captured_col = store_col
+
+            def do_query():
+                return (
                     supabase.table("storeinventory")
-                    .select("*")
-                    .eq(store_col, store_id)
-                    .range(offset, offset + batch_size - 1)
+                    .select(select_clause)
+                    .eq(captured_col, store_id)
+                    .range(captured_offset, captured_offset + _STORE_INVENTORY_PAGE_SIZE - 1)
                     .execute()
                 )
-            except APIError:
-                break
 
+            response, err = _execute_with_retry(do_query)
+            if err is not None:
+                if not first_page_seen:
+                    # Likely the column variant doesn't exist for this schema; try the other one.
+                    break
+                app.logger.warning(
+                    f"Inventory page offset={offset} col={store_col} failed after retries: {err}"
+                )
+                partial = True
+                consecutive_failures += 1
+                if consecutive_failures >= 3:
+                    app.logger.error(
+                        f"Aborting inventory pagination for store {store_id} col={store_col} after repeated failures"
+                    )
+                    break
+                offset += _STORE_INVENTORY_PAGE_SIZE
+                continue
+
+            first_page_seen = True
+            consecutive_failures = 0
             batch = response.data or []
             for row in batch:
-                key = str(row.get("id") or f"{row.get('productid') or row.get('productId')}::{row.get('assignedat') or row.get('updatedat') or ''}")
+                key = str(
+                    row.get("id")
+                    or f"{row.get('productid') or row.get('productId')}::{row.get('assignedat') or row.get('updatedat') or ''}"
+                )
                 if key in seen:
                     continue
                 seen.add(key)
                 rows.append(row)
 
-            if len(batch) < batch_size:
-                break  # no more pages
-            offset += batch_size
-    return rows
+            if len(batch) < _STORE_INVENTORY_PAGE_SIZE:
+                break  # last page
+            offset += _STORE_INVENTORY_PAGE_SIZE
+    return rows, partial
 
 
 def _extract_hsn_code(product_info: dict):
@@ -196,22 +267,137 @@ def _build_local_products_response(user_id: str, search: str, limit: int):
     return final_products
 
 
-def _chunk_list(values, size):
-    chunk_size = max(1, int(size))
-    for idx in range(0, len(values), chunk_size):
-        yield values[idx: idx + chunk_size]
-
-
 def _products_cache_key(user_id: str, search: str, limit: int):
     return f"{user_id}:{search}:{limit}"
 
 
-def _build_products_response(items, fallback_used: bool, data_source: str, cached: bool = False):
+def _build_products_response(
+    items,
+    fallback_used: bool,
+    data_source: str,
+    cached: bool = False,
+    partial: bool = False,
+    cache_age: float = None,
+):
     response = jsonify(items)
     response.headers["X-Fallback-Used"] = "1" if fallback_used else "0"
     response.headers["X-Data-Source"] = data_source
     response.headers["X-Products-Cached"] = "1" if cached else "0"
+    response.headers["X-Partial"] = "1" if partial else "0"
+    if cache_age is not None:
+        response.headers["X-Cache-Age"] = f"{int(cache_age)}"
     return response
+
+
+def _build_products_from_inventory(rows, search: str = ""):
+    """Map joined inventory+product rows to the API product shape."""
+    search_lower = search.lower() if search else ""
+    final_products = []
+    seen_final_ids = set()
+
+    for inv_item in rows:
+        product_info = inv_item.get("products")
+        if isinstance(product_info, list):
+            product_info = product_info[0] if product_info else None
+        if not product_info:
+            continue
+
+        product_id = str(
+            product_info.get("id")
+            or inv_item.get("productid")
+            or inv_item.get("productId")
+            or ""
+        )
+        if not product_id or product_id in seen_final_ids:
+            continue
+
+        if search_lower:
+            name_match = search_lower in str(product_info.get("name", "")).lower()
+            barcode_match = search_lower in str(product_info.get("barcode", ""))
+            if not name_match and not barcode_match:
+                continue
+
+        seen_final_ids.add(product_id)
+        final_products.append(
+            {
+                "id": product_id,
+                "name": product_info.get("name", "Unknown Product"),
+                "barcode": product_info.get("barcode", ""),
+                "barcodes": product_info.get("barcode", ""),
+                "selling_price": product_info.get("selling_price", 0),
+                "price": product_info.get("price", 0),
+                "tax": _extract_hsn_tax(product_info),
+                "hsn_code_id": product_info.get("hsn_code_id"),
+                "hsn_code": _extract_hsn_code(product_info),
+                "stock": inv_item.get("quantity", 0),
+                "quantity": inv_item.get("quantity", 0),
+                "store_quantity": inv_item.get("quantity", 0),
+                "minstocklevel": inv_item.get("minstocklevel", 0),
+                "maxstocklevel": inv_item.get("maxstocklevel", None),
+                "assignedat": inv_item.get("assignedat"),
+                "updatedat": inv_item.get("updatedat"),
+                "storeid": inv_item.get("storeid") or inv_item.get("storeId"),
+                "inventory_id": inv_item.get("id"),
+            }
+        )
+
+    final_products.sort(key=lambda p: str(p.get("name", "")).lower())
+    return final_products
+
+
+def _perform_cloud_products_fetch(supabase, store_id, search: str = ""):
+    """Returns (final_products, partial_flag, raw_inv_rows, product_map).
+    Raises only on truly unexpected exceptions; per-page failures surface as partial=True.
+    """
+    rows, partial = _get_store_inventory_with_products(supabase, str(store_id))
+    final_products = _build_products_from_inventory(rows, search=search)
+    product_map = {}
+    for row in rows:
+        product_info = row.get("products")
+        if isinstance(product_info, list):
+            product_info = product_info[0] if product_info else None
+        if isinstance(product_info, dict) and product_info.get("id"):
+            product_map[str(product_info["id"])] = product_info
+    return final_products, partial, rows, product_map
+
+
+def _spawn_background_products_refresh(cache_key: str, user_id: str, store_id: str, search: str):
+    """Refresh the cloud cache in a background thread (stale-while-revalidate)."""
+    if search:
+        return  # only the unfiltered listing is cached
+    with _PRODUCTS_BG_REFRESH_LOCK:
+        if cache_key in _PRODUCTS_BG_REFRESH_INFLIGHT:
+            return
+        _PRODUCTS_BG_REFRESH_INFLIGHT.add(cache_key)
+
+    real_app = app._get_current_object()
+
+    def worker():
+        try:
+            with real_app.app_context():
+                supabase = get_supabase_client()
+                if getattr(supabase, "is_offline_fallback", False):
+                    return
+                final_products, partial, rows, product_map = _perform_cloud_products_fetch(
+                    supabase, store_id, ""
+                )
+                if partial:
+                    real_app.logger.info(
+                        f"Background refresh skipped cache write for store {store_id} (partial result)"
+                    )
+                    return
+                set_cloud_products_cache(cache_key, str(store_id), final_products)
+                _refresh_local_products_snapshot(str(user_id), str(store_id), rows, product_map)
+                real_app.logger.info(
+                    f"Background refresh updated cache for store {store_id}: {len(final_products)} products"
+                )
+        except Exception as err:
+            real_app.logger.warning(f"Background products refresh failed: {err}")
+        finally:
+            with _PRODUCTS_BG_REFRESH_LOCK:
+                _PRODUCTS_BG_REFRESH_INFLIGHT.discard(cache_key)
+
+    threading.Thread(target=worker, daemon=True).start()
 
 
 def _refresh_local_products_snapshot(user_id: str, store_id: str, all_inv_rows, product_map) -> None:
@@ -284,17 +470,33 @@ def get_products():
     cache_key = _products_cache_key(str(current_user_id), search, limit)
     now_ts = time.time()
     fail_until = float(_PRODUCTS_CLOUD_FAIL_UNTIL.get(cache_key, 0))
-    cached_cloud = get_cloud_products_cache(cache_key, _PRODUCTS_CLOUD_CACHE_TTL_SECONDS)
+    cached_cloud, cached_age = get_cloud_products_cache_with_age(
+        cache_key, _PRODUCTS_CLOUD_CACHE_TTL_SECONDS
+    )
+
     if now_ts < fail_until and not search:
         if cached_cloud is not None:
-            return _build_products_response(cached_cloud, fallback_used=False, data_source="cloud_cache", cached=True), 200
+            return _build_products_response(
+                cached_cloud,
+                fallback_used=False,
+                data_source="cloud_cache",
+                cached=True,
+                cache_age=cached_age,
+            ), 200
         cached = _PRODUCTS_FALLBACK_CACHE.get(cache_key)
         if cached and now_ts - float(cached.get("ts", 0)) <= _PRODUCTS_FALLBACK_CACHE_TTL_SECONDS:
-            return _build_products_response(cached.get("items", []), fallback_used=True, data_source="local_snapshot", cached=True), 200
+            return _build_products_response(
+                cached.get("items", []),
+                fallback_used=True,
+                data_source="local_snapshot",
+                cached=True,
+            ), 200
 
         local_items = _build_local_products_response(current_user_id, search, limit)
         _PRODUCTS_FALLBACK_CACHE[cache_key] = {"ts": now_ts, "items": local_items}
-        return _build_products_response(local_items, fallback_used=True, data_source="local_snapshot", cached=False), 200
+        return _build_products_response(
+            local_items, fallback_used=True, data_source="local_snapshot", cached=False
+        ), 200
 
     try:
         app.logger.info(f"User {current_user_id} fetching store inventory products")
@@ -303,136 +505,101 @@ def get_products():
         if getattr(supabase, "is_offline_fallback", False):
             local_items = _build_local_products_response(current_user_id, search, limit)
             _PRODUCTS_FALLBACK_CACHE[cache_key] = {"ts": time.time(), "items": local_items}
-            return _build_products_response(local_items, fallback_used=True, data_source="local_snapshot", cached=False), 200
+            return _build_products_response(
+                local_items, fallback_used=True, data_source="local_snapshot", cached=False
+            ), 200
 
-        # Step 1: Get user's store ID
         user_store_rows = _get_user_store_rows(supabase, str(current_user_id))
         if not user_store_rows:
             app.logger.warning(f"No store assigned to user {current_user_id}; trying local products fallback")
             local_items = _build_local_products_response(current_user_id, search, limit)
-            return _build_products_response(local_items, fallback_used=True, data_source="local_snapshot", cached=False), 200
+            return _build_products_response(
+                local_items, fallback_used=True, data_source="local_snapshot", cached=False
+            ), 200
 
         store_id = _extract_store_id_from_user_store_row(user_store_rows[0])
         if not store_id:
-            app.logger.warning(f"Store mapping row found without store ID for user {current_user_id}; trying local products fallback")
+            app.logger.warning(
+                f"Store mapping row found without store ID for user {current_user_id}; trying local products fallback"
+            )
             local_items = _build_local_products_response(current_user_id, search, limit)
-            return _build_products_response(local_items, fallback_used=True, data_source="local_snapshot", cached=False), 200
+            return _build_products_response(
+                local_items, fallback_used=True, data_source="local_snapshot", cached=False
+            ), 200
+
+        # Stale-while-revalidate: serve fresh-enough cache instantly; if it's older
+        # than half-life, kick off a background refresh so the next request is fresh.
+        if not search and cached_cloud is not None:
+            if cached_age is not None and cached_age > _PRODUCTS_CACHE_STALE_AFTER_SECONDS:
+                _spawn_background_products_refresh(
+                    cache_key, str(current_user_id), str(store_id), search
+                )
+            return _build_products_response(
+                cached_cloud,
+                fallback_used=False,
+                data_source="cloud_cache",
+                cached=True,
+                cache_age=cached_age,
+            ), 200
+
         app.logger.info(f"Fetching inventory for store: {store_id}")
 
-        if not search and cached_cloud is not None:
-            return _build_products_response(cached_cloud, fallback_used=False, data_source="cloud_cache", cached=True), 200
-
-        # Step 2: Pull inventory in fixed pages to avoid heavy one-shot queries.
-        all_inv_rows = _get_store_inventory_rows(supabase, str(store_id))
-        if not all_inv_rows:
-            app.logger.info(f"No inventory found for store {store_id}")
-            return jsonify([]), 200
-        app.logger.info(
-            f"Fetched {len(all_inv_rows)} inventory rows for store {store_id} "
-            f"using page size {_STORE_INVENTORY_PAGE_SIZE}"
+        # Single joined paginated fetch (inventory + products + hsn_codes), with retries.
+        final_products, partial, all_inv_rows, product_map = _perform_cloud_products_fetch(
+            supabase, str(store_id), search
         )
 
-        # Step 3: Pull products in chunks of IDs.
-        product_ids = list({
-            str(item.get("productid") or item.get("productId"))
-            for item in all_inv_rows
-            if item.get("productid") or item.get("productId")
-        })
-        if not product_ids:
-            return jsonify([]), 200
+        if not all_inv_rows and not partial:
+            app.logger.info(f"No inventory found for store {store_id}")
+            return _build_products_response(
+                [], fallback_used=False, data_source="cloud", partial=False
+            ), 200
 
-        chunked_products = []
-        seen_pids = set()
-        for ids_chunk in _chunk_list(product_ids, _PRODUCT_IDS_CHUNK_SIZE):
-            try:
-                q = (
-                    supabase.table('products')
-                    .select('id, name, barcode, selling_price, price, hsn_code_id, hsn_codes(hsn_code, tax)')
-                    .in_('id', ids_chunk)
-                )
-                if search:
-                    q = q.or_(f"name.ilike.%{search}%,barcode.ilike.%{search}%")
-                chunk_resp = q.limit(5000).execute()
-                for p in chunk_resp.data or []:
-                    if p.get('id') not in seen_pids:
-                        seen_pids.add(p['id'])
-                        chunked_products.append(p)
-            except Exception as ce:
-                app.logger.warning(f"Chunk query failed for {len(ids_chunk)} ids: {ce}")
+        nonzero = sum(1 for p in final_products if (p.get("stock") or 0) > 0)
+        sample = [(p["name"], p.get("stock")) for p in final_products[:3]]
+        app.logger.info(
+            f"Returning {len(final_products)} products — {nonzero} with stock>0, "
+            f"partial={partial}, sample: {sample}"
+        )
 
-        product_map = {p['id']: p for p in chunked_products}
-        for row in all_inv_rows:
-            pid = str(row.get('productid') or row.get('productId') or '')
-            if pid in product_map:
-                row['products'] = product_map[pid]
-
-        # Step 5: Build final product list from joined rows
-        search_lower = search.lower() if search else ""
-        final_products = []
-        seen_final_ids = set()
-
-        for inv_item in all_inv_rows:
-            product_info = inv_item.get('products')
-            if isinstance(product_info, list):
-                product_info = product_info[0] if product_info else None
-            if not product_info:
-                continue
-
-            product_id = str(product_info.get('id') or inv_item.get('productid') or inv_item.get('productId') or '')
-            if not product_id or product_id in seen_final_ids:
-                continue
-
-            # Apply search filter client-side (avoids extra per-chunk API calls)
-            if search_lower:
-                name_match = search_lower in str(product_info.get('name', '')).lower()
-                barcode_match = search_lower in str(product_info.get('barcode', ''))
-                if not name_match and not barcode_match:
-                    continue
-
-            seen_final_ids.add(product_id)
-            final_products.append({
-                'id': product_id,
-                'name': product_info.get('name', 'Unknown Product'),
-                'barcode': product_info.get('barcode', ''),
-                'barcodes': product_info.get('barcode', ''),
-                'selling_price': product_info.get('selling_price', 0),
-                'price': product_info.get('price', 0),
-                'tax': _extract_hsn_tax(product_info),
-                'hsn_code_id': product_info.get('hsn_code_id'),
-                'hsn_code': _extract_hsn_code(product_info),
-                'stock': inv_item.get('quantity', 0),
-                'quantity': inv_item.get('quantity', 0),
-                'store_quantity': inv_item.get('quantity', 0),
-                'minstocklevel': inv_item.get('minstocklevel', 0),
-                'maxstocklevel': inv_item.get('maxstocklevel', None),
-                'assignedat': inv_item.get('assignedat'),
-                'updatedat': inv_item.get('updatedat'),
-                'storeid': inv_item.get('storeid') or inv_item.get('storeId'),
-                'inventory_id': inv_item.get('id'),
-            })
-
-        final_products.sort(key=lambda p: str(p.get('name', '')).lower())
-
-        # Diagnostic: log stock distribution to debug display issues
-        nonzero = sum(1 for p in final_products if (p.get('stock') or 0) > 0)
-        sample = [(p['name'], p.get('stock')) for p in final_products[:3]]
-        app.logger.info(f"Returning {len(final_products)} products — {nonzero} with stock>0, sample: {sample}")
-        if not search:
+        # Critical guard: never cache or persist a partial fetch — that's how stale
+        # incomplete data poisoned both layers under the old code.
+        if not search and not partial:
             set_cloud_products_cache(cache_key, str(store_id), final_products)
-            _refresh_local_products_snapshot(str(current_user_id), str(store_id), all_inv_rows, product_map)
-        _PRODUCTS_CLOUD_FAIL_UNTIL.pop(cache_key, None)
-        return _build_products_response(final_products, fallback_used=False, data_source="cloud"), 200
+            _refresh_local_products_snapshot(
+                str(current_user_id), str(store_id), all_inv_rows, product_map
+            )
+            _PRODUCTS_CLOUD_FAIL_UNTIL.pop(cache_key, None)
+        elif partial:
+            app.logger.warning(
+                f"Skipping cache/snapshot writes for store {store_id} — partial result"
+            )
+
+        return _build_products_response(
+            final_products,
+            fallback_used=False,
+            data_source="cloud",
+            partial=partial,
+        ), 200
 
     except Exception as e:
         app.logger.error(f"Error fetching store inventory products: {str(e)}")
         import traceback
         app.logger.error(traceback.format_exc())
         if cached_cloud is not None:
-            return _build_products_response(cached_cloud, fallback_used=False, data_source="cloud_cache", cached=True), 200
+            return _build_products_response(
+                cached_cloud,
+                fallback_used=False,
+                data_source="cloud_cache",
+                cached=True,
+                cache_age=cached_age,
+            ), 200
         _PRODUCTS_CLOUD_FAIL_UNTIL[cache_key] = time.time() + _PRODUCTS_FAIL_COOLDOWN_SECONDS
         local_items = _build_local_products_response(current_user_id, search, limit)
         _PRODUCTS_FALLBACK_CACHE[cache_key] = {"ts": time.time(), "items": local_items}
-        return _build_products_response(local_items, fallback_used=True, data_source="local_snapshot", cached=False), 200
+        return _build_products_response(
+            local_items, fallback_used=True, data_source="local_snapshot", cached=False
+        ), 200
 
 
 @product_bp.route('/products/<product_id>', methods=['GET'])
