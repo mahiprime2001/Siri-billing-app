@@ -6,7 +6,9 @@
       "Bash(py -c \"import ast; ast.parse\\(open\\('d:/Siri-apps/Siri-billing-app/backend/routes/product_routes.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
       "Bash(where python *)",
       "Bash(ls \"/c/Python\"*)",
-      "Bash(\"C:/Users/Dell/AppData/Local/Programs/Python/Python312/python.exe\" -c \"import ast; ast.parse\\(open\\('d:/Siri-apps/Siri-billing-app/backend/routes/product_routes.py'\\).read\\(\\)\\); print\\('OK'\\)\")"
+      "Bash(\"C:/Users/Dell/AppData/Local/Programs/Python/Python312/python.exe\" -c \"import ast; ast.parse\\(open\\('d:/Siri-apps/Siri-billing-app/backend/routes/product_routes.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(node -e ' *)",
+      "Bash(npx next *)"
     ]
   }
 }

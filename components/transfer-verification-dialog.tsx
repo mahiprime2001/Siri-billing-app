@@ -128,6 +128,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   const [itemEditsByOrder, setItemEditsByOrder] = useState<Record<string, Record<string, ItemEdit>>>({})
   const [saving, setSaving] = useState(false)
   const [scanInput, setScanInput] = useState("")
+  const [scanningBarcode, setScanningBarcode] = useState(false)
   const [scanRows, setScanRows] = useState<ScanRow[]>([])
   const [scanLogs, setScanLogs] = useState<ScanLog[]>([])
   const [activeViewTab, setActiveViewTab] = useState<"scan" | "history">("scan")
@@ -151,6 +152,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [ordersInitialLoaded, setOrdersInitialLoaded] = useState(false)
   const [historyInitialLoaded, setHistoryInitialLoaded] = useState(false)
+  const [guidedScanAll, setGuidedScanAll] = useState(false)
   const [reconciling, setReconciling] = useState(false)
   const [lastReconcileSummary, setLastReconcileSummary] = useState<{
     at: string
@@ -275,6 +277,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       setScanInput("")
       setActiveViewTab("scan")
       setConfirmDamagedRowId(null)
+      setGuidedScanAll(false)
       setRemovingRowIds(new Set())
       setInventoryFailures([])
       setHistoryOrders([])
@@ -296,6 +299,14 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     if (!open || !selectedOrderId) return
     ensureOrderDetails(selectedOrderId)
   }, [open, selectedOrderId])
+
+  // "All Orders" mode — preload details for every order once loaded
+  useEffect(() => {
+    if (!open || selectedOrderId || orders.length === 0) return
+    orders.forEach((order) => {
+      if (order.id) ensureOrderDetails(order.id)
+    })
+  }, [open, selectedOrderId, orders])
 
   useEffect(() => {
     if (!open) return
@@ -504,74 +515,140 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     scheduleStatusToVerified(rowId)
   }
 
+  const handleBarcodeForOrder = async (
+    entered: string,
+    orderId: string,
+    entryMode: "scan" | "manual",
+  ): Promise<"verified" | "already_verified" | "not_found" | "error"> => {
+    try {
+      const queryParts = [
+        `barcode=${encodeURIComponent(entered)}`,
+        `order_id=${encodeURIComponent(orderId)}`,
+      ]
+      const barcodeResponse = await apiClient(
+        `/api/stores/current/transfer-orders/barcode-status?${queryParts.join("&")}`,
+      )
+      if (!barcodeResponse.ok) return "error"
+
+      const barcodeStatus = await barcodeResponse.json()
+
+      if (barcodeStatus?.already_verified) {
+        const verifiedOrderId = String(barcodeStatus?.order_id || orderId)
+        const inventoryMissing = !!barcodeStatus?.inventory_missing
+        const assignedQty = Number(barcodeStatus?.assigned_qty ?? 0)
+        const verifiedQty = Number(barcodeStatus?.verified_qty ?? 0)
+        const damagedQty = Number(barcodeStatus?.damaged_qty ?? 0)
+        const wrongQty = Number(barcodeStatus?.wrong_store_qty ?? 0)
+        setScanInput("")
+        setScanErrorDialog({
+          title: inventoryMissing ? "Verified But Missing In Inventory" : "Already Verified",
+          description: inventoryMissing
+            ? `The product with ${entered} is verified in order ${verifiedOrderId}, but missing in store inventory. Click "Reconcile Inventory".`
+            : `The product with ${entered} is already verified from the order ${verifiedOrderId} (Assigned ${assignedQty}, Verified ${verifiedQty}, Damaged ${damagedQty}, Wrong ${wrongQty}).`,
+        })
+        return "already_verified"
+      }
+
+      if (!barcodeStatus?.found || !barcodeStatus?.order_id) {
+        return "not_found"
+      }
+
+      const resolvedOrderId = String(barcodeStatus.order_id)
+      const details = await ensureOrderDetails(resolvedOrderId)
+      if (!details) {
+        setScanInput("")
+        setScanErrorDialog({
+          title: "Order Load Failed",
+          description: `Could not load the transfer order details for order ${resolvedOrderId}.`,
+        })
+        return "error"
+      }
+
+      const backendItemId = String(barcodeStatus?.item_id || "")
+      let matchedItem = backendItemId
+        ? (details.items || []).find((item) => String(item.id) === backendItemId) || null
+        : null
+
+      if (!matchedItem) {
+        const resolved = findMatchInDetails(entered, details)
+        if (resolved.alreadyProcessed) {
+          setScanInput("")
+          setScanErrorDialog({
+            title: "Already Verified",
+            description: `The product with ${entered} is already verified from the order ${resolvedOrderId}.`,
+          })
+          return "already_verified"
+        }
+        matchedItem = resolved.match
+      }
+
+      if (!matchedItem) {
+        return "not_found"
+      }
+
+      incrementVerified(resolvedOrderId, matchedItem, entered, entryMode)
+      setScanInput("")
+      scanInputRef.current?.focus()
+      return "verified"
+    } catch {
+      return "error"
+    }
+  }
+
   const handleBarcodeSubmit = async (entryMode: "scan" | "manual") => {
     const entered = scanInput.trim()
     if (!entered) return
 
-    let { match, alreadyProcessed, alreadyOrderId } = findMatchingItem(entered)
-
-    if (!match && !alreadyProcessed) {
-      try {
-        const barcodeResponse = await apiClient(
-          `/api/stores/current/transfer-orders/barcode-status?barcode=${encodeURIComponent(entered)}`,
-        )
-        if (barcodeResponse.ok) {
-          const barcodeStatus = await barcodeResponse.json()
-          if (barcodeStatus?.already_verified) {
-            setScanInput("")
-            const verifiedOrderId = String(barcodeStatus?.order_id || "")
-            setScanErrorDialog({
-              title: "Already Verified",
-              description: `The product with ${entered} is already verified from the order ${verifiedOrderId || "Unknown"}.`,
-            })
-            return
-          }
-          if (barcodeStatus?.found && barcodeStatus?.order_id) {
-            const resolvedOrderId = String(barcodeStatus.order_id)
-            if (selectedOrderId && selectedOrderId !== resolvedOrderId) {
-              setScanInput("")
-              setScanErrorDialog({
-                title: "Wrong Order",
-                description: "This barcode belongs to a different transfer order than the one selected.",
-              })
-              return
-            }
-            const details = await ensureOrderDetails(resolvedOrderId)
-            if (details) {
-              const resolved = findMatchInDetails(entered, details)
-              if (resolved.match) {
-                match = { orderId: resolvedOrderId, item: resolved.match }
-              } else if (resolved.alreadyProcessed) {
-                alreadyProcessed = true
-                alreadyOrderId = resolved.alreadyOrderId || resolvedOrderId
-              }
-            }
-          }
+    setScanningBarcode(true)
+    try {
+      // Single order selected — validate against that order only
+      if (selectedOrderId) {
+        const result = await handleBarcodeForOrder(entered, selectedOrderId, entryMode)
+        if (result === "not_found") {
+          setScanInput("")
+          setScanErrorDialog({
+            title: "Wrong Stock",
+            description: "This barcode does not belong to the selected transfer order.",
+          })
+        } else if (result === "error") {
+          toast({
+            title: "Scan Validation Failed",
+            description: "Could not validate this barcode with server. Please try again.",
+            variant: "destructive",
+          })
         }
-      } catch (error) {
-        console.error("Barcode status lookup failed:", error)
-      }
-    }
-
-    if (!match) {
-      setScanInput("")
-      if (alreadyProcessed) {
-        setScanErrorDialog({
-          title: "Already Verified",
-          description: `The product with ${entered} is already verified from the order ${alreadyOrderId || "Unknown"}.`,
-        })
         return
       }
-      setScanErrorDialog({
-        title: "Wrong Stock",
-        description: "This barcode does not belong to your active transfer orders.",
-      })
-      return
-    }
 
-    incrementVerified(match.orderId, match.item, entered, entryMode)
-    setScanInput("")
-    scanInputRef.current?.focus()
+      // "All Orders" mode — check all orders in parallel for speed
+      const orderIds = sessionScopeOrderIds.length > 0 ? sessionScopeOrderIds : orders.map((o) => o.id).filter(Boolean)
+      const results = await Promise.all(
+        orderIds.map(async (orderId) => {
+          const result = await handleBarcodeForOrder(entered, orderId, entryMode)
+          return { orderId, result }
+        }),
+      )
+
+      // If any resolved as verified or already_verified, handleBarcodeForOrder already handled UI
+      if (results.some((r) => r.result === "verified" || r.result === "already_verified")) return
+
+      const hasError = results.some((r) => r.result === "error")
+      if (hasError) {
+        toast({
+          title: "Scan Validation Failed",
+          description: "Could not validate this barcode with server. Please try again.",
+          variant: "destructive",
+        })
+      } else {
+        setScanInput("")
+        setScanErrorDialog({
+          title: "Wrong Stock",
+          description: "This barcode does not belong to any of your active transfer orders.",
+        })
+      }
+    } finally {
+      setScanningBarcode(false)
+    }
   }
 
   const openDamagedConfirm = (rowId: string) => {
@@ -768,6 +845,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     try {
       const response = await apiClient("/api/stores/current/transfer-orders/reconcile-inventory", {
         method: "POST",
+        body: JSON.stringify({ repair_missing_inventory_rows: true }),
       })
       if (!response.ok && response.status !== 207) throw new Error("Reconcile request failed")
       const data = await response.json().catch(() => ({} as any))
@@ -1364,6 +1442,34 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     }
   }, [selectedOrderId, selectableOrders])
 
+  useEffect(() => {
+    if (!open || !guidedScanAll) return
+
+    const activeOrders = selectableOrders.filter((order) => getOrderMissingQty(order.id) > 0)
+    if (activeOrders.length === 0) {
+      setGuidedScanAll(false)
+      setSelectedOrderId("")
+      return
+    }
+
+    if (!selectedOrderId || !activeOrders.some((order) => order.id === selectedOrderId)) {
+      const firstActive = activeOrders[0]
+      setSelectedOrderId(firstActive.id)
+      void ensureOrderDetails(firstActive.id)
+      return
+    }
+
+    const currentMissing = getOrderMissingQty(selectedOrderId)
+    if (currentMissing > 0) return
+
+    const currentIndex = activeOrders.findIndex((order) => order.id === selectedOrderId)
+    const nextOrder = activeOrders[currentIndex + 1] || activeOrders[0]
+    if (nextOrder && nextOrder.id !== selectedOrderId) {
+      setSelectedOrderId(nextOrder.id)
+      void ensureOrderDetails(nextOrder.id)
+    }
+  }, [open, guidedScanAll, selectedOrderId, selectableOrders, orderDetailsById, itemEditsByOrder])
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1478,13 +1584,19 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Order Scope (Optional)</Label>
-              <Select value={selectedOrderId || AUTO_SCOPE} onValueChange={(value) => setSelectedOrderId(value === AUTO_SCOPE ? "" : value)}>
+              <Label>Order Scope</Label>
+              <Select
+                value={selectedOrderId || AUTO_SCOPE}
+                onValueChange={(value) => {
+                  setGuidedScanAll(false)
+                  setSelectedOrderId(value === AUTO_SCOPE ? "" : value)
+                }}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder={loadingOrders ? "Loading orders..." : "All active orders (auto)"} />
+                  <SelectValue placeholder={loadingOrders ? "Loading orders..." : "All Orders"} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={AUTO_SCOPE}>All active orders (auto)</SelectItem>
+                  <SelectItem value={AUTO_SCOPE}>All Orders</SelectItem>
                   {selectableOrders.map((order) => (
                     <SelectItem key={order.id} value={order.id}>
                       {order.id} • {order.status} • Missing {getOrderMissingQty(order.id)}
@@ -1492,6 +1604,39 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
                   ))}
                 </SelectContent>
               </Select>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant={guidedScanAll ? "secondary" : "outline"}
+                  size="sm"
+                  disabled={loadingOrders || selectableOrders.length === 0}
+                  onClick={() => {
+                    if (guidedScanAll) {
+                      setGuidedScanAll(false)
+                      return
+                    }
+                    setGuidedScanAll(true)
+                    if (!selectedOrderId) {
+                      const firstActive = selectableOrders[0]
+                      if (firstActive) {
+                        setSelectedOrderId(firstActive.id)
+                        void ensureOrderDetails(firstActive.id)
+                      }
+                    }
+                  }}
+                >
+                  {guidedScanAll ? "Stop Guided Scan" : "Scan All Orders (One by One)"}
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  {guidedScanAll
+                    ? selectedOrderId
+                      ? `Guided mode active | Current order: ${selectedOrderId}`
+                      : "Guided mode active | waiting for first active order"
+                    : selectedOrderId
+                      ? `Scanning order: ${selectedOrderId}`
+                      : "Scanning all orders — barcode will auto-match the correct order."}
+                </span>
+              </div>
             </div>
 
             <Card>
@@ -1519,22 +1664,27 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
                     <CardTitle className="text-base">Scan / Enter Barcode</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="flex gap-2">
-                      <Input
-                        ref={scanInputRef}
-                        value={scanInput}
-                        onChange={(e) => setScanInput(e.target.value)}
-                        placeholder="Scan barcode or type manually"
-                        disabled={loadingOrders || orders.length === 0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault()
-                            handleBarcodeSubmit("scan")
-                          }
-                        }}
-                      />
-                      <Button type="button" variant="outline" disabled={loadingOrders || orders.length === 0} onClick={() => handleBarcodeSubmit("manual")}>
-                        Add
+                    <div className="flex gap-2 items-center">
+                      <div className="relative flex-1">
+                        <Input
+                          ref={scanInputRef}
+                          value={scanInput}
+                          onChange={(e) => setScanInput(e.target.value)}
+                          placeholder="Scan barcode or type manually"
+                          disabled={loadingOrders || orders.length === 0 || scanningBarcode}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault()
+                              handleBarcodeSubmit("scan")
+                            }
+                          }}
+                        />
+                        {scanningBarcode && (
+                          <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                        )}
+                      </div>
+                      <Button type="button" variant="outline" disabled={loadingOrders || orders.length === 0 || scanningBarcode} onClick={() => handleBarcodeSubmit("manual")}>
+                        {scanningBarcode ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
                       </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">

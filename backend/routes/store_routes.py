@@ -123,6 +123,23 @@ def _chunk_list(values, chunk_size: int = 100):
         yield values[idx: idx + chunk_size]
 
 
+def _get_transfer_item_product_id(item: dict):
+    if not isinstance(item, dict):
+        return None
+    return item.get("product_id") or item.get("productId") or item.get("productid")
+
+
+def _get_transfer_item_applied_verified_qty(item: dict):
+    if not isinstance(item, dict):
+        return 0
+    return int(
+        item.get("applied_verified_qty")
+        or item.get("appliedVerifiedQty")
+        or item.get("applied_verified")
+        or 0
+    )
+
+
 def _update_local_storeinventory(store_id: str, product_id: str, delta_qty: int, now_iso: str):
     if not delta_qty:
         return
@@ -486,6 +503,7 @@ def get_transfer_barcode_status():
     """Resolve barcode against current store transfer orders (active + completed)."""
     try:
         barcode = request.args.get("barcode", "")
+        requested_order_id = str(request.args.get("order_id") or "").strip()
         normalized_barcode = _normalize_transfer_barcode(barcode)
         if not normalized_barcode:
             return jsonify({"message": "barcode is required"}), 400
@@ -510,13 +528,26 @@ def get_transfer_barcode_status():
             return jsonify({"found": False, "already_verified": False, "reason": "not_found"}), 200
 
         order_by_id = {str(o.get("id")): (o.get("status") or "") for o in orders if o.get("id")}
+        if requested_order_id:
+            if requested_order_id not in order_by_id:
+                return jsonify(
+                    {
+                        "found": False,
+                        "already_verified": False,
+                        "reason": "order_not_found",
+                        "order_id": requested_order_id,
+                    }
+                ), 200
+            orders = [o for o in orders if str(o.get("id")) == requested_order_id]
+            order_by_id = {requested_order_id: order_by_id.get(requested_order_id, "")}
+
         order_ids = list(order_by_id.keys())
         if not order_ids:
             return jsonify({"found": False, "already_verified": False, "reason": "not_found"}), 200
 
         items_response = (
             supabase.table("inventory_transfer_items")
-            .select("id, transfer_order_id, assigned_qty, verified_qty, damaged_qty, wrong_store_qty, products(barcode, name)")
+            .select("id, product_id, transfer_order_id, assigned_qty, verified_qty, damaged_qty, wrong_store_qty, products(barcode, name)")
             .in_("transfer_order_id", order_ids)
             .execute()
         )
@@ -539,34 +570,83 @@ def get_transfer_barcode_status():
         if not matched_items:
             return jsonify({"found": False, "already_verified": False, "reason": "not_found"}), 200
 
+        pending_items = []
+        processed_items = []
         for item in matched_items:
             assigned = int(item.get("assigned_qty") or 0)
             verified = int(item.get("verified_qty") or 0)
             damaged = int(item.get("damaged_qty") or 0)
             wrong_store = int(item.get("wrong_store_qty") or 0)
             processed = verified + damaged + wrong_store
-            if assigned > 0 and processed >= assigned:
-                return jsonify(
-                    {
-                        "found": True,
-                        "already_verified": True,
-                        "reason": "already_verified",
-                        "order_id": item.get("transfer_order_id"),
-                    }
-                ), 200
+            if assigned > 0 and processed < assigned:
+                pending_items.append(item)
+            else:
+                processed_items.append(item)
 
-        first_item = matched_items[0]
-        fallback_order_id = str(first_item.get("transfer_order_id") or "")
-        fallback_order_status = order_by_id.get(fallback_order_id, "")
+        if pending_items:
+            first_pending = pending_items[0]
+            pending_order_id = str(first_pending.get("transfer_order_id") or "")
+            assigned = int(first_pending.get("assigned_qty") or 0)
+            verified = int(first_pending.get("verified_qty") or 0)
+            damaged = int(first_pending.get("damaged_qty") or 0)
+            wrong_store = int(first_pending.get("wrong_store_qty") or 0)
+            processed = verified + damaged + wrong_store
+            return jsonify(
+                {
+                    "found": True,
+                    "already_verified": False,
+                    "reason": "active_or_pending",
+                    "order_id": pending_order_id,
+                    "order_status": order_by_id.get(pending_order_id, ""),
+                    "item_id": first_pending.get("id"),
+                    "assigned_qty": assigned,
+                    "verified_qty": verified,
+                    "damaged_qty": damaged,
+                    "wrong_store_qty": wrong_store,
+                    "processed_qty": processed,
+                    "store_id": store_id,
+                    "requested_order_id": requested_order_id or None,
+                }
+            ), 200
+
+        first_processed = processed_items[0] if processed_items else matched_items[0]
+        inventory_missing = False
+        product_id = _get_transfer_item_product_id(first_processed)
+        if product_id:
+            try:
+                inv_response = (
+                    supabase.table("storeinventory")
+                    .select("id")
+                    .eq("storeid", store_id)
+                    .eq("productid", product_id)
+                    .limit(1)
+                    .execute()
+                )
+                inventory_missing = not bool(inv_response.data)
+            except Exception as inv_check_err:
+                app.logger.warning(
+                    f"⚠️ Failed inventory-exists check for product {product_id}: {inv_check_err}"
+                )
         return jsonify(
             {
                 "found": True,
-                "already_verified": False,
-                "reason": "active_or_pending",
-                "order_id": fallback_order_id,
-                "order_status": fallback_order_status,
+                "already_verified": True,
+                "reason": "already_verified_inventory_missing" if inventory_missing else "already_verified",
+                "order_id": first_processed.get("transfer_order_id"),
+                "item_id": first_processed.get("id"),
+                "inventory_missing": inventory_missing,
+                "assigned_qty": int(first_processed.get("assigned_qty") or 0),
+                "verified_qty": int(first_processed.get("verified_qty") or 0),
+                "damaged_qty": int(first_processed.get("damaged_qty") or 0),
+                "wrong_store_qty": int(first_processed.get("wrong_store_qty") or 0),
+                "processed_qty": int(first_processed.get("verified_qty") or 0)
+                + int(first_processed.get("damaged_qty") or 0)
+                + int(first_processed.get("wrong_store_qty") or 0),
+                "store_id": store_id,
+                "requested_order_id": requested_order_id or None,
             }
         ), 200
+
     except Exception as e:
         app.logger.error(f"❌ Error resolving transfer barcode status: {str(e)}")
         return jsonify({"message": "An error occurred", "error": str(e)}), 500
@@ -618,7 +698,11 @@ def _apply_transfer_order_verification(supabase, current_user_id: str, store_id:
         return {"message": "No transfer items found"}, 400
 
     items_by_id = {item.get("id"): item for item in items if item.get("id")}
-    items_by_product = {item.get("product_id"): item for item in items if item.get("product_id")}
+    items_by_product = {}
+    for item in items:
+        item_product_id = _get_transfer_item_product_id(item)
+        if item_product_id:
+            items_by_product[item_product_id] = item
     now_iso = datetime.now(timezone.utc).isoformat()
     updated_items = []
     damaged_event_rows = []
@@ -638,7 +722,7 @@ def _apply_transfer_order_verification(supabase, current_user_id: str, store_id:
         old_verified = int(item.get("verified_qty") or 0)
         old_damaged = int(item.get("damaged_qty") or 0)
         old_wrong = int(item.get("wrong_store_qty") or 0)
-        old_applied_verified = int(item.get("applied_verified_qty") or 0)
+        old_applied_verified = _get_transfer_item_applied_verified_qty(item)
 
         new_verified = int(update.get("verified_qty", old_verified) or 0)
         new_damaged = int(update.get("damaged_qty", old_damaged) or 0)
@@ -667,10 +751,11 @@ def _apply_transfer_order_verification(supabase, current_user_id: str, store_id:
         inventory_applied = False
         inventory_error_message = None
         if delta_verified > 0:
-            product_key = str(item.get("product_id"))
+            item_product_id = _get_transfer_item_product_id(item)
+            product_key = str(item_product_id)
             try:
                 inv_response = supabase.table("storeinventory").select("*").eq("storeid", store_id).eq(
-                    "productid", item.get("product_id")
+                    "productid", item_product_id
                 ).limit(1).execute()
                 if inv_response.data:
                     inv = inv_response.data[0]
@@ -681,9 +766,9 @@ def _apply_transfer_order_verification(supabase, current_user_id: str, store_id:
                 else:
                     supabase.table("storeinventory").insert(
                         {
-                            "id": f"INV-{datetime.now(timezone.utc).timestamp()}-{item.get('product_id')}",
+                            "id": f"INV-{datetime.now(timezone.utc).timestamp()}-{item_product_id}",
                             "storeid": store_id,
-                            "productid": item.get("product_id"),
+                            "productid": item_product_id,
                             "quantity": delta_verified,
                             "assignedat": now_iso,
                             "updatedat": now_iso,
@@ -692,7 +777,7 @@ def _apply_transfer_order_verification(supabase, current_user_id: str, store_id:
 
                 # Confirm the row exists in storeinventory after upsert
                 confirm_response = supabase.table("storeinventory").select("id, quantity").eq("storeid", store_id).eq(
-                    "productid", item.get("product_id")
+                    "productid", item_product_id
                 ).limit(1).execute()
                 if not confirm_response.data:
                     raise Exception("Inventory row not found after upsert")
@@ -701,13 +786,13 @@ def _apply_transfer_order_verification(supabase, current_user_id: str, store_id:
             except Exception as inv_error:
                 inventory_error_message = str(inv_error)
                 app.logger.error(
-                    f"❌ Inventory upsert failed for product {item.get('product_id')} in order {order_id}: {inv_error}"
+                    f"❌ Inventory upsert failed for product {item_product_id} in order {order_id}: {inv_error}"
                 )
 
             inventory_results.append(
                 {
                     "transfer_item_id": item.get("id"),
-                    "product_id": item.get("product_id"),
+                    "product_id": item_product_id,
                     "delta_verified": delta_verified,
                     "success": inventory_applied,
                     "message": None if inventory_applied else (inventory_error_message or "Failed to add to store inventory."),
@@ -720,7 +805,7 @@ def _apply_transfer_order_verification(supabase, current_user_id: str, store_id:
                 {
                     "id": f"DMG-{datetime.now(timezone.utc).timestamp()}-{item.get('id')}",
                     "store_id": store_id,
-                    "product_id": item.get("product_id"),
+                    "product_id": _get_transfer_item_product_id(item),
                     "quantity": damaged_delta,
                     "source_type": "transfer_verification",
                     "source_id": item.get("id"),
@@ -993,13 +1078,16 @@ def verify_transfer_orders_batch():
         return jsonify({"message": "An error occurred", "error": str(e)}), 500
 
 
-def _reconcile_store_inventory(supabase, store_id: str) -> dict:
+def _reconcile_store_inventory(supabase, store_id: str, repair_missing_inventory_rows: bool = True) -> dict:
     """
     Delta-based inventory reconciliation for a single store.
 
-    Idempotency rule: only rows where `verified_qty > applied_verified_qty` are
-    processed, and `applied_verified_qty` is advanced only on successful inventory
-    write. Running repeatedly cannot double-count.
+    Idempotency rule:
+    - Primary path: only rows where `verified_qty > applied_verified_qty` are processed,
+      and `applied_verified_qty` is advanced only on successful inventory write.
+    - Drift-repair path (optional): when an item has no delta but appears previously
+      applied (`applied_verified_qty > 0`) and inventory row is missing, recreate the
+      missing inventory row with the already-applied quantity once.
     """
     now_iso = datetime.now(timezone.utc).isoformat()
     order_response = (
@@ -1019,31 +1107,84 @@ def _reconcile_store_inventory(supabase, store_id: str) -> dict:
         }
 
     items: list = []
+    chunk_fetch_errors = []
     for chunk in _chunk_list(order_ids, 100):
         try:
             response = (
                 supabase.table("inventory_transfer_items")
-                .select("id, product_id, transfer_order_id, assigned_qty, verified_qty, applied_verified_qty")
+                .select("*")
                 .in_("transfer_order_id", chunk)
                 .execute()
             )
             items.extend(response.data or [])
         except Exception as chunk_err:
             app.logger.warning(f"⚠️ Failed to fetch transfer items chunk during reconcile: {chunk_err}")
+            chunk_fetch_errors.append(str(chunk_err))
 
     results = []
     items_considered = 0
     items_applied = 0
     items_failed = 0
     delta_applied_total = 0
+    drift_repairs = 0
+    if not items and chunk_fetch_errors:
+        return {
+            "items_considered": 0,
+            "items_applied": 0,
+            "items_failed": len(chunk_fetch_errors),
+            "delta_applied_total": 0,
+            "drift_repairs": 0,
+            "results": [
+                {
+                    "transfer_item_id": None,
+                    "product_id": None,
+                    "delta": 0,
+                    "success": False,
+                    "reason": "fetch_failed",
+                    "message": msg,
+                }
+                for msg in chunk_fetch_errors
+            ],
+        }
 
     for item in items:
-        product_id = item.get("product_id")
+        product_id = _get_transfer_item_product_id(item)
         verified_qty = int(item.get("verified_qty") or 0)
-        applied_verified = int(item.get("applied_verified_qty") or 0)
+        applied_verified = _get_transfer_item_applied_verified_qty(item)
         delta = max(0, verified_qty - applied_verified)
-        if delta <= 0 or not product_id:
+        apply_verified_bump = True
+        reason = "delta_unapplied_verified"
+
+        if not product_id:
             continue
+
+        if delta <= 0:
+            if not repair_missing_inventory_rows:
+                continue
+            if verified_qty <= 0 or applied_verified <= 0:
+                continue
+            try:
+                inv_exists_response = (
+                    supabase.table("storeinventory")
+                    .select("id")
+                    .eq("storeid", store_id)
+                    .eq("productid", product_id)
+                    .limit(1)
+                    .execute()
+                )
+                if inv_exists_response.data:
+                    continue
+            except Exception as exists_err:
+                app.logger.warning(
+                    f"⚠️ Drift-check failed for transfer_item {item.get('id')} / product {product_id}: {exists_err}"
+                )
+                continue
+
+            # Historical drift repair: row marked as applied but inventory row is absent.
+            delta = applied_verified
+            apply_verified_bump = False
+            reason = "missing_inventory_row_drift_repair"
+
         items_considered += 1
 
         applied_ok = False
@@ -1086,9 +1227,12 @@ def _reconcile_store_inventory(supabase, store_id: str) -> dict:
             if not confirm_response.data:
                 raise Exception("Inventory row not found after reconcile upsert")
 
-            supabase.table("inventory_transfer_items").update(
-                {"applied_verified_qty": applied_verified + delta, "updated_at": now_iso}
-            ).eq("id", item.get("id")).execute()
+            if apply_verified_bump:
+                supabase.table("inventory_transfer_items").update(
+                    {"applied_verified_qty": applied_verified + delta, "updated_at": now_iso}
+                ).eq("id", item.get("id")).execute()
+            else:
+                drift_repairs += 1
 
             _update_local_storeinventory(store_id, product_id, int(delta), now_iso)
             applied_ok = True
@@ -1107,6 +1251,7 @@ def _reconcile_store_inventory(supabase, store_id: str) -> dict:
                 "product_id": product_id,
                 "delta": delta,
                 "success": applied_ok,
+                "reason": reason,
                 "message": None if applied_ok else (error_message or "Reconcile failed"),
             }
         )
@@ -1116,6 +1261,7 @@ def _reconcile_store_inventory(supabase, store_id: str) -> dict:
         "items_applied": items_applied,
         "items_failed": items_failed,
         "delta_applied_total": delta_applied_total,
+        "drift_repairs": drift_repairs,
         "results": results,
     }
 
@@ -1131,7 +1277,11 @@ def reconcile_store_inventory_route():
         if not store_id:
             return jsonify({"message": "No store assigned to this user"}), 404
 
-        summary = _reconcile_store_inventory(supabase, store_id)
+        body = request.get_json(silent=True) or {}
+        repair_missing_rows = bool(body.get("repair_missing_inventory_rows", True))
+        summary = _reconcile_store_inventory(
+            supabase, store_id, repair_missing_inventory_rows=repair_missing_rows
+        )
         status_code = 200 if summary.get("items_failed", 0) == 0 else 207
         return jsonify({"message": "Reconciliation complete", **summary}), status_code
     except Exception as e:
