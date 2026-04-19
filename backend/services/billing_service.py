@@ -11,12 +11,12 @@ from utils.discount_approval_cache import pop_discount_approval
 from utils.bill_item_snapshot import replace_bill_item_snapshots, delete_bill_item_snapshots
 
 DEFAULT_WALKIN_CUSTOMER_ID = "CUST-1754821420265"
-INVOICE_ID_REGEX = re.compile(r"^INV-(\d{8})(\d{4})$")
+INVOICE_ID_REGEX = re.compile(r"^INV-([A-Z0-9]+)-(\d{8})(\d{4})$")
 IST_ZONE = ZoneInfo("Asia/Kolkata")
 
 
-def _get_today_invoice_prefix() -> str:
-    return f"INV-{datetime.now(IST_ZONE).strftime('%d%m%Y')}"
+def _get_today_invoice_prefix(store_code: str) -> str:
+    return f"INV-{store_code}-{datetime.now(IST_ZONE).strftime('%d%m%Y')}"
 
 
 def _extract_serial_for_prefix(invoice_id: Optional[str], prefix: str) -> int:
@@ -26,13 +26,29 @@ def _extract_serial_for_prefix(invoice_id: Optional[str], prefix: str) -> int:
     if not match:
         return 0
     try:
-        return int(match.group(2))
+        return int(match.group(3))
     except (TypeError, ValueError):
         return 0
 
 
-def _generate_daily_invoice_id(supabase) -> str:
-    prefix = _get_today_invoice_prefix()
+def _generate_daily_invoice_id(supabase, store_id: str) -> str:
+    store_code = "STR"
+    try:
+        store_resp = (
+            supabase.table("stores")
+            .select("storecode")
+            .eq("id", store_id)
+            .limit(1)
+            .execute()
+        )
+        if store_resp.data:
+            code = str(store_resp.data[0].get("storecode") or "").strip().upper()
+            if code:
+                store_code = code
+    except Exception:
+        pass
+
+    prefix = _get_today_invoice_prefix(store_code)
     max_serial = 0
 
     try:
@@ -40,12 +56,12 @@ def _generate_daily_invoice_id(supabase) -> str:
             supabase.table("bills")
             .select("id")
             .like("id", f"{prefix}%")
+            .eq("storeid", store_id)
             .execute()
         )
         for row in (response.data or []):
             max_serial = max(max_serial, _extract_serial_for_prefix(str(row.get("id") or ""), prefix))
     except Exception:
-        # If lookup fails, fallback to first serial for today.
         pass
 
     return f"{prefix}{max_serial + 1:04d}"
@@ -244,7 +260,7 @@ def create_bill_transaction(
     if not supabase or getattr(supabase, "is_offline_fallback", False):
         raise RuntimeError("Supabase client unavailable")
 
-    bill_id = forced_bill_id or _generate_daily_invoice_id(supabase)
+    bill_id = forced_bill_id or _generate_daily_invoice_id(supabase, store_id)
     now = datetime.now(timezone.utc).isoformat()
     local_now = datetime.now(IST_ZONE).replace(tzinfo=None).isoformat(timespec="milliseconds")
     bill_event_time = (
