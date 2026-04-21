@@ -354,7 +354,7 @@ def create_bill_transaction(
                                 "total_amount": data.get("total_amount", 0),
                                 "idempotent_replay": True,
                             }
-                    bill_id = _generate_daily_invoice_id(supabase)
+                    bill_id = _generate_daily_invoice_id(supabase, store_id)
                     bill_data["id"] = bill_id
                     continue
                 raise
@@ -613,3 +613,21 @@ def create_bill_transaction(
         response_data["replacement_stock_errors"] = replacement_stock_errors
 
     return response_data
+
+
+def dispatch_bill_create(current_user_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    # Local import breaks the circular dep: offline_bill_queue already imports create_bill_transaction.
+    from utils.offline_bill_queue import enqueue_bill_create
+
+    supabase = get_supabase_client()
+    if getattr(supabase, "is_offline_fallback", False):
+        result = enqueue_bill_create(current_user_id=current_user_id, bill_payload=data)
+        return {
+            "queued": True,
+            "bill_id": result["bill_id"],
+            "queue_id": result["queue_id"],
+            "message": "System offline. Invoice queued and will sync automatically when internet returns.",
+        }
+
+    result = create_bill_transaction(current_user_id=current_user_id, data=data)
+    return {"queued": False, **result}

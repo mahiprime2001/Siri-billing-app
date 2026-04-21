@@ -52,6 +52,7 @@ interface ReturnsDialogProps {
   onStartReplacement?: () => void
   mode?: "returns" | "replacement"
   allowReturns?: boolean
+  storeCode?: string
 }
 
 export default function ReturnsDialog({
@@ -61,6 +62,7 @@ export default function ReturnsDialog({
   onStartReplacement,
   mode = "replacement",
   allowReturns = true,
+  storeCode,
 }: ReturnsDialogProps) {
   const [returnRequest, setReturnRequest] = useState<ReturnRequest>({
     searchQuery: '',
@@ -75,7 +77,11 @@ export default function ReturnsDialog({
   const [flowMode, setFlowMode] = useState<"returns" | "replacement">(mode)
   const [reasonError, setReasonError] = useState(false)
   const [reasonShakeKey, setReasonShakeKey] = useState(0)
+  const [invoiceSuffix, setInvoiceSuffix] = useState('')
   const { toast } = useToast()
+
+  const invoicePrefix = storeCode ? `INV-${storeCode.toUpperCase()}-` : null
+  const useInvoicePrefix = !!invoicePrefix && flowMode === "replacement"
 
   const getBillTaxPercentage = (bill?: Bill) => {
     if (!bill) return 0
@@ -328,6 +334,7 @@ export default function ReturnsDialog({
     setSearchResults([])
     setShowReturnForm(false)
     setReasonError(false)
+    setInvoiceSuffix('')
   }
 
   const calculateSelectedTotal = () => {
@@ -397,13 +404,32 @@ export default function ReturnsDialog({
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <Label>Search Query</Label>
-                    <Input
-                      placeholder={getSearchPlaceholder()}
-                      value={returnRequest.searchQuery}
-                      onChange={(e) => setReturnRequest(prev => ({ ...prev, searchQuery: e.target.value }))}
-                      onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                      className="flex-1"
-                    />
+                    {useInvoicePrefix ? (
+                      <div className="flex items-center rounded-md border border-input overflow-hidden focus-within:ring-1 focus-within:ring-ring">
+                        <span className="px-3 py-2 bg-muted text-muted-foreground text-sm font-mono border-r border-input whitespace-nowrap select-none">
+                          {invoicePrefix}
+                        </span>
+                        <input
+                          className="flex-1 px-3 py-2 text-sm bg-background outline-none placeholder:text-muted-foreground"
+                          placeholder="e.g. 210420250001"
+                          value={invoiceSuffix}
+                          onChange={(e) => {
+                            const suffix = e.target.value
+                            setInvoiceSuffix(suffix)
+                            setReturnRequest(prev => ({ ...prev, searchQuery: `${invoicePrefix}${suffix}` }))
+                          }}
+                          onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                        />
+                      </div>
+                    ) : (
+                      <Input
+                        placeholder={getSearchPlaceholder()}
+                        value={returnRequest.searchQuery}
+                        onChange={(e) => setReturnRequest(prev => ({ ...prev, searchQuery: e.target.value }))}
+                        onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                        className="flex-1"
+                      />
+                    )}
                   </div>
                   <Button onClick={handleSearch} disabled={isSearching} className="mt-6">
                     <Search className="h-4 w-4 mr-2" />

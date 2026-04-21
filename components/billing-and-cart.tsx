@@ -61,6 +61,7 @@ interface Store {
   name: string;
   address?: string;
   phone?: string;
+  storecode?: string;
 }
 
 interface UserStore {
@@ -1496,7 +1497,8 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
     // Use time-based serial so preview does not stay fixed at 0001.
     const secondsSinceMidnight = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
     const previewSerial = String((secondsSinceMidnight % 9999) + 1).padStart(4, "0")
-    return `INV-${dd}${mm}${yyyy}${previewSerial}`
+    const storeCode = (currentStore?.storecode || "STR").toUpperCase()
+    return `INV-${storeCode}-${dd}${mm}${yyyy}${previewSerial}`
   }
 
   const handlePreview = async () => {
@@ -2562,6 +2564,7 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
         onStartReplacement={() => setIsReplacementDialogOpen(false)}
         mode="replacement"
         allowReturns={false}
+        storeCode={currentStore?.storecode}
       />
 
       <AlertDialog

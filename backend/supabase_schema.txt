@@ -15,7 +15,7 @@ CREATE TABLE public.billitems (
   quantity integer,
   price numeric,
   total numeric,
-  id bigint NOT NULL DEFAULT nextval('billitems_id_seq'::regclass),
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT billitems_pkey PRIMARY KEY (id),
@@ -78,7 +78,7 @@ CREATE TABLE public.discounts (
   discount_id character varying NOT NULL,
   discount numeric,
   discount_amount numeric,
-  s_no integer NOT NULL DEFAULT nextval('discounts_s_no_seq'::regclass),
+  s_no integer GENERATED ALWAYS AS IDENTITY NOT NULL,
   status character varying DEFAULT 'pending'::character varying,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
@@ -165,7 +165,7 @@ CREATE TABLE public.notifications (
   type character varying NOT NULL,
   notification text NOT NULL,
   related_id character varying,
-  id bigint NOT NULL DEFAULT nextval('notifications_id_seq'::regclass),
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   is_read boolean DEFAULT false,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
@@ -175,7 +175,7 @@ CREATE TABLE public.password_change_log (
   user_id character varying NOT NULL,
   ip_address character varying,
   user_agent text,
-  id bigint NOT NULL DEFAULT nextval('password_change_log_id_seq'::regclass),
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   changed_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   change_type USER-DEFINED DEFAULT 'reset'::change_type_enum,
   CONSTRAINT password_change_log_pkey PRIMARY KEY (id),
@@ -186,7 +186,7 @@ CREATE TABLE public.password_reset_tokens (
   token_hash character varying NOT NULL,
   expires_at timestamp without time zone NOT NULL,
   used_at timestamp without time zone,
-  id bigint NOT NULL DEFAULT nextval('password_reset_tokens_id_seq'::regclass),
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT password_reset_tokens_pkey PRIMARY KEY (id),
   CONSTRAINT password_reset_tokens_ibfk_1 FOREIGN KEY (user_id) REFERENCES public.users(id)
@@ -244,7 +244,7 @@ CREATE TABLE public.returns (
   denied_at timestamp without time zone,
   denial_reason text,
   damage_reason text,
-  s_no integer NOT NULL DEFAULT nextval('returns_s_no_seq'::regclass),
+  s_no integer GENERATED ALWAYS AS IDENTITY NOT NULL,
   refund_method USER-DEFINED DEFAULT 'cash'::refund_method_enum,
   status USER-DEFINED DEFAULT 'pending'::return_status_enum,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
@@ -306,6 +306,7 @@ CREATE TABLE public.stores (
   status character varying,
   createdat timestamp without time zone,
   updatedat timestamp without time zone,
+  storecode character varying,
   CONSTRAINT stores_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.systemsettings (
@@ -314,7 +315,7 @@ CREATE TABLE public.systemsettings (
   companyaddress text,
   companyphone character varying,
   companyemail character varying,
-  id integer NOT NULL DEFAULT nextval('systemsettings_id_seq'::regclass),
+  id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT systemsettings_pkey PRIMARY KEY (id)
@@ -354,4 +355,16 @@ CREATE TABLE public.userstores (
   CONSTRAINT userstores_pkey PRIMARY KEY (userId, storeId),
   CONSTRAINT userstores_storeid_fkey FOREIGN KEY (storeId) REFERENCES public.stores(id),
   CONSTRAINT userstores_userid_fkey FOREIGN KEY (userId) REFERENCES public.users(id)
+);
+CREATE TABLE public.wrappers_fdw_stats (
+  fdw_name text NOT NULL,
+  create_times bigint,
+  rows_in bigint,
+  rows_out bigint,
+  bytes_in bigint,
+  bytes_out bigint,
+  metadata jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
+  updated_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
+  CONSTRAINT wrappers_fdw_stats_pkey PRIMARY KEY (fdw_name)
 );

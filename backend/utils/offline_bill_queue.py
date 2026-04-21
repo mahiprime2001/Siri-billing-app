@@ -6,14 +6,14 @@ from typing import Dict, Any
 import re
 from zoneinfo import ZoneInfo
 
-from config.config import OFFLINE_BILL_QUEUE_FILE, BILLS_FILE, STOREINVENTORY_FILE, PRODUCTS_FILE, JSON_DIR
+from config.config import OFFLINE_BILL_QUEUE_FILE, BILLS_FILE, STOREINVENTORY_FILE, PRODUCTS_FILE, STORES_FILE, JSON_DIR
 from helpers.utils import read_json_file, write_json_file
 from services.billing_service import create_bill_transaction
 from utils.connection_pool import get_supabase_client
 
 _queue_lock = threading.Lock()
 MAX_RETRIES = 100
-INVOICE_ID_REGEX = re.compile(r"^INV-(\d{8})(\d{4})$")
+INVOICE_ID_REGEX = re.compile(r"^INV-([A-Z0-9]+)-(\d{8})(\d{4})$")
 IST_ZONE = ZoneInfo("Asia/Kolkata")
 BILL_ITEMS_FILE = os.path.join(JSON_DIR, "billitems.json")
 
@@ -22,8 +22,22 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _today_invoice_prefix() -> str:
-    return f"INV-{datetime.now(IST_ZONE).strftime('%d%m%Y')}"
+def _get_store_code_from_local(store_id: str) -> str:
+    """Look up the store code from the local stores JSON cache."""
+    if not store_id:
+        return "STR"
+    stores = read_json_file(STORES_FILE, [])
+    if isinstance(stores, list):
+        for store in stores:
+            if str(store.get("id") or "") == str(store_id):
+                code = str(store.get("storecode") or "").strip().upper()
+                if code:
+                    return code
+    return "STR"
+
+
+def _today_invoice_prefix(store_code: str = "STR") -> str:
+    return f"INV-{store_code}-{datetime.now(IST_ZONE).strftime('%d%m%Y')}"
 
 
 def _extract_serial(invoice_id: str, prefix: str) -> int:
@@ -33,13 +47,14 @@ def _extract_serial(invoice_id: str, prefix: str) -> int:
     if not match:
         return 0
     try:
-        return int(match.group(2))
+        return int(match.group(3))
     except (TypeError, ValueError):
         return 0
 
 
-def _next_offline_invoice_id(existing_queue) -> str:
-    prefix = _today_invoice_prefix()
+def _next_offline_invoice_id(existing_queue, store_id: str = "") -> str:
+    store_code = _get_store_code_from_local(store_id)
+    prefix = _today_invoice_prefix(store_code)
     max_serial = 0
 
     bills = read_json_file(BILLS_FILE, [])
@@ -189,7 +204,7 @@ def enqueue_bill_create(current_user_id: str, bill_payload: Dict[str, Any]) -> D
 
     with _queue_lock:
         queue = read_json_file(OFFLINE_BILL_QUEUE_FILE, [])
-        forced_bill_id = bill_payload.get("_forced_bill_id") or _next_offline_invoice_id(queue)
+        forced_bill_id = bill_payload.get("_forced_bill_id") or _next_offline_invoice_id(queue, str(bill_payload.get("store_id") or ""))
         if client_request_id:
             existing = next(
                 (

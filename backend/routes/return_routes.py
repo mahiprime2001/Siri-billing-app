@@ -495,6 +495,41 @@ def get_store_damage_returns():
         return jsonify(rows[:limit]), 200
 
 
+def _dispatch_damage_return_item(supabase, current_user_id, store_id, row, reason_type, reason, now_iso):
+    """Connectivity-aware dispatcher for a single damage return row."""
+    if getattr(supabase, "is_offline_fallback", False):
+        rows = read_json_file(STORE_DAMAGE_RETURNS_FILE, [])
+        rows.append(row)
+        write_json_file(STORE_DAMAGE_RETURNS_FILE, rows)
+        _apply_local_stock_reduction(store_id, row["product_id"], row["quantity"])
+        queue_info = enqueue_damage_return_create(current_user_id, row)
+        return {**row, "queued": True, "queue_id": queue_info["queue_id"]}
+
+    supabase.table("store_damage_returns").insert(row).execute()
+    stock_ok = update_both_inventory_and_product_stock(
+        store_id=store_id,
+        product_id=row["product_id"],
+        quantity_sold=row["quantity"],
+    )
+    if not stock_ok:
+        raise RuntimeError("Failed to reduce stock for damaged return")
+    if reason_type == "damaged":
+        supabase.table("damaged_inventory_events").insert({
+            "id": f"DMG-{uuid.uuid4().hex[:12].upper()}",
+            "store_id": store_id,
+            "product_id": row["product_id"],
+            "quantity": row["quantity"],
+            "source_type": "store_damage_return",
+            "source_id": row["id"],
+            "reason": reason,
+            "status": "reported",
+            "reported_by": current_user_id,
+            "created_at": now_iso,
+            "updated_at": now_iso,
+        }).execute()
+    return row
+
+
 @return_bp.route('/store-damage-returns', methods=['POST'])
 @require_auth
 def create_store_damage_return():
@@ -562,44 +597,16 @@ def create_store_damage_return():
                 "updated_at": now_iso,
             }
 
-            try:
-                supabase.table("store_damage_returns").insert(row).execute()
-                stock_ok = update_both_inventory_and_product_stock(
-                    store_id=store_id,
-                    product_id=product_id,
-                    quantity_sold=quantity,
-                )
-                if not stock_ok:
-                    raise RuntimeError("Failed to reduce stock for damaged return")
-
-                if reason_type == "damaged":
-                    supabase.table("damaged_inventory_events").insert(
-                        {
-                            "id": f"DMG-{uuid.uuid4().hex[:12].upper()}",
-                            "store_id": store_id,
-                            "product_id": product_id,
-                            "quantity": quantity,
-                            "source_type": "store_damage_return",
-                            "source_id": row["id"],
-                            "reason": reason,
-                            "status": "reported",
-                            "reported_by": current_user_id,
-                            "created_at": now_iso,
-                            "updated_at": now_iso,
-                        }
-                    ).execute()
-                created_rows.append(row)
-            except Exception as cloud_error:
-                # Offline fallback: local write + queue
-                rows = read_json_file(STORE_DAMAGE_RETURNS_FILE, [])
-                rows.append(row)
-                write_json_file(STORE_DAMAGE_RETURNS_FILE, rows)
-                _apply_local_stock_reduction(store_id, product_id, quantity)
-                queue_info = enqueue_damage_return_create(current_user_id, row)
-                row["queued"] = True
-                row["queue_id"] = queue_info["queue_id"]
-                row["cloud_error"] = str(cloud_error)
-                created_rows.append(row)
+            saved_row = _dispatch_damage_return_item(
+                supabase=supabase,
+                current_user_id=current_user_id,
+                store_id=store_id,
+                row=row,
+                reason_type=reason_type,
+                reason=reason,
+                now_iso=now_iso,
+            )
+            created_rows.append(saved_row)
 
         if not created_rows:
             return jsonify({"message": "No valid items to submit"}), 400
