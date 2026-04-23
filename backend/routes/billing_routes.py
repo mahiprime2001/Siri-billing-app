@@ -11,8 +11,7 @@ import time
 from helpers.utils import read_json_file, write_json_file
 from config.config import BILLS_FILE, BILL_IDEMPOTENCY_FILE
 
-from services.billing_service import create_bill_transaction
-from utils.offline_bill_queue import enqueue_bill_create
+from services.billing_service import create_bill_transaction, dispatch_bill_create
 from data_access.data_access import update_both_inventory_and_product_stock
 from utils.bill_item_snapshot import get_bill_item_snapshots, replace_bill_item_snapshots
 
@@ -454,25 +453,16 @@ def create_bill():
                     }
                 ), 200
 
-        try:
-            response_data = create_bill_transaction(current_user_id=current_user_id, data=data)
-            _remember_bill_request(client_request_id, response_data.get("bill_id"), current_user_id)
-            app.logger.info(f"✅ Bill {response_data.get('bill_id')} completed")
-            return jsonify(response_data), 201
-        except ValueError as e:
-            return jsonify({"message": str(e)}), 400
-        except Exception as e:
-            app.logger.error(f"❌ Immediate bill create failed; queueing offline: {e}")
-            app.logger.error(traceback.format_exc())
+        result = dispatch_bill_create(current_user_id=current_user_id, data=data)
+        _remember_bill_request(client_request_id, result.get("bill_id"), current_user_id)
+        if result["queued"]:
+            app.logger.info(f"Bill queued offline: queue_id={result.get('queue_id')}, bill_id={result.get('bill_id')}")
+            return jsonify(result), 202
+        app.logger.info(f"✅ Bill {result.get('bill_id')} completed")
+        return jsonify(result), 201
 
-            queue_result = enqueue_bill_create(current_user_id=current_user_id, bill_payload=data)
-            return jsonify({
-                "message": "System offline. Invoice queued and will sync automatically when internet returns.",
-                "queued": True,
-                "queue_id": queue_result["queue_id"],
-                "bill_id": queue_result["bill_id"],
-            }), 202
-
+    except ValueError as e:
+        return jsonify({"message": str(e)}), 400
     except Exception as e:
         app.logger.error(f"❌ Error creating bill: {str(e)}")
         app.logger.error(traceback.format_exc())

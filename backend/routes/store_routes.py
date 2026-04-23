@@ -918,6 +918,30 @@ def _apply_transfer_order_verification(supabase, current_user_id: str, store_id:
     }, 200
 
 
+def _dispatch_transfer_verification(supabase, current_user_id, store_id, order_id, data):
+    """Connectivity-aware dispatcher: online → apply verification, offline → enqueue."""
+    if getattr(supabase, "is_offline_fallback", False):
+        queue_info = enqueue_transfer_verification_create(
+            user_id=current_user_id,
+            store_id=store_id,
+            order_id=order_id,
+            verification_data=data,
+        )
+        return {
+            "queued": True,
+            "queue_id": queue_info["queue_id"],
+            "verification_session_id": queue_info["verification_session_id"],
+            "message": "System offline. Transfer verification queued and will sync automatically.",
+        }, 202
+    return _apply_transfer_order_verification(
+        supabase=supabase,
+        current_user_id=current_user_id,
+        store_id=store_id,
+        order_id=order_id,
+        data=data,
+    )
+
+
 @store_bp.route('/transfer-orders/<order_id>/verify', methods=['POST'])
 @require_auth
 def verify_transfer_order(order_id):
@@ -930,33 +954,16 @@ def verify_transfer_order(order_id):
         if not store_id:
             return jsonify({"message": "No store assigned to this user"}), 404
 
-        try:
-            result, status_code = _apply_transfer_order_verification(
-                supabase=supabase,
-                current_user_id=current_user_id,
-                store_id=store_id,
-                order_id=order_id,
-                data=data,
-            )
-            return jsonify(result), status_code
-        except Exception as apply_error:
-            queue_info = enqueue_transfer_verification_create(
-                user_id=current_user_id,
-                store_id=store_id,
-                order_id=order_id,
-                verification_data=data,
-            )
-            app.logger.warning(
-                f"⚠️ Transfer verification queued for order {order_id} due to cloud error: {apply_error}"
-            )
-            return jsonify(
-                {
-                    "message": "System offline. Transfer verification queued and will sync automatically.",
-                    "queued": True,
-                    "queue_id": queue_info["queue_id"],
-                    "verification_session_id": queue_info["verification_session_id"],
-                }
-            ), 202
+        result, status_code = _dispatch_transfer_verification(
+            supabase=supabase,
+            current_user_id=current_user_id,
+            store_id=store_id,
+            order_id=order_id,
+            data=data,
+        )
+        if result.get("queued"):
+            app.logger.info(f"Transfer verification queued for order {order_id}: queue_id={result.get('queue_id')}")
+        return jsonify(result), status_code
     except Exception as e:
         app.logger.error(f"❌ Error verifying transfer order {order_id}: {str(e)}")
         return jsonify({"message": "An error occurred", "error": str(e)}), 500
@@ -1001,35 +1008,16 @@ def verify_transfer_orders_batch():
                 "items": verification.get("items", []) or [],
                 "scans": verification.get("scans", []) or [],
             }
-            try:
-                result, status_code = _apply_transfer_order_verification(
-                    supabase=supabase,
-                    current_user_id=current_user_id,
-                    store_id=store_id,
-                    order_id=order_id,
-                    data=order_payload,
-                )
-            except Exception as apply_error:
-                queue_info = enqueue_transfer_verification_create(
-                    user_id=current_user_id,
-                    store_id=store_id,
-                    order_id=order_id,
-                    verification_data=order_payload,
-                )
+            result, status_code = _dispatch_transfer_verification(
+                supabase=supabase,
+                current_user_id=current_user_id,
+                store_id=store_id,
+                order_id=order_id,
+                data=order_payload,
+            )
+            if result.get("queued"):
                 queued_count += 1
-                results.append(
-                    {
-                        "index": index,
-                        "order_id": order_id,
-                        "status": "queued",
-                        "status_code": 202,
-                        "message": "System offline. Verification queued and will sync automatically.",
-                        "queued": True,
-                        "queue_id": queue_info["queue_id"],
-                        "verification_session_id": queue_info["verification_session_id"],
-                        "error": str(apply_error),
-                    }
-                )
+                results.append({"index": index, "order_id": order_id, "status": "queued", "status_code": 202, **result})
                 continue
 
             row_status = "success" if status_code < 300 else "failed"
