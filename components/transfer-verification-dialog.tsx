@@ -103,6 +103,14 @@ type ItemEdit = {
   damage_reason?: string
 }
 
+type InventoryFailure = {
+  product_name: string
+  barcode: string
+  order_id: string
+  message: string
+  transfer_item_id?: string
+}
+
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -830,8 +838,8 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
 
   const collectInventoryFailures = (
     batchResult: any,
-  ): { product_name: string; barcode: string; order_id: string; message: string }[] => {
-    const failures: { product_name: string; barcode: string; order_id: string; message: string }[] = []
+  ): InventoryFailure[] => {
+    const failures: InventoryFailure[] = []
     const results = Array.isArray(batchResult?.results) ? batchResult.results : []
     results.forEach((row: any) => {
       const orderId = String(row?.order_id || "")
@@ -848,10 +856,55 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
           barcode,
           order_id: orderId,
           message: entry?.message || "Failed to add to store inventory.",
+          transfer_item_id: transferItemId ? String(transferItemId) : undefined,
         })
       })
     })
     return failures
+  }
+
+  const collectFailedOrderIdsFromBatchResult = (batchResult: any): string[] => {
+    const ids = new Set<string>()
+    const results = Array.isArray(batchResult?.results) ? batchResult.results : []
+    results.forEach((row: any) => {
+      const orderId = String(row?.order_id || "").trim()
+      if (!orderId) return
+      const status = String(row?.status || "").toLowerCase()
+      const explicitlyFailed = row?.success === false || status === "failed" || status === "error"
+      if (explicitlyFailed) ids.add(orderId)
+    })
+    const failedOrders = Array.isArray(batchResult?.failed_orders) ? batchResult.failed_orders : []
+    failedOrders.forEach((value: any) => {
+      const orderId = String(value || "").trim()
+      if (orderId) ids.add(orderId)
+    })
+    return [...ids]
+  }
+
+  const normalizeScanBarcode = (barcodeValue: string) => normalizeBarcode((barcodeValue || "").split(",")[0] || "")
+
+  const isUnavailableBarcode = (barcodeValue: string) => {
+    const normalized = normalizeScanBarcode(barcodeValue)
+    return !normalized || normalized === "n/a" || normalized === "na"
+  }
+
+  const buildEditsFromRows = (rows: ScanRow[], detailsById: Record<string, TransferOrderDetails>) => {
+    const next: Record<string, Record<string, ItemEdit>> = {}
+    Object.values(detailsById).forEach((details) => {
+      next[details.id] = createInitialEdits(details)
+    })
+
+    rows.forEach((row) => {
+      const orderEdits = next[row.order_id]
+      const edit = orderEdits?.[row.transfer_item_id]
+      if (!orderEdits || !edit) return
+      if (row.status === "damaged") {
+        edit.damaged_qty += row.quantity
+      } else {
+        edit.verified_qty += row.quantity
+      }
+    })
+    return next
   }
 
   const resolveProductNameForItem = (transferItemId: string | null, productId: string | null): string => {
@@ -963,6 +1016,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   }
 
   const refreshDialogData = async () => {
+    const selectedId = selectedOrderId
     setOrdersInitialLoaded(false)
     setHistoryInitialLoaded(false)
     setOrderDetailsById({})
@@ -970,14 +1024,27 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     setSessionScopeOrderIds([])
     inFlightDetailPromises.current.clear()
     await Promise.all([loadOrders(), loadHistoryOrders()])
+    if (selectedId) {
+      try {
+        const details = await loadOrderDetails(selectedId)
+        setOrderDetailsById((prev) => ({ ...prev, [details.id]: details }))
+        setItemEditsByOrder((prev) => ({ ...prev, [details.id]: createInitialEdits(details) }))
+      } catch (error) {
+        console.error("Error refreshing selected transfer order details:", selectedId, error)
+      }
+    }
   }
 
   const finalizeAfterSave = async ({
     closeOnSuccess,
     inventoryFailuresList,
+    failedOrderIds = [],
+    keepFailedRows = false,
   }: {
     closeOnSuccess: boolean
-    inventoryFailuresList: { product_name: string; barcode: string; order_id: string; message: string }[]
+    inventoryFailuresList: InventoryFailure[]
+    failedOrderIds?: string[]
+    keepFailedRows?: boolean
   }) => {
     setInventoryFailures(inventoryFailuresList)
     if (closeOnSuccess) {
@@ -990,15 +1057,82 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       return
     }
 
-    const failedKeys = new Set(inventoryFailuresList.map((f) => `${f.order_id}::${f.barcode}`))
-    const rowsToAnimate = scanRows
-      .filter((row) => {
-        const key = `${row.order_id}::${(row.barcode || "").split(",")[0]?.trim() || row.barcode}`
-        return !failedKeys.has(key)
-      })
-      .map((row) => row.id)
+    const snapshotRows = [...scanRows]
+    const failedOrderSet = new Set(failedOrderIds.map((id) => String(id || "").trim()).filter(Boolean))
+    const markersPresent = failedOrderSet.size > 0 || inventoryFailuresList.length > 0
 
-    await animateRemoveScanRowsAsync(rowsToAnimate)
+    if (keepFailedRows && markersPresent) {
+      const rowsToKeep = snapshotRows.filter((row) => {
+        if (failedOrderSet.has(row.order_id)) return true
+        return inventoryFailuresList.some((failure) => {
+          if (failure.order_id !== row.order_id) return false
+          if (failure.transfer_item_id && failure.transfer_item_id === row.transfer_item_id) return true
+          const rowBarcode = normalizeScanBarcode(row.barcode)
+          const failureBarcode = normalizeScanBarcode(failure.barcode)
+          if (!isUnavailableBarcode(failure.barcode) && failureBarcode === rowBarcode) return true
+          if (!failure.transfer_item_id && isUnavailableBarcode(failure.barcode)) return true
+          return false
+        })
+      })
+
+      // Defensive fallback: if backend reports partial failure but no row mapping is possible,
+      // reset the session and refresh from server truth to avoid stale count/product state.
+      if (rowsToKeep.length === 0) {
+        await animateRemoveScanRowsAsync(snapshotRows.map((row) => row.id))
+        clearSubmissionBuffers()
+        setRemovingRowIds(new Set())
+        setScanInput("")
+        setActiveViewTab("scan")
+        setLastReconcileSummary(null)
+        await refreshDialogData()
+        return
+      }
+
+      const keepRowIdSet = new Set(rowsToKeep.map((row) => row.id))
+      const rowsToAnimate = snapshotRows.filter((row) => !keepRowIdSet.has(row.id)).map((row) => row.id)
+      await animateRemoveScanRowsAsync(rowsToAnimate)
+
+      const remainingOrderItemKeySet = new Set(rowsToKeep.map((row) => `${row.order_id}::${row.transfer_item_id}`))
+      const remainingOrderIds = [...new Set(rowsToKeep.map((row) => row.order_id))]
+
+      const refreshedOrdersResponse = await apiClient("/api/stores/current/transfer-orders")
+      if (refreshedOrdersResponse.ok) {
+        const refreshedOrders = (await refreshedOrdersResponse.json()) as TransferOrder[]
+        setOrders(refreshedOrders)
+        setSessionScopeOrderIds(refreshedOrders.map((order) => order.id).filter(Boolean))
+      }
+
+      const refreshedHistoryResponse = await apiClient("/api/stores/current/transfer-orders/history")
+      if (refreshedHistoryResponse.ok) {
+        const refreshedHistory = (await refreshedHistoryResponse.json()) as TransferOrderDetails[]
+        setHistoryOrders(refreshedHistory as any)
+      }
+
+      const refreshedDetailsById: Record<string, TransferOrderDetails> = {}
+      for (const orderId of remainingOrderIds) {
+        try {
+          const details = await loadOrderDetails(orderId)
+          refreshedDetailsById[details.id] = details
+        } catch (error) {
+          console.error("Error refreshing failed order details:", orderId, error)
+        }
+      }
+
+      setScanRows(rowsToKeep)
+      setScanLogs((prev) => prev.filter((log) => remainingOrderItemKeySet.has(`${log.order_id}::${log.transfer_item_id}`)))
+      setTouchedOrderIds(remainingOrderIds)
+      if (Object.keys(refreshedDetailsById).length > 0) {
+        setOrderDetailsById((prev) => ({ ...prev, ...refreshedDetailsById }))
+        setItemEditsByOrder((prev) => ({ ...prev, ...buildEditsFromRows(rowsToKeep, refreshedDetailsById) }))
+      }
+      setRemovingRowIds(new Set())
+      setScanInput("")
+      setActiveViewTab("scan")
+      setLastReconcileSummary(null)
+      return
+    }
+
+    await animateRemoveScanRowsAsync(snapshotRows.map((row) => row.id))
     clearSubmissionBuffers()
     setRemovingRowIds(new Set())
     setScanInput("")
@@ -1148,12 +1282,20 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
           }
 
           if ((successCount > 0 || queuedCount > 0) && failedCount > 0) {
+            const failedOrderIds = collectFailedOrderIdsFromBatchResult(batchResult)
+            const invFailures = collectInventoryFailures(batchResult)
             toast({
               title: "Partially Saved",
               description: `Saved ${successCount} order(s), queued ${queuedCount} order(s), failed ${failedCount} order(s).`,
               variant: "destructive",
             })
-            await loadOrders()
+            await finalizeAfterSave({
+              closeOnSuccess,
+              inventoryFailuresList: invFailures,
+              failedOrderIds,
+              keepFailedRows: true,
+            })
+            onVerificationSaved?.()
             return
           }
 
@@ -1214,12 +1356,19 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       }
 
       if (successCount > 0 && failures.length > 0) {
+        const failedOrderIds = failures.map((failure) => failure.orderId).filter(Boolean)
         toast({
           title: "Partially Saved",
           description: `Saved ${successCount} order(s). Failed ${failures.length} order(s).`,
           variant: "destructive",
         })
-        await loadOrders()
+        await finalizeAfterSave({
+          closeOnSuccess,
+          inventoryFailuresList: [],
+          failedOrderIds,
+          keepFailedRows: true,
+        })
+        onVerificationSaved?.()
         return
       }
 
