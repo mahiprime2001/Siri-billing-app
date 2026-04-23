@@ -821,6 +821,13 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     })
   }
 
+  const animateRemoveScanRowsAsync = async (rowIdsToRemove: string[]) => {
+    if (!rowIdsToRemove.length) return
+    animateRemoveScanRows(rowIdsToRemove)
+    const totalDurationMs = (rowIdsToRemove.length - 1) * 220 + 360 + 40
+    await new Promise((resolve) => setTimeout(resolve, totalDurationMs))
+  }
+
   const collectInventoryFailures = (
     batchResult: any,
   ): { product_name: string; barcode: string; order_id: string; message: string }[] => {
@@ -955,7 +962,17 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     }
   }
 
-  const finalizeAfterSave = ({
+  const refreshDialogData = async () => {
+    setOrdersInitialLoaded(false)
+    setHistoryInitialLoaded(false)
+    setOrderDetailsById({})
+    setItemEditsByOrder({})
+    setSessionScopeOrderIds([])
+    inFlightDetailPromises.current.clear()
+    await Promise.all([loadOrders(), loadHistoryOrders()])
+  }
+
+  const finalizeAfterSave = async ({
     closeOnSuccess,
     inventoryFailuresList,
   }: {
@@ -963,24 +980,31 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     inventoryFailuresList: { product_name: string; barcode: string; order_id: string; message: string }[]
   }) => {
     setInventoryFailures(inventoryFailuresList)
-    setTouchedOrderIds([])
-    setScanLogs([])
-    const failedKeys = new Set(
-      inventoryFailuresList.map((f) => `${f.order_id}::${f.barcode}`),
-    )
     if (closeOnSuccess) {
-      setScanRows([])
+      clearSubmissionBuffers()
+      setRemovingRowIds(new Set())
+      setScanInput("")
+      setActiveViewTab("scan")
+      setLastReconcileSummary(null)
       onOpenChange(false)
       return
     }
+
+    const failedKeys = new Set(inventoryFailuresList.map((f) => `${f.order_id}::${f.barcode}`))
     const rowsToAnimate = scanRows
       .filter((row) => {
         const key = `${row.order_id}::${(row.barcode || "").split(",")[0]?.trim() || row.barcode}`
         return !failedKeys.has(key)
       })
       .map((row) => row.id)
-    animateRemoveScanRows(rowsToAnimate)
-    loadHistoryOrders()
+
+    await animateRemoveScanRowsAsync(rowsToAnimate)
+    clearSubmissionBuffers()
+    setRemovingRowIds(new Set())
+    setScanInput("")
+    setActiveViewTab("scan")
+    setLastReconcileSummary(null)
+    await refreshDialogData()
   }
 
   const handleSubmit = async ({ closeOnSuccess = true, silentSuccess = false }: { closeOnSuccess?: boolean; silentSuccess?: boolean } = {}) => {
@@ -1118,7 +1142,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
                 variant: invFailures.length ? "destructive" : "default",
               })
             }
-            finalizeAfterSave({ closeOnSuccess, inventoryFailuresList: invFailures })
+            await finalizeAfterSave({ closeOnSuccess, inventoryFailuresList: invFailures })
             onVerificationSaved?.()
             return
           }
@@ -1184,7 +1208,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
             description: `Updated ${successCount} order${successCount > 1 ? "s" : ""}.`,
           })
         }
-        finalizeAfterSave({ closeOnSuccess, inventoryFailuresList: [] })
+        await finalizeAfterSave({ closeOnSuccess, inventoryFailuresList: [] })
         onVerificationSaved?.()
         return
       }
