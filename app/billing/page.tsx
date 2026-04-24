@@ -479,8 +479,8 @@ export default function BillingPage() {
 
         <TabsContent value="billing" className="flex-1 overflow-auto p-4">
           <BillingAndCart
-            key={`billing-cart-${billingCartRefreshKey}`}
             onRequestTransferVerification={handleRequestTransferVerification}
+            refreshSignal={billingCartRefreshKey}
           />
         </TabsContent>
 

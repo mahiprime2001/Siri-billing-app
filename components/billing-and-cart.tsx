@@ -156,6 +156,7 @@ interface BillingInstance {
 
 interface BillingAndCartProps {
   onRequestTransferVerification?: (payload: { orderId: string; barcode: string; productName?: string }) => void
+  refreshSignal?: number
 }
 
 type TransferOrderSummary = {
@@ -191,7 +192,7 @@ const createNewBillingInstance = (id: string): BillingInstance => ({
   paymentMethod: "Cash",
 })
 
-export default function BillingAndCart({ onRequestTransferVerification }: BillingAndCartProps) {
+export default function BillingAndCart({ onRequestTransferVerification, refreshSignal }: BillingAndCartProps) {
   const router = useRouter()
   const { toast } = useToast()
   const isOnline = useOnlineStatus()
@@ -244,6 +245,7 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
   const barcodeInputRef = useRef<HTMLInputElement>(null)
   const saveInFlightRef = useRef(false)
   const fetchProductsReqIdRef = useRef(0)
+  const prevRefreshSignalRef = useRef<number | undefined>(refreshSignal)
   const fallbackRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const idleFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const IDLE_FOCUS_DELAY_MS = 5000
@@ -965,6 +967,18 @@ export default function BillingAndCart({ onRequestTransferVerification }: Billin
       source.close()
     }
   }, [currentStore?.id])
+
+  // Refresh products when the parent bumps refreshSignal (e.g., after a transfer
+  // verification save). Refetch in place — do NOT remount or flip
+  // productsFirstStableLoad back to false, otherwise the global blocking overlay
+  // would re-cover the screen and any open dialog above it.
+  useEffect(() => {
+    if (prevRefreshSignalRef.current === refreshSignal) return
+    prevRefreshSignalRef.current = refreshSignal
+    if (refreshSignal === undefined) return
+    if (!currentStore) return
+    fetchProducts()
+  }, [refreshSignal, currentStore?.id])
 
   useEffect(() => {
     if (!activeBillingInstance) return

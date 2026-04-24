@@ -1042,11 +1042,28 @@ def verify_transfer_orders_batch():
         response_status = 200 if failed_count == 0 else (207 if success_count > 0 or duplicate_count > 0 or queued_count > 0 else 400)
         if failed_count == 0 and queued_count > 0 and success_count == 0 and duplicate_count == 0:
             response_status = 202
+
+        # Only run the (expensive) post-batch reconcile when at least one inventory
+        # write inside this batch failed — otherwise the per-item writes already
+        # done in _apply_transfer_order_verification leave nothing for reconcile to
+        # do. The manual /reconcile-inventory endpoint stays available for cleanup.
+        had_inventory_failure = False
+        for entry in results:
+            for inv in entry.get("inventory_results", []) or []:
+                if inv.get("success") is False:
+                    had_inventory_failure = True
+                    break
+            if had_inventory_failure:
+                break
+        if failed_count > 0:
+            had_inventory_failure = True
+
         reconcile_summary = None
-        try:
-            reconcile_summary = _reconcile_store_inventory(supabase, store_id)
-        except Exception as rec_err:
-            app.logger.warning(f"⚠️ Post-batch inventory reconcile failed: {rec_err}")
+        if had_inventory_failure:
+            try:
+                reconcile_summary = _reconcile_store_inventory(supabase, store_id)
+            except Exception as rec_err:
+                app.logger.warning(f"⚠️ Post-batch inventory reconcile failed: {rec_err}")
 
         return jsonify(
             {

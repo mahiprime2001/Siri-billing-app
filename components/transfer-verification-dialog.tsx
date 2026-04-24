@@ -162,6 +162,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   const [historyInitialLoaded, setHistoryInitialLoaded] = useState(false)
   const [guidedScanAll, setGuidedScanAll] = useState(false)
   const [reconciling, setReconciling] = useState(false)
+  const [refreshingAfterSave, setRefreshingAfterSave] = useState(false)
   const [lastReconcileSummary, setLastReconcileSummary] = useState<{
     at: string
     items_considered: number
@@ -293,6 +294,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
       setOrdersInitialLoaded(false)
       setHistoryInitialLoaded(false)
       setLastReconcileSummary(null)
+      setRefreshingAfterSave(false)
       inFlightDetailPromises.current.clear()
       clearAnimationTimers()
       loadOrders()
@@ -804,10 +806,18 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     return <Badge className="bg-green-600 hover:bg-green-600">Verified</Badge>
   }
 
+  // Stagger the fade so users see rows leaving one-by-one, but cap the total
+  // duration: once we exceed MAX_TOTAL_STAGGER_MS the remaining rows fade in
+  // parallel so a 30-row save isn't a 6-second wait.
+  const FADE_OUT_MS = 360
+  const MAX_TOTAL_STAGGER_MS = 1200
+
   const animateRemoveScanRows = (rowIdsToRemove: string[]) => {
     if (!rowIdsToRemove.length) return
+    const count = rowIdsToRemove.length
+    const perRowStagger = count > 1 ? Math.min(220, Math.floor(MAX_TOTAL_STAGGER_MS / (count - 1))) : 0
     rowIdsToRemove.forEach((rowId, index) => {
-      const fadeDelay = index * 220
+      const fadeDelay = index * perRowStagger
       const fadeTimer = setTimeout(() => {
         setRemovingRowIds((prev) => {
           const next = new Set(prev)
@@ -824,7 +834,7 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
           next.delete(rowId)
           return next
         })
-      }, fadeDelay + 360)
+      }, fadeDelay + FADE_OUT_MS)
       timerRefs.current.push(removeTimer)
     })
   }
@@ -832,7 +842,9 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   const animateRemoveScanRowsAsync = async (rowIdsToRemove: string[]) => {
     if (!rowIdsToRemove.length) return
     animateRemoveScanRows(rowIdsToRemove)
-    const totalDurationMs = (rowIdsToRemove.length - 1) * 220 + 360 + 40
+    const count = rowIdsToRemove.length
+    const perRowStagger = count > 1 ? Math.min(220, Math.floor(MAX_TOTAL_STAGGER_MS / (count - 1))) : 0
+    const totalDurationMs = (count - 1) * perRowStagger + FADE_OUT_MS + 40
     await new Promise((resolve) => setTimeout(resolve, totalDurationMs))
   }
 
@@ -1016,22 +1028,28 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
   }
 
   const refreshDialogData = async () => {
+    // Soft refresh: do NOT flip ordersInitialLoaded / historyInitialLoaded back to
+    // false (those drive the first-open blocking overlay). Use refreshingAfterSave
+    // for a lightweight in-place indicator instead.
     const selectedId = selectedOrderId
-    setOrdersInitialLoaded(false)
-    setHistoryInitialLoaded(false)
+    setRefreshingAfterSave(true)
     setOrderDetailsById({})
     setItemEditsByOrder({})
     setSessionScopeOrderIds([])
     inFlightDetailPromises.current.clear()
-    await Promise.all([loadOrders(), loadHistoryOrders()])
-    if (selectedId) {
-      try {
-        const details = await loadOrderDetails(selectedId)
-        setOrderDetailsById((prev) => ({ ...prev, [details.id]: details }))
-        setItemEditsByOrder((prev) => ({ ...prev, [details.id]: createInitialEdits(details) }))
-      } catch (error) {
-        console.error("Error refreshing selected transfer order details:", selectedId, error)
+    try {
+      await Promise.all([loadOrders(), loadHistoryOrders()])
+      if (selectedId) {
+        try {
+          const details = await loadOrderDetails(selectedId)
+          setOrderDetailsById((prev) => ({ ...prev, [details.id]: details }))
+          setItemEditsByOrder((prev) => ({ ...prev, [details.id]: createInitialEdits(details) }))
+        } catch (error) {
+          console.error("Error refreshing selected transfer order details:", selectedId, error)
+        }
       }
+    } finally {
+      setRefreshingAfterSave(false)
     }
   }
 
@@ -1139,6 +1157,97 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
     setActiveViewTab("scan")
     setLastReconcileSummary(null)
     await refreshDialogData()
+  }
+
+  // Apply per-item updates from a successful verify-batch response directly to
+  // local state. This is the fast path: no refetch, no overlay, no waiting for
+  // network round-trips. The server already returned the new verified_qty /
+  // damaged_qty / wrong_store_qty / applied_verified_qty for each touched item.
+  const applyBatchUpdatesLocally = (batchResult: any) => {
+    const results: any[] = Array.isArray(batchResult?.results) ? batchResult.results : []
+    if (!results.length) return
+
+    setOrderDetailsById((prev) => {
+      const next = { ...prev }
+      for (const row of results) {
+        const orderId = row?.order_id
+        if (!orderId) continue
+        const current = next[orderId]
+        if (!current) continue
+        const updatedItems: any[] = Array.isArray(row?.updated_items) ? row.updated_items : []
+        if (!updatedItems.length) continue
+        const patchById = new Map<string, any>()
+        for (const ui of updatedItems) {
+          if (ui?.item_id) patchById.set(String(ui.item_id), ui)
+        }
+        next[orderId] = {
+          ...current,
+          items: current.items.map((item) => {
+            const patch = patchById.get(String(item.id))
+            if (!patch) return item
+            return {
+              ...item,
+              verified_qty: Number(patch.verified_qty ?? item.verified_qty ?? 0),
+              damaged_qty: Number(patch.damaged_qty ?? item.damaged_qty ?? 0),
+              wrong_store_qty: Number(patch.wrong_store_qty ?? item.wrong_store_qty ?? 0),
+              last_verified_at: patch.updated_at ?? item.last_verified_at ?? null,
+            }
+          }),
+        }
+      }
+      return next
+    })
+
+    setItemEditsByOrder((prev) => {
+      const next = { ...prev }
+      for (const row of results) {
+        const orderId = row?.order_id
+        if (!orderId) continue
+        const updatedItems: any[] = Array.isArray(row?.updated_items) ? row.updated_items : []
+        if (!updatedItems.length) continue
+        const orderEdits = { ...(next[orderId] || {}) }
+        for (const ui of updatedItems) {
+          const id = ui?.item_id
+          if (!id) continue
+          orderEdits[id] = {
+            verified_qty: Number(ui.verified_qty ?? 0),
+            damaged_qty: Number(ui.damaged_qty ?? 0),
+            wrong_store_qty: Number(ui.wrong_store_qty ?? 0),
+            damage_reason: "",
+          }
+        }
+        next[orderId] = orderEdits
+      }
+      return next
+    })
+  }
+
+  // Lightweight finalize for the all-success path: patch local state from the
+  // batch response, animate rows out, clear scan buffers — no refetch.
+  const finalizeAfterSuccessFast = (batchResult: any, inventoryFailuresList: InventoryFailure[]) => {
+    setInventoryFailures(inventoryFailuresList)
+    applyBatchUpdatesLocally(batchResult)
+
+    // Clear logs / touched orders immediately. Don't clear scanRows here — the
+    // animation removes each row from scanRows itself as it fades, so we get a
+    // visible fade-out instead of an instant pop. Verified-count badge resets
+    // to 0 immediately because itemEditsByOrder was just patched above.
+    setScanLogs([])
+    setTouchedOrderIds([])
+    setScanInput("")
+    setLastReconcileSummary(null)
+
+    const snapshotRowIds = scanRows.map((row) => row.id)
+    if (snapshotRowIds.length) {
+      void animateRemoveScanRowsAsync(snapshotRowIds).then(() => {
+        setRemovingRowIds(new Set())
+      })
+    }
+
+    // Refresh the active orders list in the background so the order-scope
+    // dropdown reflects status changes (e.g. order moved to "verified"). No
+    // overlay, no blocking — failure is silently ignored.
+    void loadOrders().catch(() => {})
   }
 
   const handleSubmit = async ({ closeOnSuccess = true, silentSuccess = false }: { closeOnSuccess?: boolean; silentSuccess?: boolean } = {}) => {
@@ -1276,7 +1385,20 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
                 variant: invFailures.length ? "destructive" : "default",
               })
             }
-            await finalizeAfterSave({ closeOnSuccess, inventoryFailuresList: invFailures })
+            // Drop the "Saving..." banner immediately — the server work is done.
+            setSaving(false)
+            if (closeOnSuccess) {
+              setInventoryFailures(invFailures)
+              clearSubmissionBuffers()
+              setRemovingRowIds(new Set())
+              setScanInput("")
+              setActiveViewTab("scan")
+              setLastReconcileSummary(null)
+              onOpenChange(false)
+            } else {
+              // Fast path: patch local state from the batch response — no refetch.
+              finalizeAfterSuccessFast(batchResult, invFailures)
+            }
             onVerificationSaved?.()
             return
           }
@@ -1289,7 +1411,8 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
               description: `Saved ${successCount} order(s), queued ${queuedCount} order(s), failed ${failedCount} order(s).`,
               variant: "destructive",
             })
-            await finalizeAfterSave({
+            setSaving(false)
+            void finalizeAfterSave({
               closeOnSuccess,
               inventoryFailuresList: invFailures,
               failedOrderIds,
@@ -1350,7 +1473,8 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
             description: `Updated ${successCount} order${successCount > 1 ? "s" : ""}.`,
           })
         }
-        await finalizeAfterSave({ closeOnSuccess, inventoryFailuresList: [] })
+        setSaving(false)
+        void finalizeAfterSave({ closeOnSuccess, inventoryFailuresList: [] })
         onVerificationSaved?.()
         return
       }
@@ -1362,7 +1486,8 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
           description: `Saved ${successCount} order(s). Failed ${failures.length} order(s).`,
           variant: "destructive",
         })
-        await finalizeAfterSave({
+        setSaving(false)
+        void finalizeAfterSave({
           closeOnSuccess,
           inventoryFailuresList: [],
           failedOrderIds,
@@ -1722,6 +1847,15 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
                 <span>Adding products to the store inventory...</span>
               </div>
               <style>{`@keyframes shimmer { 0% { background-position: 0% 0%; } 100% { background-position: 200% 0%; } }`}</style>
+            </div>
+          )}
+
+          {!saving && refreshingAfterSave && (
+            <div className="sticky top-0 z-20 -mx-6 -mt-2 mb-2 px-6 py-1.5 bg-slate-100 border-b text-slate-700">
+              <div className="flex items-center justify-center gap-2 text-xs">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span>Refreshing latest order state...</span>
+              </div>
             </div>
           )}
 
