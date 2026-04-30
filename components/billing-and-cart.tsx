@@ -62,6 +62,8 @@ interface Store {
   address?: string;
   phone?: string;
   storecode?: string;
+  gstin?: string;
+  gst_state?: string;
 }
 
 interface UserStore {
@@ -1575,7 +1577,7 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
       paymentMethod: activeBillingInstance.paymentMethod,
       timestamp: new Date().toISOString(),
       notes: "",
-      gstin: settings?.gstin || "",
+      gstin: currentStore?.gstin || "",
       companyName: settings?.companyName || "",
       companyAddress: settings?.companyAddress || "",
       companyPhone: settings?.companyPhone || "",

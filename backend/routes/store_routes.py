@@ -6,7 +6,7 @@ from utils.offline_transfer_verification_queue import enqueue_transfer_verificat
 from datetime import datetime, timezone
 import hashlib
 from helpers.utils import read_json_file, write_json_file
-from config.config import STORES_FILE, USER_STORES_FILE, STOREINVENTORY_FILE
+from config.config import STORES_FILE, USER_STORES_FILE, STOREINVENTORY_FILE, GST_REGISTRATIONS_FILE
 
 store_bp = Blueprint('store', __name__)
 
@@ -70,6 +70,36 @@ def _get_current_store_id(supabase, user_id: str):
     return _extract_store_id_from_row(rows[0])
 
 
+def _flatten_gst_join(store: dict) -> dict:
+    """Lift the embedded gst_registrations row to flat gstin / gst_state keys.
+
+    Bill receipts and invoices read `store.gstin`; this keeps that contract
+    after the GST moved to a per-store FK.
+    """
+    if not isinstance(store, dict):
+        return store
+    gst = store.pop("gst_registrations", None) or {}
+    if isinstance(gst, dict):
+        store["gstin"] = gst.get("gst_number")
+        store["gst_state"] = gst.get("state")
+    return store
+
+
+def _resolve_local_gst(store: dict) -> dict:
+    """Offline path: look up the store's GST in the local cache."""
+    if not isinstance(store, dict) or store.get("gstin"):
+        return store
+    reg_id = store.get("gst_registration_id") or store.get("gstRegistrationId")
+    if not reg_id:
+        return store
+    registrations = read_json_file(GST_REGISTRATIONS_FILE, [])
+    match = next((r for r in registrations if str(r.get("id")) == str(reg_id)), None)
+    if match:
+        store["gstin"] = match.get("gst_number") or match.get("gstNumber")
+        store["gst_state"] = match.get("state")
+    return store
+
+
 def _local_resolve_store_for_user(user_id: str):
     user_stores = read_json_file(USER_STORES_FILE, [])
     assigned = next(
@@ -84,7 +114,7 @@ def _local_resolve_store_for_user(user_id: str):
     if assigned and assigned.get("storeId"):
         store = next((s for s in stores if str(s.get("id")) == str(assigned.get("storeId"))), None)
         if store:
-            return store
+            return _resolve_local_gst(dict(store))
 
     # Single-store offline fallback if mapping snapshot is missing.
     inventory_rows = read_json_file(STOREINVENTORY_FILE, [])
@@ -95,7 +125,9 @@ def _local_resolve_store_for_user(user_id: str):
     }
     if len(store_ids) == 1:
         only_store_id = next(iter(store_ids))
-        return next((s for s in stores if str(s.get("id")) == only_store_id), None)
+        store = next((s for s in stores if str(s.get("id")) == only_store_id), None)
+        if store:
+            return _resolve_local_gst(dict(store))
     return None
 
 
@@ -250,21 +282,22 @@ def get_current_user_store():
             return jsonify({"message": "No store assigned to this user"}), 404
         app.logger.info(f"📍 User {current_user_id} is assigned to store {store_id}")
         
-        # Get store details
+        # Get store details, with the GST registration embedded so callers
+        # (printable invoice, thermal receipt) can read store.gstin directly.
         store_response = supabase.table('stores') \
-            .select('*') \
+            .select('*, gst_registrations(gst_number, state)') \
             .eq('id', store_id) \
             .execute()
-        
+
         if not store_response.data or len(store_response.data) == 0:
             app.logger.error(f"❌ Store {store_id} not found in database")
             return jsonify({"message": "Store not found"}), 404
-        
-        store = store_response.data[0]
+
+        store = _flatten_gst_join(dict(store_response.data[0]))
         app.logger.info(f"✅ Found store: {store['name']} (ID: {store['id']})")
-        
+
         return jsonify(store), 200
-        
+
     except Exception as e:
         app.logger.error(f"❌ Error fetching current user store: {str(e)}")
         import traceback

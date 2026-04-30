@@ -1631,7 +1631,10 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
 
     // Pending/Missing should represent true remaining stock, not just this-session scans.
     const missing = Math.max(0, assigned - verifiedTotal - damaged - wrong)
-    return { assigned, verified, damaged, wrong, missing }
+    // Order Summary badge shows session-only verified (resets to 0 on Save). The
+    // cumulative total is preserved as `verifiedTotal` for any callers that
+    // need it, but the visible badge stays focused on this session's work.
+    return { assigned, verified, verifiedTotal, damaged, wrong, missing }
   }, [summaryOrderIds, orderDetailsById, itemEditsByOrder, orders])
 
   const historyOrdersWithVerifiedItems = useMemo(() => {
@@ -2145,29 +2148,81 @@ export default function TransferVerificationDialog({ open, onOpenChange, onVerif
                     <CardTitle className="text-base">Assigned Items (Order: {orderId})</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2">
-                    {details.items.map((item) => {
-                      const edit = itemEditsByOrder[orderId]?.[item.id]
-                      const totalVerifiedQty = Number(edit?.verified_qty ?? item.verified_qty ?? 0)
-                      const totalDamagedQty = Number(edit?.damaged_qty ?? item.damaged_qty ?? 0)
-                      const verifiedQty = Math.max(0, totalVerifiedQty - Number(item.verified_qty || 0))
-                      const damagedQty = Math.max(0, totalDamagedQty - Number(item.damaged_qty || 0))
-                      return (
-                        <div key={item.id} className="border rounded-lg p-2 text-sm flex items-center justify-between">
-                          <div>
-                            <p className="font-medium">{item.products?.name || item.product_id}</p>
-                            <p className="text-xs text-muted-foreground">Barcode: {item.products?.barcode || "N/A"}</p>
-                            <p className="text-xs text-muted-foreground">
-                              Price: {formatPrice(getItemPrice(item))}
-                            </p>
+                    {[...details.items]
+                      .sort((a, b) => {
+                        const editA = itemEditsByOrder[orderId]?.[a.id]
+                        const editB = itemEditsByOrder[orderId]?.[b.id]
+                        const pendingA = Math.max(
+                          0,
+                          Number(a.assigned_qty || 0)
+                            - Number(editA?.verified_qty ?? a.verified_qty ?? 0)
+                            - Number(editA?.damaged_qty ?? a.damaged_qty ?? 0)
+                            - Number(editA?.wrong_store_qty ?? a.wrong_store_qty ?? 0),
+                        )
+                        const pendingB = Math.max(
+                          0,
+                          Number(b.assigned_qty || 0)
+                            - Number(editB?.verified_qty ?? b.verified_qty ?? 0)
+                            - Number(editB?.damaged_qty ?? b.damaged_qty ?? 0)
+                            - Number(editB?.wrong_store_qty ?? b.wrong_store_qty ?? 0),
+                        )
+                        // Pending (unverified) items first; among pending, larger pending qty first.
+                        // Complete items (pending === 0) sink to the bottom.
+                        if ((pendingA > 0) !== (pendingB > 0)) return pendingA > 0 ? -1 : 1
+                        return pendingB - pendingA
+                      })
+                      .map((item) => {
+                        const edit = itemEditsByOrder[orderId]?.[item.id]
+                        const assignedQty = Number(item.assigned_qty || 0)
+                        const totalVerifiedQty = Number(edit?.verified_qty ?? item.verified_qty ?? 0)
+                        const totalDamagedQty = Number(edit?.damaged_qty ?? item.damaged_qty ?? 0)
+                        const totalWrongQty = Number(edit?.wrong_store_qty ?? item.wrong_store_qty ?? 0)
+                        const sessionVerified = Math.max(0, totalVerifiedQty - Number(item.verified_qty || 0))
+                        const sessionDamaged = Math.max(0, totalDamagedQty - Number(item.damaged_qty || 0))
+                        const pendingQty = Math.max(0, assignedQty - totalVerifiedQty - totalDamagedQty - totalWrongQty)
+                        const isComplete = pendingQty === 0 && assignedQty > 0
+                        return (
+                          <div
+                            key={item.id}
+                            className={`border rounded-lg p-2 text-sm flex items-center justify-between ${
+                              isComplete ? "bg-emerald-50/60 border-emerald-200" : ""
+                            }`}
+                          >
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium">{item.products?.name || item.product_id}</p>
+                                {isComplete && (
+                                  <Badge variant="outline" className="border-emerald-300 text-emerald-700 bg-white">
+                                    ✓ Complete
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground">Barcode: {item.products?.barcode || "N/A"}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Price: {formatPrice(getItemPrice(item))}
+                              </p>
+                            </div>
+                            <div className="text-xs text-right space-y-0.5">
+                              <p>Assigned: {assignedQty}</p>
+                              <p>
+                                Verified: {totalVerifiedQty}
+                                {sessionVerified > 0 && (
+                                  <span className="ml-1 text-emerald-700">(+{sessionVerified})</span>
+                                )}
+                              </p>
+                              <p>
+                                Damaged: {totalDamagedQty}
+                                {sessionDamaged > 0 && (
+                                  <span className="ml-1 text-amber-700">(+{sessionDamaged})</span>
+                                )}
+                              </p>
+                              <p className={pendingQty > 0 ? "text-slate-700" : "text-emerald-700"}>
+                                Pending: {pendingQty}
+                              </p>
+                            </div>
                           </div>
-                          <div className="text-xs text-right">
-                            <p>Assigned: {item.assigned_qty}</p>
-                            <p>Verified: {verifiedQty}</p>
-                            <p>Damaged: {damagedQty}</p>
-                          </div>
-                        </div>
-                      )
-                    })}
+                        )
+                      })}
                   </CardContent>
                 </Card>
               )

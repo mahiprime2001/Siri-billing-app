@@ -298,6 +298,14 @@ CREATE TABLE public.storeinventory (
   CONSTRAINT storeinventory_ibfk_2 FOREIGN KEY (productid) REFERENCES public.products(id),
   CONSTRAINT storeinventory_ibfk_1 FOREIGN KEY (storeid) REFERENCES public.stores(id)
 );
+CREATE TABLE public.gst_registrations (
+  id character varying NOT NULL,
+  gst_number character varying NOT NULL UNIQUE,
+  state character varying NOT NULL,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT gst_registrations_pkey PRIMARY KEY (id)
+);
 CREATE TABLE public.stores (
   id character varying NOT NULL,
   name character varying,
@@ -307,7 +315,9 @@ CREATE TABLE public.stores (
   createdat timestamp without time zone,
   updatedat timestamp without time zone,
   storecode character varying,
-  CONSTRAINT stores_pkey PRIMARY KEY (id)
+  gst_registration_id character varying NOT NULL,
+  CONSTRAINT stores_pkey PRIMARY KEY (id),
+  CONSTRAINT stores_gst_registration_fk FOREIGN KEY (gst_registration_id) REFERENCES public.gst_registrations(id)
 );
 CREATE TABLE public.systemsettings (
   gstin character varying,

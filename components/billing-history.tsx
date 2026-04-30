@@ -61,7 +61,6 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
   const [showPreview, setShowPreview] = useState(false)
   const [settings, setSettings] = useState<{
-    gstin?: string
     companyName?: string
     companyAddress?: string
     companyPhone?: string
@@ -211,7 +210,6 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
       if (!response.ok) return
       const data = await response.json()
       setSettings({
-        gstin: data?.gstin || "",
         companyName: data?.companyName || "",
         companyAddress: data?.companyAddress || "",
         companyPhone: data?.companyPhone || "",
@@ -563,7 +561,7 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
       companyAddress: settings?.companyAddress || invoice.companyAddress || "",
       companyPhone: settings?.companyPhone || invoice.companyPhone || "",
       companyEmail: settings?.companyEmail || invoice.companyEmail || "",
-      gstin: settings?.gstin || invoice.gstin || "",
+      gstin: invoice.gstin || "",
     } as Invoice)
     setShowPreview(true)
   }
@@ -585,7 +583,7 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
         companyAddress: settings?.companyAddress || invoice.companyAddress || "",
         companyPhone: settings?.companyPhone || invoice.companyPhone || "",
         companyEmail: settings?.companyEmail || invoice.companyEmail || "",
-        gstin: settings?.gstin || invoice.gstin || "",
+        gstin: invoice.gstin || "",
       } as Invoice
 
       setHistoryPrintInvoice(printable)

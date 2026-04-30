@@ -55,6 +55,7 @@ OFFLINE_DAMAGE_RETURN_QUEUE_FILE = os.path.join(JSON_DIR, "offline_damage_return
 OFFLINE_TRANSFER_VERIFICATION_QUEUE_FILE = os.path.join(JSON_DIR, "offline_transfer_verification_queue.json")
 BILL_IDEMPOTENCY_FILE = os.path.join(JSON_DIR, "bill_idempotency.json")
 BILL_ITEM_SNAPSHOTS_FILE = os.path.join(JSON_DIR, "bill_item_snapshots.json")
+GST_REGISTRATIONS_FILE = os.path.join(JSON_DIR, "gst_registrations.json")
 
 # =========================================================
 # 📝 LOGGING
