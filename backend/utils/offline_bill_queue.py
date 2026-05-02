@@ -242,6 +242,28 @@ def enqueue_bill_create(current_user_id: str, bill_payload: Dict[str, Any]) -> D
     return {"queue_id": queue_id, "bill_id": forced_bill_id}
 
 
+def read_pending_offline_invoice_serials(prefix: str) -> list:
+    """Return serial numbers of pending offline-queued bills matching the given invoice prefix.
+
+    Acquires the queue lock so callers don't observe a torn write during enqueue.
+    """
+    if not prefix:
+        return []
+    with _queue_lock:
+        queue = read_json_file(OFFLINE_BILL_QUEUE_FILE, [])
+    if not isinstance(queue, list):
+        return []
+    serials = []
+    for queued in queue:
+        if not isinstance(queued, dict):
+            continue
+        serials.append(_extract_serial(str(queued.get("forced_bill_id") or ""), prefix))
+        payload = queued.get("payload") or {}
+        if isinstance(payload, dict):
+            serials.append(_extract_serial(str(payload.get("_forced_bill_id") or ""), prefix))
+    return serials
+
+
 def get_queue_size() -> int:
     with _queue_lock:
         queue = read_json_file(OFFLINE_BILL_QUEUE_FILE, [])

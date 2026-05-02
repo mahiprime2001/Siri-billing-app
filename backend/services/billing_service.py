@@ -4,6 +4,8 @@ from typing import Dict, Any, Optional, List
 import re
 from zoneinfo import ZoneInfo
 
+from config.config import BILLS_FILE
+from helpers.utils import read_json_file
 from utils.connection_pool import get_supabase_client
 from data_access.data_access import update_both_inventory_and_product_stock
 from utils.stock_stream import publish
@@ -32,6 +34,10 @@ def _extract_serial_for_prefix(invoice_id: Optional[str], prefix: str) -> int:
 
 
 def _generate_daily_invoice_id(supabase, store_id: str) -> str:
+    # Local import avoids a circular import at module load time —
+    # offline_bill_queue.py already imports from this module.
+    from utils.offline_bill_queue import read_pending_offline_invoice_serials
+
     store_code = "STR"
     try:
         store_resp = (
@@ -61,6 +67,32 @@ def _generate_daily_invoice_id(supabase, store_id: str) -> str:
         )
         for row in (response.data or []):
             max_serial = max(max_serial, _extract_serial_for_prefix(str(row.get("id") or ""), prefix))
+    except Exception:
+        pass
+
+    # Also consider bills queued locally while offline that have not yet been
+    # pushed to Supabase. Without this, a bill created online right after the
+    # network returns can collide with a still-pending offline bill ID.
+    try:
+        for serial in read_pending_offline_invoice_serials(prefix):
+            if serial > max_serial:
+                max_serial = serial
+    except Exception:
+        pass
+
+    # And the local bills.json cache, which holds offline snapshots before
+    # the queue processor pushes them upstream.
+    try:
+        local_bills = read_json_file(BILLS_FILE, [])
+        if isinstance(local_bills, list):
+            for bill in local_bills:
+                if not isinstance(bill, dict):
+                    continue
+                if str(bill.get("storeid") or "") != str(store_id):
+                    continue
+                serial = _extract_serial_for_prefix(str(bill.get("id") or ""), prefix)
+                if serial > max_serial:
+                    max_serial = serial
     except Exception:
         pass
 
@@ -95,6 +127,35 @@ def _bill_has_items(supabase, bill_id: str) -> bool:
         return bool(response.data)
     except Exception:
         return False
+
+
+def _payload_matches_existing_bill(
+    existing_bill: Optional[Dict[str, Any]],
+    data: Dict[str, Any],
+    current_user_id: str,
+) -> bool:
+    """Cheap check that an existing Supabase bill represents the same transaction as `data`.
+
+    Guards the idempotent-replay shortcut: if totals/parties don't match, the
+    `forced_bill_id` collided with a different bill (e.g. an online bill that
+    grabbed the same number before the offline queue drained) — we must not
+    silently discard the queued payload.
+    """
+    if not existing_bill or not isinstance(existing_bill, dict):
+        return False
+    try:
+        existing_total = round(float(existing_bill.get("total") or 0), 2)
+        payload_total = round(float(data.get("total_amount") or 0), 2)
+    except (TypeError, ValueError):
+        return False
+    if existing_total != payload_total:
+        return False
+    if str(existing_bill.get("userid") or "") != str(current_user_id or ""):
+        return False
+    expected_customer = str(data.get("customer_id") or DEFAULT_WALKIN_CUSTOMER_ID)
+    if str(existing_bill.get("customerid") or "") != expected_customer:
+        return False
+    return True
 
 
 def _parse_positive_int(value: Any, default: int = 0) -> int:
@@ -276,16 +337,24 @@ def create_bill_transaction(
         existing_bill = _fetch_existing_bill_by_id(supabase, forced_bill_id)
         if existing_bill:
             if _bill_has_items(supabase, forced_bill_id):
-                return {
-                    "message": "Bill already exists",
-                    "bill_id": forced_bill_id,
-                    "bill": existing_bill,
-                    "items_created": 0,
-                    "total_amount": data.get("total_amount", 0),
-                    "idempotent_replay": True,
-                }
-            created_bill = existing_bill
-            skip_bill_insert = True
+                if _payload_matches_existing_bill(existing_bill, data, current_user_id):
+                    return {
+                        "message": "Bill already exists",
+                        "bill_id": forced_bill_id,
+                        "bill": existing_bill,
+                        "items_created": 0,
+                        "total_amount": data.get("total_amount", 0),
+                        "idempotent_replay": True,
+                    }
+                # The forced ID belongs to a different transaction. Reassign
+                # to a fresh ID and proceed as a new insert; clearing
+                # forced_bill_id also lets the duplicate-retry loop below
+                # regenerate further IDs if needed.
+                forced_bill_id = None
+                bill_id = _generate_daily_invoice_id(supabase, store_id)
+            else:
+                created_bill = existing_bill
+                skip_bill_insert = True
 
     discount_percentage = data.get("discount_percentage", 0) or 0
     discount_amount = data.get("discount_amount", 0) or 0
@@ -346,14 +415,19 @@ def create_bill_transaction(
                     if forced_bill_id:
                         existing_bill = _fetch_existing_bill_by_id(supabase, forced_bill_id)
                         if existing_bill and _bill_has_items(supabase, forced_bill_id):
-                            return {
-                                "message": "Bill already exists",
-                                "bill_id": forced_bill_id,
-                                "bill": existing_bill,
-                                "items_created": 0,
-                                "total_amount": data.get("total_amount", 0),
-                                "idempotent_replay": True,
-                            }
+                            if _payload_matches_existing_bill(existing_bill, data, current_user_id):
+                                return {
+                                    "message": "Bill already exists",
+                                    "bill_id": forced_bill_id,
+                                    "bill": existing_bill,
+                                    "items_created": 0,
+                                    "total_amount": data.get("total_amount", 0),
+                                    "idempotent_replay": True,
+                                }
+                            # Mismatch: the forced ID is taken by a different
+                            # transaction. Drop the forced binding and let the
+                            # loop retry with a freshly generated ID.
+                            forced_bill_id = None
                     bill_id = _generate_daily_invoice_id(supabase, store_id)
                     bill_data["id"] = bill_id
                     continue
