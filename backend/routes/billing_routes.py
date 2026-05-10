@@ -870,9 +870,8 @@ def revise_bill(bill_id):
         try:
             bill_update_response = supabase.table("bills").update(update_data).eq("id", bill_id).execute()
         except APIError as err:
-            err_payload = err.args[0] if err.args else {}
-            err_code = str(err_payload.get("code") or "")
-            err_message = str(err_payload.get("message") or "")
+            err_code = str(getattr(err, "code", "") or "")
+            err_message = str(getattr(err, "message", "") or "")
             if err_code == "PGRST204" and "tax_amount" in err_message and "tax_amount" in update_data:
                 app.logger.warning(f"bills.tax_amount not found; retrying revise without tax_amount for {bill_id}")
                 update_data.pop("tax_amount", None)
