@@ -22,6 +22,15 @@ interface RawInvoice {
   [key: string]: any
 }
 
+interface BillReplacementProductMeta {
+  id?: string
+  name?: string
+  barcode?: string
+  hsn_code?: string
+  tax?: number
+  selling_price?: number
+}
+
 interface BillReplacement {
   id?: string
   bill_id: string
@@ -31,6 +40,12 @@ interface BillReplacement {
   quantity: number
   price?: number
   final_amount?: number
+  damage_reason?: string | null
+  is_damaged?: boolean
+  damaged_qty?: number
+  // Backend now enriches with these so we can show real names + barcodes.
+  replaced_product?: BillReplacementProductMeta
+  new_product?: BillReplacementProductMeta
 }
 
 interface BillEvent {
@@ -441,18 +456,45 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
   const enrichItemsWithReplacementMeta = useCallback((items: any[], replacements: BillReplacement[]) => {
     if (!replacements.length) return items
 
-    const qtyByNewProductId = new Map<string, number>()
+    // Group replacements by the new product so each line on the bill can
+    // surface what was swapped in and what came out the other way.
+    const byNewProductId = new Map<string, BillReplacement[]>()
     replacements.forEach((replacement) => {
-      const existing = qtyByNewProductId.get(replacement.new_product_id) || 0
-      qtyByNewProductId.set(replacement.new_product_id, existing + Number(replacement.quantity || 0))
+      const list = byNewProductId.get(replacement.new_product_id) || []
+      list.push(replacement)
+      byNewProductId.set(replacement.new_product_id, list)
     })
 
     return items.map((item: any) => {
-      const replacementQty = qtyByNewProductId.get(item.productId) || 0
-      if (!replacementQty) return item
+      const matches = byNewProductId.get(item.productId)
+      if (!matches || matches.length === 0) return item
+
+      const replacementQty = matches.reduce((sum, r) => sum + Number(r.quantity || 0), 0)
+      const mappedQty = Math.max(0, Math.min(item.quantity || 0, replacementQty))
+      // Pick the first match for the inline label; full breakdown lives in
+      // the replacement summary section below the items table.
+      const primary = matches[0]
+      const replacedName = primary.replaced_product?.name || ""
+      const inlineLabel = replacedName
+        ? `Replaces ${mappedQty} × ${replacedName}`
+        : `Replaced Qty: ${mappedQty}`
+
       return {
         ...item,
-        replacementTag: `Replaced Qty: ${Math.max(0, Math.min(item.quantity || 0, replacementQty))}`,
+        replacementTag: inlineLabel,
+        replacementDetails: matches.map((r) => ({
+          quantity: Number(r.quantity || 0),
+          finalAmount: Number(r.final_amount || 0),
+          originalBillId: r.original_bill_id || "",
+          damageReason: r.damage_reason || "",
+          replacedProductId: r.replaced_product_id,
+          replacedName: r.replaced_product?.name || "",
+          replacedBarcode: r.replaced_product?.barcode || "",
+          replacedHsnCode: r.replaced_product?.hsn_code || "",
+          newProductId: r.new_product_id,
+          newName: r.new_product?.name || item.name || "",
+          newBarcode: r.new_product?.barcode || item.barcodes || "",
+        })),
       }
     })
   }, [])
@@ -557,6 +599,7 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
       ...invoice,
       items: enrichedItems,
       isReplacementBill: replacements.length > 0,
+      replacementSummary: replacements,
       companyName: settings?.companyName || invoice.companyName || "",
       companyAddress: settings?.companyAddress || invoice.companyAddress || "",
       companyPhone: settings?.companyPhone || invoice.companyPhone || "",
@@ -579,6 +622,7 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
         ...invoice,
         items: enrichedItems,
         isReplacementBill: replacements.length > 0,
+        replacementSummary: replacements,
         companyName: settings?.companyName || invoice.companyName || "",
         companyAddress: settings?.companyAddress || invoice.companyAddress || "",
         companyPhone: settings?.companyPhone || invoice.companyPhone || "",

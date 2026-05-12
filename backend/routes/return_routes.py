@@ -158,7 +158,30 @@ def search_bills():
             return jsonify({"message": "Invalid search type"}), 400
 
         bills = list(bills_map.values())
-        
+
+        # Build a set of bill ids that have already been the source of a
+        # replacement. A bill becomes "consumed" after the first replacement
+        # — we don't allow the same bill to be replaced again.
+        bill_ids_in_results = [bill['id'] for bill in bills if bill.get('id')]
+        replaced_bill_ids: set = set()
+        if bill_ids_in_results:
+            try:
+                replaced_lookup = (
+                    supabase.table('replacements')
+                    .select('original_bill_id')
+                    .in_('original_bill_id', bill_ids_in_results)
+                    .execute()
+                )
+                replaced_bill_ids = {
+                    row.get('original_bill_id')
+                    for row in (replaced_lookup.data or [])
+                    if row.get('original_bill_id')
+                }
+            except Exception as lookup_err:
+                app.logger.warning(
+                    f"Failed to check replacement history for bills: {lookup_err}"
+                )
+
         # ✅ Transform bills to include items with product names via JOIN
         transformed_bills = []
         for bill in bills:
@@ -166,11 +189,11 @@ def search_bills():
             bill_items_response = supabase.table('billitems').select(
                 '*, products(id, name, selling_price, hsn_codes(tax))'
             ).eq('billid', bill['id']).execute()
-            
+
             bill_items = bill_items_response.data if bill_items_response.data else []
-            
+
             customer_data = bill.get('customers') or {}
-            
+
             transformed_items = []
             for item in bill_items:
                 product = item.get('products') or {}
@@ -185,6 +208,8 @@ def search_bills():
                     'total': float(item.get('total', 0))
                 })
 
+            has_been_replaced = bill['id'] in replaced_bill_ids
+
             transformed_bills.append({
                 'id': bill['id'],
                 'storeId': bill.get('storeid') or bill.get('storeId') or '',
@@ -197,7 +222,9 @@ def search_bills():
                 'discountPercentage': float(bill.get('discount_percentage', 0) or 0),
                 'total': float(bill.get('total', 0)),
                 'timestamp': bill.get('timestamp', bill.get('created_at', '')),
-                'items': transformed_items
+                'items': transformed_items,
+                'hasBeenReplaced': has_been_replaced,
+                'has_been_replaced': has_been_replaced,
             })
         
         app.logger.info(f"✅ Found {len(transformed_bills)} bills")

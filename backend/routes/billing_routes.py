@@ -4,6 +4,7 @@ from auth.auth import require_auth
 from postgrest.exceptions import APIError
 from utils.connection_pool import get_supabase_client
 from datetime import datetime, timezone, timedelta
+from typing import Any, Dict, List
 from zoneinfo import ZoneInfo
 import threading
 import traceback
@@ -678,6 +679,58 @@ def get_bill_edit_payload(bill_id):
         raw_items = items_response.data if items_response.data else []
         snapshot_buckets = _build_snapshot_buckets(get_bill_item_snapshots(bill_id))
 
+        # Look up everything in the replacements table that touches this bill,
+        # in either direction:
+        # - bill_id == this bill: products in this bill that came in as a
+        #   replacement (this is a replacement bill).
+        # - original_bill_id == this bill: products on this bill that have
+        #   since been replaced via a later bill.
+        # Items that are fully tied to either side are filtered out of the
+        # edit payload — the cashier shouldn't be able to mutate replacement
+        # linkages from here without breaking inventory accounting.
+        new_qty_by_product: Dict[str, int] = {}
+        replaced_qty_by_product: Dict[str, int] = {}
+        try:
+            rep_destination = (
+                supabase.table("replacements")
+                .select("new_product_id, quantity")
+                .eq("bill_id", bill_id)
+                .execute()
+            )
+            for row in rep_destination.data or []:
+                pid = row.get("new_product_id")
+                if not pid:
+                    continue
+                try:
+                    qty = int(row.get("quantity") or 0)
+                except (TypeError, ValueError):
+                    qty = 0
+                if qty <= 0:
+                    continue
+                new_qty_by_product[str(pid)] = new_qty_by_product.get(str(pid), 0) + qty
+
+            rep_origin = (
+                supabase.table("replacements")
+                .select("replaced_product_id, quantity")
+                .eq("original_bill_id", bill_id)
+                .execute()
+            )
+            for row in rep_origin.data or []:
+                pid = row.get("replaced_product_id")
+                if not pid:
+                    continue
+                try:
+                    qty = int(row.get("quantity") or 0)
+                except (TypeError, ValueError):
+                    qty = 0
+                if qty <= 0:
+                    continue
+                replaced_qty_by_product[str(pid)] = replaced_qty_by_product.get(str(pid), 0) + qty
+        except Exception as rep_lookup_err:
+            app.logger.warning(
+                f"Failed to load replacement linkage for edit-payload of {bill_id}: {rep_lookup_err}"
+            )
+
         items = []
         for item in raw_items:
             product = item.get("products") or {}
@@ -701,23 +754,55 @@ def get_bill_edit_payload(bill_id):
             )
             name = product.get("name") or snapshot.get("name") or item.get("name") or "Unknown Item"
             barcode = product.get("barcode") or snapshot.get("barcode") or ""
+            quantity = int(item.get("quantity") or 0)
+            product_id_str = str(item.get("productid") or "")
+
+            replacement_in_qty = new_qty_by_product.get(product_id_str, 0)
+            replacement_out_qty = replaced_qty_by_product.get(product_id_str, 0)
+            locked_qty = max(replacement_in_qty, replacement_out_qty)
+
+            # Determine whether this whole line is locked (cannot be reduced
+            # below `locked_qty`) and why. We still include the item in the
+            # response so the cashier can see what's on the bill — the UI
+            # renders these as read-only rows with a clear reason.
+            if replacement_in_qty >= quantity and replacement_in_qty > 0:
+                lock_reason = "replacement_in"
+            elif replacement_out_qty >= quantity and replacement_out_qty > 0:
+                lock_reason = "replacement_out"
+            elif locked_qty > 0:
+                lock_reason = "partial"
+            else:
+                lock_reason = None
 
             items.append(
                 {
                     "id": item.get("id"),
                     "productId": item.get("productid"),
                     "name": name,
-                    "quantity": item.get("quantity") or 0,
+                    "quantity": quantity,
                     "price": float(item.get("price") or 0),
                     "total": float(item.get("total") or 0),
                     "barcodes": barcode,
                     "taxPercentage": float(tax_percentage or 0),
                     "hsnCode": hsn_code,
+                    "replacementLockedQty": locked_qty,
+                    "isReplacementInvolved": locked_qty > 0,
+                    "isReplacementLocked": lock_reason in ("replacement_in", "replacement_out"),
+                    "replacementLockReason": lock_reason,
                 }
             )
 
-        app.logger.info(f"✅ Edit payload fetched for bill {bill_id} with {len(items)} items")
-        return jsonify({"bill": {**bill, **edit_meta}, "items": items, **edit_meta}), 200
+        app.logger.info(
+            f"✅ Edit payload fetched for bill {bill_id} with {len(items)} items "
+            f"({sum(1 for i in items if i.get('isReplacementLocked'))} locked due to replacement linkage)"
+        )
+        return jsonify(
+            {
+                "bill": {**bill, **edit_meta},
+                "items": items,
+                **edit_meta,
+            }
+        ), 200
     except Exception as e:
         app.logger.error(f"❌ Error fetching edit payload for {bill_id}: {str(e)}")
         app.logger.error(traceback.format_exc())
@@ -751,6 +836,84 @@ def revise_bill(bill_id):
         new_items = payload.get("items") or []
         if not isinstance(new_items, list) or len(new_items) == 0:
             return jsonify({"message": "At least one item is required for revision"}), 400
+
+        # Server-side guard: reject revise if the proposed items try to drop a
+        # quantity below what the `replacements` table has locked for this bill
+        # (either as the destination of a replacement OR as the original bill
+        # whose item was later replaced). The edit-payload endpoint hides
+        # those, but a stale client could still try.
+        locked_in_qty: Dict[str, int] = {}
+        locked_out_qty: Dict[str, int] = {}
+        try:
+            rep_in = (
+                supabase.table("replacements")
+                .select("new_product_id, quantity")
+                .eq("bill_id", bill_id)
+                .execute()
+            )
+            for row in rep_in.data or []:
+                pid = row.get("new_product_id")
+                if not pid:
+                    continue
+                try:
+                    q = int(row.get("quantity") or 0)
+                except (TypeError, ValueError):
+                    q = 0
+                if q > 0:
+                    locked_in_qty[str(pid)] = locked_in_qty.get(str(pid), 0) + q
+
+            rep_out = (
+                supabase.table("replacements")
+                .select("replaced_product_id, quantity")
+                .eq("original_bill_id", bill_id)
+                .execute()
+            )
+            for row in rep_out.data or []:
+                pid = row.get("replaced_product_id")
+                if not pid:
+                    continue
+                try:
+                    q = int(row.get("quantity") or 0)
+                except (TypeError, ValueError):
+                    q = 0
+                if q > 0:
+                    locked_out_qty[str(pid)] = locked_out_qty.get(str(pid), 0) + q
+        except Exception as lock_err:
+            app.logger.warning(
+                f"Failed to fetch replacement locks for revise {bill_id}: {lock_err}"
+            )
+
+        if locked_in_qty or locked_out_qty:
+            proposed_qty_by_product: Dict[str, int] = {}
+            for item in new_items:
+                pid = item.get("product_id") or item.get("productId")
+                if not pid:
+                    continue
+                try:
+                    q = int(item.get("quantity") or 0)
+                except (TypeError, ValueError):
+                    q = 0
+                if q <= 0:
+                    continue
+                proposed_qty_by_product[str(pid)] = proposed_qty_by_product.get(str(pid), 0) + q
+
+            for product_id, required_qty in locked_in_qty.items():
+                if proposed_qty_by_product.get(product_id, 0) < required_qty:
+                    return jsonify({
+                        "message": (
+                            f"Cannot edit product {product_id} on this bill — it came in as a "
+                            "replacement and is locked. Cancel the replacement first to remove it."
+                        ),
+                    }), 409
+
+            for product_id, required_qty in locked_out_qty.items():
+                if proposed_qty_by_product.get(product_id, 0) < required_qty:
+                    return jsonify({
+                        "message": (
+                            f"Cannot reduce product {product_id} on this bill below the quantity "
+                            "that has already been replaced via another bill."
+                        ),
+                    }), 409
 
         old_items_response = (
             supabase.table("billitems")
@@ -926,7 +1089,9 @@ def cancel_bill(bill_id):
 @billing_bp.route('/bills/<bill_id>/replacements', methods=['GET'])
 @require_auth
 def get_bill_replacements(bill_id):
-    """Get replacement rows for a specific bill"""
+    """Get replacement rows for a specific bill, enriched with product
+    names/barcodes/hsn for both the replaced and new products so the history
+    view + printable invoice can render meaningful detail."""
     try:
         current_user_id = get_jwt_identity()
         app.logger.info(f"User {current_user_id} fetching replacements for bill {bill_id}")
@@ -938,8 +1103,44 @@ def get_bill_replacements(bill_id):
             .execute()
 
         replacements = response.data if response.data else []
-        app.logger.info(f"✅ Fetched {len(replacements)} replacements for bill {bill_id}")
-        return jsonify(replacements), 200
+
+        # Collect every product id referenced (replaced + new) and resolve
+        # name/barcode/hsn in a single join, then graft onto each row.
+        product_ids = []
+        for replacement in replacements:
+            for key in ("replaced_product_id", "new_product_id"):
+                pid = replacement.get(key)
+                if pid:
+                    product_ids.append(str(pid))
+        unique_product_ids = list(dict.fromkeys(product_ids))
+
+        product_meta_map = (
+            _fetch_product_meta_map(supabase, unique_product_ids) if unique_product_ids else {}
+        )
+
+        def _meta(pid):
+            data = product_meta_map.get(str(pid)) if pid else None
+            if not data:
+                return {"id": pid, "name": "", "barcode": "", "hsn_code": "", "tax": 0}
+            return {
+                "id": data.get("id"),
+                "name": data.get("name") or "",
+                "barcode": data.get("barcode") or "",
+                "hsn_code": data.get("hsn_code") or "",
+                "tax": data.get("tax") or 0,
+                "selling_price": data.get("selling_price"),
+            }
+
+        enriched = []
+        for replacement in replacements:
+            enriched.append({
+                **replacement,
+                "replaced_product": _meta(replacement.get("replaced_product_id")),
+                "new_product": _meta(replacement.get("new_product_id")),
+            })
+
+        app.logger.info(f"✅ Fetched {len(enriched)} replacements for bill {bill_id}")
+        return jsonify(enriched), 200
     except Exception as e:
         app.logger.error(f"❌ Error fetching bill replacements: {str(e)}")
         app.logger.error(traceback.format_exc())

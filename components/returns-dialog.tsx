@@ -36,6 +36,10 @@ interface Bill {
   discountAmount?: number
   discountPercentage?: number
   timestamp: string
+  // Set by the backend when a replacement row already references this bill.
+  // Used to lock the bill out of further replacement flows.
+  hasBeenReplaced?: boolean
+  has_been_replaced?: boolean
 }
 
 interface ReturnRequest {
@@ -451,12 +455,25 @@ export default function ReturnsDialog({
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {searchResults.map((bill) => (
-                    <Card key={bill.id} className="border">
+                  {searchResults.map((bill) => {
+                    const billAlreadyReplaced = Boolean(bill.hasBeenReplaced ?? bill.has_been_replaced);
+                    // In replacement mode, the whole bill is locked. In returns
+                    // mode the bill stays usable (returns and replacements are
+                    // independent flows).
+                    const lockForReplacement = billAlreadyReplaced && flowMode === "replacement";
+                    return (
+                    <Card key={bill.id} className={`border ${lockForReplacement ? "opacity-60" : ""}`}>
                       <CardHeader className="pb-3">
                         <div className="flex justify-between items-start">
                           <div>
-                            <CardTitle className="text-md">Invoice: {bill.id}</CardTitle>
+                            <CardTitle className="text-md flex items-center gap-2">
+                              Invoice: {bill.id}
+                              {billAlreadyReplaced && (
+                                <Badge variant="destructive" className="text-[10px]">
+                                  Already replaced
+                                </Badge>
+                              )}
+                            </CardTitle>
                             <div className="flex gap-4 mt-2 text-sm text-muted-foreground">
                               <span className="flex items-center gap-1">
                                 <User className="h-3 w-3" />
@@ -483,17 +500,26 @@ export default function ReturnsDialog({
                       </CardHeader>
                       <CardContent>
                         <Label className="text-sm font-semibold">Items Available for Return:</Label>
+                        {lockForReplacement && (
+                          <p className="text-xs text-destructive mt-1">
+                            This bill has already been used for a replacement. It can't be replaced again.
+                          </p>
+                        )}
                         <div className="space-y-2 mt-2">
                           {bill.items.map((item, idx) => {
                             const itemId = `${bill.id}-${idx}`
                             const isSelected = isItemSelected(itemId)
                             const selectedQuantity = getItemQuantity(itemId)
-                            
+
                             return (
                               <div key={idx} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent/50">
                                 <Checkbox
                                   checked={isSelected}
-                                  onCheckedChange={(checked) => handleItemSelection(itemId, checked as boolean, item.quantity)}
+                                  disabled={lockForReplacement}
+                                  onCheckedChange={(checked) => {
+                                    if (lockForReplacement) return;
+                                    handleItemSelection(itemId, checked as boolean, item.quantity);
+                                  }}
                                 />
                                 <div className="flex-1">
                                   <div className="font-medium">{item.productName}</div>
@@ -503,7 +529,7 @@ export default function ReturnsDialog({
                                     <span>Total: ₹{(getItemUnitPriceWithTax(item, bill) * item.quantity).toFixed(2)}</span>
                                   </div>
                                 </div>
-                                {isSelected && (
+                                {isSelected && !lockForReplacement && (
                                   <div className="flex items-center gap-2">
                                     <Label htmlFor={`qty-${itemId}`} className="text-sm whitespace-nowrap">Return Qty:</Label>
                                     <Input
@@ -523,7 +549,7 @@ export default function ReturnsDialog({
                         </div>
                       </CardContent>
                     </Card>
-                  ))}
+                  )})}
                 </CardContent>
               </Card>
             )}

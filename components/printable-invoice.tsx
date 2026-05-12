@@ -387,12 +387,67 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
           {divider}
 
           {/* ── TERMS ── */}
+          {/* ── REPLACEMENT SUMMARY ──
+             Renders one block per replacement row attached to this bill.
+             Shows what was returned (replaced product + barcode + original
+             bill id + reason) and what was given (new product + barcode + qty
+             + extra charged). Only visible on replacement bills. */}
+          {Array.isArray((invoice as any).replacementSummary) &&
+            (invoice as any).replacementSummary.length > 0 && (
+              <>
+                <div style={{ fontSize: "10px", marginBottom: "6px" }}>
+                  <div style={{ fontWeight: 800, fontSize: "12px", marginBottom: "3px" }}>
+                    Replacement Details
+                  </div>
+                  {((invoice as any).replacementSummary as any[]).map((rep, idx) => {
+                    const qty = Number(rep?.quantity || 0);
+                    const finalAmount = Number(rep?.final_amount || 0);
+                    const originalBillId = String(rep?.original_bill_id || "");
+                    const replacedName = rep?.replaced_product?.name || rep?.replaced_product_id || "";
+                    const replacedBarcode = String(rep?.replaced_product?.barcode || "").split(",")[0].trim();
+                    const newName = rep?.new_product?.name || rep?.new_product_id || "";
+                    const newBarcode = String(rep?.new_product?.barcode || "").split(",")[0].trim();
+                    const reason = rep?.damage_reason || "";
+                    return (
+                      <div
+                        key={rep?.id || idx}
+                        style={{
+                          borderBottom: "1px dashed #000",
+                          paddingBottom: "3px",
+                          marginBottom: "3px",
+                        }}
+                      >
+                        <div style={{ fontWeight: 700 }}>
+                          #{idx + 1} · Qty: {qty}
+                          {finalAmount !== 0 && (
+                            <span> · Extra: ₹{fmt(finalAmount)}</span>
+                          )}
+                        </div>
+                        <div>
+                          Returned: {replacedName}
+                          {replacedBarcode ? ` (${replacedBarcode})` : ""}
+                        </div>
+                        <div>
+                          Given: {newName}
+                          {newBarcode ? ` (${newBarcode})` : ""}
+                        </div>
+                        {originalBillId && <div>From bill: {originalBillId}</div>}
+                        {reason && <div>Reason: {reason}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {divider}
+              </>
+            )}
+
           <div style={{ fontSize: "10px", lineHeight: "1.5", marginBottom: "4px" }}>
             <div style={{ fontWeight: 800, marginBottom: "2px" }}>Terms and Conditions:</div>
             <div>* NO GURANTEE, NO RETURN</div>
             <div>* GOODS Once Sold Cannot be exchanged</div>
             <div>* Total amount Inclusive of GST</div>
-        
+
           </div>
 
           {divider}

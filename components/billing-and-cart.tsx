@@ -106,6 +106,12 @@ interface CartItem {
     originalQuantity: number;
     originalUnitPrice: number;
   } | null;
+  // Set on lines loaded from a bill that has replacement-table linkage. These
+  // rows are displayed read-only so the cashier can SEE the item but can't
+  // mutate it from the edit flow (mutating would orphan the replacement).
+  isReplacementLocked?: boolean;
+  replacementLockReason?: "replacement_in" | "replacement_out" | "partial" | null;
+  replacementLockedQty?: number;
 }
 
 interface ReplacementSessionEntry {
@@ -494,6 +500,17 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
       const editTabId = `edit-${parsed.billId}-${Date.now()}`
       const targetTabId = editTabId
 
+      // Notify if any items on the bill are tied to a replacement, so the
+      // cashier knows why those rows render as read-only.
+      const lockedCount = items.filter((it: any) => it?.isReplacementLocked).length
+      if (lockedCount > 0) {
+        toast({
+          title: "Some items are locked",
+          description:
+            `${lockedCount} item(s) on this bill are tied to a replacement and shown read-only. Cancel the replacement to edit them.`,
+        })
+      }
+
       // Check tab limit before creating a new edit tab
       if (billingTabsRef.current.length >= MAX_BILL_TABS) {
         toast({
@@ -509,6 +526,9 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
         const basePrice = Number(item.price || 0)
         const quantity = Number(item.quantity || 0)
         const sellingPrice = Math.round((basePrice * (1 + taxPercentage / 100)) * 100) / 100
+        const isLocked = Boolean(item.isReplacementLocked)
+        const lockReason = (item.replacementLockReason as CartItem["replacementLockReason"]) ?? null
+        const lockedQty = Number(item.replacementLockedQty || 0)
         return {
           id: generateCartItemId(),
           productId: item.productId || "",
@@ -524,6 +544,9 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
           lineType: "sale",
           replacementLinkId: undefined,
           replacementMeta: null,
+          isReplacementLocked: isLocked,
+          replacementLockReason: lockReason,
+          replacementLockedQty: lockedQty,
         }
       })
 
@@ -1337,6 +1360,15 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
 
   const removeFromCartInternal = (id: string) => {
     if (!activeBillingInstance) return
+    const target = activeBillingInstance.cartItems.find((item) => item.id === id)
+    if (target?.isReplacementLocked) {
+      toast({
+        title: "Locked item",
+        description: "This line is tied to a replacement and can't be removed here.",
+        variant: "destructive",
+      })
+      return
+    }
     const updatedCartItems = activeBillingInstance.cartItems.filter((item) => item.id !== id)
     updateBillingInstance(activeTab, { cartItems: updatedCartItems })
   }
@@ -1346,6 +1378,16 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
   }
 
   const requestRemoveFromCart = (id: string) => {
+    if (!activeBillingInstance) return
+    const target = activeBillingInstance.cartItems.find((item) => item.id === id)
+    if (target?.isReplacementLocked) {
+      toast({
+        title: "Locked item",
+        description: "This line is tied to a replacement and can't be removed here.",
+        variant: "destructive",
+      })
+      return
+    }
     if (isReplacementActive) {
       setPendingReplacementAction({ type: "remove", itemId: id })
       return
@@ -1412,6 +1454,14 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
     if (!activeBillingInstance) return
     const targetItem = activeBillingInstance.cartItems.find((item) => item.id === id)
     if (!targetItem) return
+    if (targetItem.isReplacementLocked) {
+      toast({
+        title: "Locked item",
+        description: "Quantity is locked — this line is tied to a replacement.",
+        variant: "destructive",
+      })
+      return
+    }
     const product = products.find((p) => p.id === targetItem.productId)
 
     if (product && product.stock <= 0) {
@@ -1632,7 +1682,46 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
       const isReplacementInvoice = replacementTabId === activeTab && !!replacementSession
       const isRevisingExistingInvoice = isInvoiceEditMode && !!invoiceEditSession?.billId
       const allItems = (invoiceToSave.items || []) as CartItem[]
-      const saleItems = allItems.filter((item) => item.lineType !== "replacement_credit")
+      const rawSaleItems = allItems.filter((item) => item.lineType !== "replacement_credit")
+
+      // ── AUTO-PAIR REPLACEMENT ────────────────────────────────────────────
+      // Previously, the user had to manually toggle each new sale line to
+      // mark it as a replacement of one of the returned items. Cashiers
+      // routinely forgot, which meant the `replacements` table got no rows
+      // and the replaced product was never restocked. We now auto-pair any
+      // unlinked new sale lines with remaining credit entries in FIFO order
+      // before computing the replacements payload.
+      const saleItems = (() => {
+        if (!isReplacementInvoice || !replacementSession) return rawSaleItems
+
+        const usedEntryIds = new Set<string>()
+        for (const item of rawSaleItems) {
+          const entryId = item.replacementMeta?.originalEntryId
+          if (entryId) usedEntryIds.add(entryId)
+        }
+        const remainingEntries = replacementSession.entries.filter(
+          (entry) => entry.quantity > 0 && !usedEntryIds.has(entry.id),
+        )
+        if (remainingEntries.length === 0) return rawSaleItems
+
+        let cursor = 0
+        return rawSaleItems.map((item) => {
+          if (item.replacementMeta || cursor >= remainingEntries.length) return item
+          const entry = remainingEntries[cursor++]
+          return {
+            ...item,
+            replacementMeta: {
+              originalEntryId: entry.id,
+              originalBillId: entry.billId,
+              originalProductId: entry.productId,
+              originalProductName: entry.productName,
+              originalQuantity: entry.quantity,
+              originalUnitPrice: entry.unitPrice,
+            },
+          }
+        })
+      })()
+
       const replacementItemsPayload = isReplacementInvoice
         ? saleItems
             .filter((item) => item.replacementMeta)
@@ -1655,6 +1744,31 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
             })
             .filter(Boolean)
         : []
+
+      // Warn (but don't block) if there are credit entries the cashier did
+      // not match to any new product. This means the customer effectively got
+      // a refund without us recording the return on inventory.
+      if (isReplacementInvoice && replacementSession) {
+        const pairedEntryIds = new Set(
+          saleItems
+            .map((item) => item.replacementMeta?.originalEntryId)
+            .filter((id): id is string => Boolean(id)),
+        )
+        const unmatched = replacementSession.entries.filter(
+          (entry) => entry.quantity > 0 && !pairedEntryIds.has(entry.id),
+        )
+        if (unmatched.length > 0) {
+          console.warn(
+            "Unmatched replacement credits at save:",
+            unmatched.map((e) => `${e.productName} × ${e.quantity}`),
+          )
+          toast({
+            title: "Some returned items weren't replaced",
+            description: `${unmatched.length} item(s) from the original bill have no replacement in this cart. Their stock will NOT be restocked. Add a new product per returned item, or cancel and use Returns instead.`,
+            variant: "destructive",
+          })
+        }
+      }
 
       if (saleItems.length === 0) {
         toast({
@@ -2317,8 +2431,20 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
                               </TableRow>
                             </TableHeader>
                             <TableBody>
-                              {tab.cartItems.map((item) => (
-                                <TableRow key={item.id}>
+                              {tab.cartItems.map((item) => {
+                                const isReplacementLocked = !!item.isReplacementLocked
+                                const lockReasonLabel = isReplacementLocked
+                                  ? item.replacementLockReason === "replacement_in"
+                                    ? "Already replaced (came in via replacement)"
+                                    : item.replacementLockReason === "replacement_out"
+                                      ? "Already replaced"
+                                      : "Replacement-locked"
+                                  : null
+                                return (
+                                <TableRow
+                                  key={item.id}
+                                  className={isReplacementLocked ? "opacity-60 bg-gray-50" : undefined}
+                                >
                                   <TableCell className="font-medium">
                                     {item.name}
                                     {item.taxPercentage > 0 && (
@@ -2331,7 +2457,12 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
                                         Replacement credit line
                                       </span>
                                     )}
-                                    {item.lineType !== "replacement_credit" && isReplacementActive && (
+                                    {isReplacementLocked && (
+                                      <span className="text-xs text-red-600 block font-semibold">
+                                        {lockReasonLabel}
+                                      </span>
+                                    )}
+                                    {!isReplacementLocked && item.lineType !== "replacement_credit" && isReplacementActive && (
                                       <div className="mt-2 space-y-1">
                                         <label className="text-xs text-gray-600 flex items-center gap-2">
                                           <input
@@ -2354,36 +2485,56 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
                                       </div>
                                     )}
                                   </TableCell>
-                                  <TableCell>₹{item.price.toLocaleString()}</TableCell>
                                   <TableCell>
-                                    <div className="flex items-center space-x-2">
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                                        disabled={item.lineType === "replacement_credit"}
-                                      >
-                                        -
-                                      </Button>
-                                      <span>{item.quantity}</span>
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                                        disabled={item.lineType === "replacement_credit"}
-                                      >
-                                        +
-                                      </Button>
-                                    </div>
+                                    {isReplacementLocked ? (
+                                      <span className="text-gray-400">—</span>
+                                    ) : (
+                                      <>₹{item.price.toLocaleString()}</>
+                                    )}
                                   </TableCell>
-                                  <TableCell>₹{item.total.toLocaleString()}</TableCell>
                                   <TableCell>
-                                    <Button variant="outline" size="sm" onClick={() => requestRemoveFromCart(item.id)}>
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
+                                    {isReplacementLocked ? (
+                                      <span className="text-gray-400">—</span>
+                                    ) : (
+                                      <div className="flex items-center space-x-2">
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                                          disabled={item.lineType === "replacement_credit"}
+                                        >
+                                          -
+                                        </Button>
+                                        <span>{item.quantity}</span>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                                          disabled={item.lineType === "replacement_credit"}
+                                        >
+                                          +
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    {isReplacementLocked ? (
+                                      <span className="text-gray-400">—</span>
+                                    ) : (
+                                      <>₹{item.total.toLocaleString()}</>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    {isReplacementLocked ? (
+                                      <span className="text-gray-400 text-xs">Locked</span>
+                                    ) : (
+                                      <Button variant="outline" size="sm" onClick={() => requestRemoveFromCart(item.id)}>
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    )}
                                   </TableCell>
                                 </TableRow>
-                              ))}
+                              )})}
                             </TableBody>
                           </Table>
                         </div>

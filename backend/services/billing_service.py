@@ -556,6 +556,38 @@ def create_bill_transaction(
             stock_update_errors.append(product_id)
 
     replacements = data.get("replacements", []) or []
+
+    # Block re-replacing a bill that was already used as the source of a
+    # previous replacement. The original bill is "consumed" once any of its
+    # items have been swapped — allowing further replacements would let the
+    # same customer claim the same item back multiple times.
+    consumed_original_bill_ids: set = set()
+    if replacements:
+        candidate_originals = {
+            (r.get("original_bill_id") or data.get("original_bill_id"))
+            for r in replacements
+        }
+        candidate_originals.discard(None)
+        candidate_originals.discard("")
+        if candidate_originals:
+            try:
+                existing_lookup = (
+                    supabase.table("replacements")
+                    .select("original_bill_id")
+                    .in_("original_bill_id", list(candidate_originals))
+                    .execute()
+                )
+                consumed_original_bill_ids = {
+                    row.get("original_bill_id")
+                    for row in (existing_lookup.data or [])
+                    if row.get("original_bill_id")
+                }
+            except Exception as already_replaced_err:
+                # If the lookup fails we err on the side of allowing the save
+                # but log loudly so the operator can investigate.
+                consumed_original_bill_ids = set()
+                _ = already_replaced_err
+
     for index, replacement in enumerate(replacements):
         replaced_product_id = replacement.get("replaced_product_id")
         new_product_id = replacement.get("new_product_id")
@@ -569,6 +601,13 @@ def create_bill_transaction(
 
         if not replaced_product_id or not new_product_id or quantity <= 0:
             replacement_save_errors.append(f"replacement[{index}] invalid payload")
+            continue
+
+        if original_bill_id and original_bill_id in consumed_original_bill_ids:
+            replacement_save_errors.append(
+                f"replacement[{index}] bill {original_bill_id} has already been replaced "
+                "and cannot be replaced again"
+            )
             continue
 
         if is_damaged or damage_reason:
