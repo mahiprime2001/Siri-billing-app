@@ -412,7 +412,7 @@ def approve_return(return_id):
             if product_response.data:
                 product_name = product_response.data[0]['name']
         
-        # ✅ Create notification
+        # ✅ Create notification (scoped to the return's store)
         notification_data = {
             'type': 'return_approved',
             'notification': f"Return approved for {product_name} - ₹{return_data.get('return_amount', 0)} (Qty: {return_data.get('return_quantity', 0)})",
@@ -421,7 +421,9 @@ def approve_return(return_id):
             'created_at': datetime.now(timezone.utc).isoformat(),
             'updated_at': datetime.now(timezone.utc).isoformat()
         }
-        
+        if return_data.get('store_id'):
+            notification_data['store_id'] = return_data['store_id']
+
         supabase.table('notifications').insert(notification_data).execute()
         
         app.logger.info(f"✅ Return {return_id} approved and notification created")

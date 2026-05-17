@@ -169,7 +169,9 @@ CREATE TABLE public.notifications (
   is_read boolean DEFAULT false,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT notifications_pkey PRIMARY KEY (id)
+  store_id character varying,
+  CONSTRAINT notifications_pkey PRIMARY KEY (id),
+  CONSTRAINT notifications_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id)
 );
 CREATE TABLE public.password_change_log (
   user_id character varying NOT NULL,

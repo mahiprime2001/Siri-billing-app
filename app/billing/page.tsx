@@ -477,7 +477,11 @@ export default function BillingPage() {
           <TabsTrigger value="billing-history">Billing History</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="billing" className="flex-1 overflow-auto p-4">
+        <TabsContent
+          value="billing"
+          forceMount
+          className="flex-1 overflow-auto p-4 data-[state=inactive]:hidden"
+        >
           <BillingAndCart
             onRequestTransferVerification={handleRequestTransferVerification}
             refreshSignal={billingCartRefreshKey}

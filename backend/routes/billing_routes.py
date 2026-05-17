@@ -105,18 +105,19 @@ def _bill_has_items(supabase, bill_id):
         return False
 
 
-def _log_bill_event(supabase, event_type, bill_id, message):
+def _log_bill_event(supabase, event_type, bill_id, message, store_id=None):
     """Best-effort bill event logger using notifications table."""
     try:
-        supabase.table("notifications").insert(
-            {
-                "type": event_type,
-                "notification": message,
-                "related_id": bill_id,
-                "is_read": False,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            }
-        ).execute()
+        payload = {
+            "type": event_type,
+            "notification": message,
+            "related_id": bill_id,
+            "is_read": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if store_id:
+            payload["store_id"] = store_id
+        supabase.table("notifications").insert(payload).execute()
     except Exception:
         # Optional logging should never break billing flow.
         pass
@@ -318,6 +319,7 @@ def _cancel_bill_internal(bill_id, current_user_id, cancel_reason):
         event_type="invoice_cancelled",
         bill_id=bill_id,
         message=f"Invoice {bill_id} cancelled by user {current_user_id}{reason_suffix}",
+        store_id=store_id,
     )
 
     response_payload = {
@@ -1047,6 +1049,7 @@ def revise_bill(bill_id):
             event_type="invoice_revised",
             bill_id=bill_id,
             message=f"Invoice {bill_id} revised by user {current_user_id}",
+            store_id=store_id,
         )
 
         response_payload = {
