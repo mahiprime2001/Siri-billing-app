@@ -344,7 +344,12 @@ def get_bills():
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
         limit = request.args.get('limit', 100, type=int)
-        
+        offset = request.args.get('offset', 0, type=int)
+        if limit is None or limit <= 0:
+            limit = 100
+        if offset is None or offset < 0:
+            offset = 0
+
         supabase = get_supabase_client()
         
         # ✅ Include customer and store details via JOIN
@@ -363,7 +368,11 @@ def get_bills():
         max_retries = 2
         for attempt in range(max_retries + 1):
             try:
-                response = query.limit(limit).order('created_at', desc=True).execute()
+                response = (
+                    query.order('created_at', desc=True)
+                    .range(offset, offset + limit - 1)
+                    .execute()
+                )
                 break
             except APIError as api_error:
                 if attempt >= max_retries:
@@ -390,7 +399,7 @@ def get_bills():
             cached_bills = [b for b in cached_bills if str(b.get("storeid")) == str(store_id)]
         for bill in cached_bills:
             bill.update(_build_edit_window_meta(bill))
-        result = jsonify(cached_bills[:limit])
+        result = jsonify(cached_bills[offset:offset + limit])
         result.headers["X-Bills-Fallback-Used"] = "1"
         return result, 200
 

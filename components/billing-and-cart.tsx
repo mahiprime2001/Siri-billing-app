@@ -917,6 +917,19 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
     const streamUrl = "http://localhost:8080/api/stock/stream"
     const source = new EventSource(streamUrl, { withCredentials: true })
 
+    // Track stream drops so we can reconcile missed events on reconnect.
+    let streamWasDisconnected = false
+
+    // Safety net: the SSE stock stream can drop events (full queue) or miss
+    // them entirely while disconnected, and it has no replay. Without an
+    // occasional full refresh, stale stock (often 0) silently hides products
+    // from the grid until the user logs out and back in. A slow background
+    // refresh keeps the list self-healing without a remount.
+    const PRODUCTS_SAFETY_REFRESH_MS = 90 * 1000
+    const safetyRefreshTimer = setInterval(() => {
+      fetchProducts()
+    }, PRODUCTS_SAFETY_REFRESH_MS)
+
     // Cap delta fetches. Bigger bursts fall back to a full refresh.
     const DELTA_MAX = 10
 
@@ -984,11 +997,23 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
       }
     })
 
+    // On reconnect, pull a fresh full list to recover any events dropped or
+    // emitted while the stream was down (this SSE channel has no replay).
+    source.addEventListener("open", () => {
+      if (streamWasDisconnected) {
+        streamWasDisconnected = false
+        console.log("🔄 Stock stream reconnected — refreshing products to catch up")
+        fetchProducts()
+      }
+    })
+
     source.addEventListener("error", (event) => {
+      streamWasDisconnected = true
       console.warn("⚠️ Stock stream disconnected:", event)
     })
 
     return () => {
+      clearInterval(safetyRefreshTimer)
       source.close()
     }
   }, [currentStore?.id])

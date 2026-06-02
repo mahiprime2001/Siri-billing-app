@@ -68,6 +68,58 @@ interface DayInvoiceGroup {
   totalValue: number
 }
 
+// History is loaded in small chunks spread over short intervals rather than one
+// large request. A single 500-row query (with customer/store joins) was slow
+// enough to trip nginx's gateway timeout (502); these smaller pages each return
+// quickly and never hold the connection open long enough to fail.
+const HISTORY_PAGE_SIZE = 100
+const HISTORY_MAX_PAGES = 40 // safety ceiling: up to 4000 bills
+const HISTORY_PAGE_INTERVAL_MS = 1000 // gap between chunk fetches
+const HISTORY_REFRESH_MS = 30 * 1000
+
+// Map a raw backend bill (snake_case) into the normalized Invoice shape.
+const normalizeBills = (bills: RawInvoice[]): Invoice[] =>
+  bills.map((b) => ({
+    id: b.id,
+    storeId: b.storeid || b.store_id || b.storeId || "",
+    storeName: b.storeName || b.stores?.name || b.companyName || "",
+    storeAddress: b.storeAddress || b.stores?.address || b.companyAddress || "",
+    storePhone: b.storePhone || b.stores?.phone || b.companyPhone || "",
+    customerId: b.customerid || b.customer_id || b.customerId || "",
+    customerName: b.customerName || b.customers?.name || "",
+    customerPhone: b.customerPhone || b.customers?.phone || "",
+    customerEmail: b.customerEmail || b.customers?.email || "",
+    customerAddress: b.customerAddress || b.customers?.address || "",
+    userId: b.userid || b.user_id || b.userId || "",
+    subtotal: b.subtotal ?? 0,
+    taxPercentage: b.taxpercentage ?? b.tax_percentage ?? 0,
+    taxAmount: b.taxamount ?? b.tax_amount ?? 0,
+    cgst: b.cgst ?? 0,
+    sgst: b.sgst ?? 0,
+    discountPercentage: b.discountpercentage ?? b.discount_percentage ?? 0,
+    discountAmount: b.discountamount ?? b.discount_amount ?? 0,
+    total: b.total ?? 0,
+    paymentMethod: b.paymentmethod || b.payment_method || b.paymentMethod || "Cash",
+    timestamp: b.timestamp || b.created_at || new Date().toISOString(),
+    status: b.status || "completed",
+    createdBy: b.createdby || b.created_by || b.createdBy || "",
+    createdAt: b.created_at || b.createdAt || new Date().toISOString(),
+    updatedAt: b.updated_at || b.updatedAt || new Date().toISOString(),
+    notes: b.notes || "",
+    gstin: b.gstin || "",
+    companyName: b.companyName || "",
+    companyAddress: b.companyAddress || "",
+    companyPhone: b.companyPhone || "",
+    companyEmail: b.companyEmail || "",
+    billFormat: b.billFormat || b.bill_format || "Thermal 80mm",
+    items: b.items || [],
+    canEdit: b.can_edit ?? b.canEdit ?? null,
+    canCancel: b.can_cancel ?? b.canCancel ?? null,
+    editExpiresAt: b.edit_expires_at || b.editExpiresAt || "",
+    secondsRemaining: b.seconds_remaining ?? b.secondsRemaining ?? 0,
+    cancelReason: b.cancel_reason || b.cancelReason || "",
+  })) as Invoice[]
+
 export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryProps) {
   const { toast } = useToast()
   const [invoices, setInvoices] = useState<Invoice[]>([])
@@ -111,6 +163,8 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
   const auditFetchLimit = 50
   const auditPageSize = 10
   const [openDayKeys, setOpenDayKeys] = useState<string[]>([])
+  const [isBackfillingHistory, setIsBackfillingHistory] = useState(false)
+  const loadIdRef = useRef(0)
 
   const IST_TIMEZONE = "Asia/Kolkata"
   const HISTORY_PRINTER_STORAGE_KEY = "siri_selected_printer_history"
@@ -135,6 +189,21 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
   const toEpochMs = (value: string | Date | undefined | null): number => {
     const parsed = parseServerDate(value)
     return parsed ? parsed.getTime() : 0
+  }
+
+  // Merge two bill lists by id (entries in `primary` win on conflict) and keep
+  // them sorted newest-first. Used to stitch chunked pages together and to fold
+  // a fresh newest-page refresh over the already-loaded data.
+  const mergeBillsById = (primary: Invoice[], secondary: Invoice[]): Invoice[] => {
+    const byId = new Map<string, Invoice>()
+    for (const bill of primary) byId.set(String(bill.id), bill)
+    for (const bill of secondary) {
+      const key = String(bill.id)
+      if (!byId.has(key)) byId.set(key, bill)
+    }
+    return Array.from(byId.values()).sort(
+      (a, b) => toEpochMs(b.timestamp) - toEpochMs(a.timestamp),
+    )
   }
 
   const formatIstDateTime = (value: string | Date | undefined | null): string => {
@@ -287,94 +356,79 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
     return "+91 98765 43210"
   }
 
-  const fetchBillingHistory = useCallback(async () => {
-  if (!currentStore) {
-    console.log("No current store selected")
-    return
-  }
-
-  try {
-    console.log(`Fetching billing history for store: ${currentStore.id}`)
-
-    // ❌ DO NOT read localStorage here
-    // ❌ DO NOT set Authorization header here
-    // ✅ Let apiClient + authManager handle the token
-
-    const response = await apiClient(
-      `/api/bills?store_id=${currentStore.id}&limit=500`,
-      {
-        method: "GET",
+  // Fetch a single page of bills. Returns ok=false on failure so the caller can
+  // stop the chunked load gracefully instead of throwing mid-sequence.
+  const fetchBillingPage = useCallback(
+    async (
+      storeId: string,
+      offset: number,
+      limit: number,
+    ): Promise<{ ok: boolean; fallback: boolean; bills: Invoice[] }> => {
+      try {
+        const response = await apiClient(
+          `/api/bills?store_id=${storeId}&limit=${limit}&offset=${offset}`,
+          { method: "GET" },
+        )
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+        const fallback = response.headers.get("X-Bills-Fallback-Used") === "1"
+        const rawBills: RawInvoice[] = await response.json()
+        return { ok: true, fallback, bills: normalizeBills(rawBills) }
+      } catch (error) {
+        console.error("❌ Failed to fetch billing history page:", error)
+        return { ok: false, fallback: false, bills: [] }
       }
-    )
+    },
+    [],
+  )
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
+  // Pull history in small chunks one after another, with a short pause between
+  // pages, instead of one big 500-row request. This keeps every request light
+  // enough to stay well under the nginx timeout (the source of the 502s) while
+  // the list fills in progressively from newest to oldest.
+  const loadBillingHistory = useCallback(async () => {
+    if (!currentStore) return
+    const myLoadId = ++loadIdRef.current
+    setIsBackfillingHistory(true)
+    try {
+      const storeId = currentStore.id
+      let offset = 0
+      let collected: Invoice[] = []
+      let sawFallback = false
+
+      for (let page = 0; page < HISTORY_MAX_PAGES; page++) {
+        const { ok, fallback, bills } = await fetchBillingPage(storeId, offset, HISTORY_PAGE_SIZE)
+        // Store switched or component unmounted while we were waiting — abandon.
+        if (loadIdRef.current !== myLoadId) return
+        if (!ok) break
+        sawFallback = sawFallback || fallback
+
+        if (bills.length) {
+          collected = mergeBillsById(collected, bills)
+          setInvoices(collected)
+        }
+
+        // A short page means we've reached the end of this store's history.
+        if (bills.length < HISTORY_PAGE_SIZE) break
+
+        offset += HISTORY_PAGE_SIZE
+        await new Promise((resolve) => setTimeout(resolve, HISTORY_PAGE_INTERVAL_MS))
+        if (loadIdRef.current !== myLoadId) return
+      }
+
+      console.log(`✅ Loaded ${collected.length} invoices from backend (chunked)`)
+      if (sawFallback) {
+        toast({
+          title: "Showing cached billing history",
+          description: "Live billing history is temporarily unavailable. Trying again shortly.",
+          variant: "default",
+        })
+      }
+    } finally {
+      if (loadIdRef.current === myLoadId) setIsBackfillingHistory(false)
     }
-
-    const usedFallback = response.headers.get("X-Bills-Fallback-Used") === "1"
-    const bills: RawInvoice[] = await response.json()
-
-    const normalized = bills.map((b) => ({
-      id: b.id,
-      storeId: b.storeid || b.store_id || b.storeId || "",
-      storeName: b.storeName || b.stores?.name || b.companyName || "",
-      storeAddress: b.storeAddress || b.stores?.address || b.companyAddress || "",
-      storePhone: b.storePhone || b.stores?.phone || b.companyPhone || "",
-      customerId: b.customerid || b.customer_id || b.customerId || "",
-      customerName: b.customerName || b.customers?.name || "",
-      customerPhone: b.customerPhone || b.customers?.phone || "",
-      customerEmail: b.customerEmail || b.customers?.email || "",
-      customerAddress: b.customerAddress || b.customers?.address || "",
-      userId: b.userid || b.user_id || b.userId || "",
-      subtotal: b.subtotal ?? 0,
-      taxPercentage: b.taxpercentage ?? b.tax_percentage ?? 0,
-      taxAmount: b.taxamount ?? b.tax_amount ?? 0,
-      cgst: b.cgst ?? 0,
-      sgst: b.sgst ?? 0,
-      discountPercentage: b.discountpercentage ?? b.discount_percentage ?? 0,
-      discountAmount: b.discountamount ?? b.discount_amount ?? 0,
-      total: b.total ?? 0,
-      paymentMethod: b.paymentmethod || b.payment_method || b.paymentMethod || "Cash",
-      timestamp: b.timestamp || b.created_at || new Date().toISOString(),
-      status: b.status || "completed",
-      createdBy: b.createdby || b.created_by || b.createdBy || "",
-      createdAt: b.created_at || b.createdAt || new Date().toISOString(),
-      updatedAt: b.updated_at || b.updatedAt || new Date().toISOString(),
-      notes: b.notes || "",
-      gstin: b.gstin || "",
-      companyName: b.companyName || "",
-      companyAddress: b.companyAddress || "",
-      companyPhone: b.companyPhone || "",
-      companyEmail: b.companyEmail || "",
-      billFormat: b.billFormat || b.bill_format || "Thermal 80mm",
-      items: b.items || [],
-      canEdit: b.can_edit ?? b.canEdit ?? null,
-      canCancel: b.can_cancel ?? b.canCancel ?? null,
-      editExpiresAt: b.edit_expires_at || b.editExpiresAt || "",
-      secondsRemaining: b.seconds_remaining ?? b.secondsRemaining ?? 0,
-      cancelReason: b.cancel_reason || b.cancelReason || "",
-    }))
-
-    normalized.sort(
-      (a: any, b: any) =>
-        toEpochMs(b.timestamp) - toEpochMs(a.timestamp)
-    )
-
-    setInvoices(normalized)
-    setFilteredInvoices(normalized)
-
-    console.log(`✅ Loaded ${normalized.length} invoices from backend`)
-    if (usedFallback) {
-      toast({
-        title: "Showing cached billing history",
-        description: "Live billing history is temporarily unavailable. Trying again shortly.",
-        variant: "default",
-      })
-    }
-  } catch (error) {
-    console.error("❌ Failed to fetch billing history:", error)
-  }
-  }, [currentStore])
+  }, [currentStore, fetchBillingPage])
 
   const loadHistoryPrinters = useCallback(async () => {
     if (!isTauriRuntime) return
@@ -501,13 +555,26 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
 
 
   useEffect(() => {
-    fetchBillingHistory()
+    loadBillingHistory()
     fetchSettings()
+    // Abandon any in-flight chunked load when the store changes or we unmount.
+    return () => {
+      loadIdRef.current += 1
+    }
+  }, [loadBillingHistory, fetchSettings])
 
-    // Refresh every 30 seconds
-    const refreshInterval = setInterval(fetchBillingHistory, 30 * 1000)
+  // Light refresh: only re-pull the newest page on an interval and fold it in,
+  // so periodic refreshes stay cheap and never re-run the heavy full load.
+  useEffect(() => {
+    if (!currentStore) return
+    const storeId = currentStore.id
+    const refreshInterval = setInterval(async () => {
+      const { ok, bills } = await fetchBillingPage(storeId, 0, HISTORY_PAGE_SIZE)
+      if (!ok || !bills.length) return
+      setInvoices((prev) => mergeBillsById(bills, prev))
+    }, HISTORY_REFRESH_MS)
     return () => clearInterval(refreshInterval)
-  }, [fetchBillingHistory, fetchSettings])
+  }, [currentStore, fetchBillingPage])
 
   // ✅ Filter invoices with safe property access
   useEffect(() => {
@@ -1421,7 +1488,9 @@ const handleOpenDayReportDialog = async (group: DayInvoiceGroup, event?: MouseEv
                 className="pl-10"
               />
             </div>
-            <Button onClick={fetchBillingHistory}>Refresh Data</Button>
+            <Button onClick={loadBillingHistory} disabled={isBackfillingHistory}>
+              {isBackfillingHistory ? "Loading…" : "Refresh Data"}
+            </Button>
           </div>
         </CardHeader>
         <CardContent>

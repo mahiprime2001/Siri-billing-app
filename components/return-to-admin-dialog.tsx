@@ -47,6 +47,7 @@ const REASONS = [
   { value: "damaged", label: "Damaged" },
   { value: "modification", label: "Needs Modification" },
   { value: "low_sales", label: "Low Sales" },
+  { value: "sold_offline", label: "Sold Offline" },
 ]
 
 const normalizeBarcode = (value: string) => value.trim().replace(/^0+/, "")
@@ -214,7 +215,7 @@ export default function ReturnToAdminDialog({ isOpen, onClose }: ReturnToAdminDi
           productId: item.productId,
           quantity: item.quantity,
         })),
-        reason: reasonType === "damaged" ? "Damaged" : reasonType === "modification" ? "Needs Modification" : "Low Sales",
+        reason: REASONS.find((entry) => entry.value === reasonType)?.label || reasonType,
         reasonType,
         damageOrigin: "store",
       }
@@ -249,7 +250,7 @@ export default function ReturnToAdminDialog({ isOpen, onClose }: ReturnToAdminDi
   return (
     <>
       <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ScanLine className="h-5 w-5" />
@@ -260,7 +261,7 @@ export default function ReturnToAdminDialog({ isOpen, onClose }: ReturnToAdminDi
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto flex-1 -mr-2 pr-2">
             <div className="flex gap-2">
               <div className="flex-1">
                 <Label htmlFor="return-barcode">Barcode</Label>
