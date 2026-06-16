@@ -47,7 +47,12 @@ def process_offline_damage_return_queue(app_logger=None, max_items: int = 20) ->
             return {"processed": 0, "succeeded": 0, "failed": 0, "remaining": 0}
 
         supabase = get_supabase_client()
-        if not supabase:
+        # Skip while offline: get_supabase_client() returns a truthy offline
+        # fallback client (not None), so checking `not supabase` alone would let
+        # us "sync" against local JSON and then drop items from the queue without
+        # ever reaching Supabase (and double-reduce local stock). The
+        # is_offline_fallback check is what the bill/transfer queues already do.
+        if not supabase or getattr(supabase, "is_offline_fallback", False):
             return {"processed": 0, "succeeded": 0, "failed": 0, "remaining": len(queue)}
 
         processed = 0

@@ -1982,10 +1982,11 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
 	  };
 
   const handlePrintAndSave = async (invoiceToPrintAndSave: Invoice) => {
-    const saved = await handleSaveInvoice(invoiceToPrintAndSave, false, { closePreview: false })
-    if (saved) {
-      // Printing functionality is handled by InvoicePreview component
-    }
+    // Return the save result to the caller (InvoicePreview). It only prints when
+    // this resolves to a truthy value (the persisted/queued invoice). Returning
+    // false on failure blocks the print so we never produce a "phantom" receipt
+    // with a throwaway preview invoice id and no saved bill / no stock reduction.
+    return await handleSaveInvoice(invoiceToPrintAndSave, false, { closePreview: false })
   }
 
   const handleCancelInvoice = async () => {

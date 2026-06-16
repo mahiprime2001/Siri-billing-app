@@ -7,7 +7,7 @@ import re
 from zoneinfo import ZoneInfo
 
 from config.config import OFFLINE_BILL_QUEUE_FILE, BILLS_FILE, STOREINVENTORY_FILE, PRODUCTS_FILE, STORES_FILE, JSON_DIR
-from helpers.utils import read_json_file, write_json_file
+from helpers.utils import read_json_file, write_json_file, read_json_file_strict, QueueReadError
 from services.billing_service import create_bill_transaction
 from utils.connection_pool import get_supabase_client
 
@@ -203,7 +203,13 @@ def enqueue_bill_create(current_user_id: str, bill_payload: Dict[str, Any]) -> D
     queue_id = f"Q-{uuid.uuid4().hex[:12]}"
 
     with _queue_lock:
-        queue = read_json_file(OFFLINE_BILL_QUEUE_FILE, [])
+        # Strict read: if the queue file is corrupt it is backed up and this
+        # raises, instead of returning [] and letting us overwrite (erase) the
+        # whole queue with just this one item.
+        try:
+            queue = read_json_file_strict(OFFLINE_BILL_QUEUE_FILE)
+        except QueueReadError as e:
+            raise RuntimeError(f"Offline bill queue unavailable: {e}") from e
         forced_bill_id = bill_payload.get("_forced_bill_id") or _next_offline_invoice_id(queue, str(bill_payload.get("store_id") or ""))
         if client_request_id:
             existing = next(
@@ -232,7 +238,10 @@ def enqueue_bill_create(current_user_id: str, bill_payload: Dict[str, Any]) -> D
             "updated_at": _utc_now(),
         }
         queue.append(item)
-        write_json_file(OFFLINE_BILL_QUEUE_FILE, queue)
+        # Fail loudly if the durable write did not succeed, so the caller never
+        # reports "queued" for a bill that was not actually persisted.
+        if not write_json_file(OFFLINE_BILL_QUEUE_FILE, queue):
+            raise RuntimeError("Failed to persist offline bill queue to disk")
         _persist_local_offline_bill_snapshot(
             current_user_id=current_user_id,
             payload=item["payload"],

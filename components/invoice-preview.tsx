@@ -415,11 +415,13 @@ export default function InvoicePreview({
       if (onPrintAndSave) {
         console.log('💾 Saving invoice...')
         const saveResult = await Promise.resolve(onPrintAndSave(updatedInvoice))
-        if (saveResult === false) {
+        // Block printing on ANY falsy result (false / undefined / null). A failed
+        // or blocked save must not produce a printed receipt with no saved bill.
+        if (!saveResult) {
           setIsPrinting(false)
           return
         }
-        if (saveResult && typeof saveResult === "object") {
+        if (typeof saveResult === "object") {
           Object.assign(updatedInvoice, saveResult)
         }
       }

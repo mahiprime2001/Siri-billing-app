@@ -290,7 +290,7 @@ if __name__ == '__main__':
         app.logger.info("Skipping background task startup in reloader parent process.")
     
     try:
-        app.run(debug=True, port=port, host=host)
+        app.run(debug=False, port=port, host=host)
     except Exception as e:
         app.logger.error(f"Failed to start billing Flask server: {e}")
     finally:

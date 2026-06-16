@@ -6,7 +6,11 @@ from zoneinfo import ZoneInfo
 
 from config.config import BILLS_FILE
 from helpers.utils import read_json_file
-from utils.connection_pool import get_supabase_client
+from utils.connection_pool import (
+    get_supabase_client,
+    SupabaseCircuitOpenError,
+    _is_network_offline_error,
+)
 from data_access.data_access import update_both_inventory_and_product_stock
 from utils.stock_stream import publish
 from utils.discount_approval_cache import pop_discount_approval
@@ -732,15 +736,37 @@ def dispatch_bill_create(current_user_id: str, data: Dict[str, Any]) -> Dict[str
     # Local import breaks the circular dep: offline_bill_queue already imports create_bill_transaction.
     from utils.offline_bill_queue import enqueue_bill_create
 
-    supabase = get_supabase_client()
-    if getattr(supabase, "is_offline_fallback", False):
+    def _queue(message: str) -> Dict[str, Any]:
         result = enqueue_bill_create(current_user_id=current_user_id, bill_payload=data)
         return {
             "queued": True,
             "bill_id": result["bill_id"],
             "queue_id": result["queue_id"],
-            "message": "System offline. Invoice queued and will sync automatically when internet returns.",
+            "message": message,
         }
 
-    result = create_bill_transaction(current_user_id=current_user_id, data=data)
-    return {"queued": False, **result}
+    supabase = get_supabase_client()
+    if getattr(supabase, "is_offline_fallback", False):
+        return _queue(
+            "System offline. Invoice queued and will sync automatically when internet returns."
+        )
+
+    try:
+        result = create_bill_transaction(current_user_id=current_user_id, data=data)
+        return {"queued": False, **result}
+    except ValueError:
+        # Bad request (missing fields, insufficient stock, discount approval) —
+        # not a connectivity problem. Let the route surface it as a 400.
+        raise
+    except Exception as exc:
+        # The connection may have dropped mid-request after we believed we were
+        # online. Re-check connectivity: if we have since gone offline (or this
+        # is a recognizable network error), queue the bill instead of losing the
+        # sale. Genuine server-side errors are re-raised.
+        client = get_supabase_client()
+        if getattr(client, "is_offline_fallback", False) or _is_network_offline_error(exc) \
+                or isinstance(exc, SupabaseCircuitOpenError):
+            return _queue(
+                "Connection lost. Invoice queued and will sync automatically when internet returns."
+            )
+        raise
