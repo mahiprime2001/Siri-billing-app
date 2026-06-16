@@ -33,6 +33,7 @@ interface ProductSearchResult {
   barcode?: string
   barcodes?: string
   stock?: number
+  selling_price?: number
 }
 
 interface SelectedItem {
@@ -41,6 +42,7 @@ interface SelectedItem {
   barcode?: string
   quantity: number
   availableStock: number
+  sellingPrice: number
 }
 
 interface DamageReturnRow {
@@ -56,7 +58,7 @@ interface DamageReturnRow {
   notes?: string
   created_by?: string
   created_at?: string
-  products?: { id: string; name?: string; barcode?: string } | null
+  products?: { id: string; name?: string; barcode?: string; selling_price?: number } | null
   stores?: { id: string; name?: string } | null
 }
 
@@ -322,6 +324,7 @@ export default function ReturnToAdminPage() {
         barcode: product.barcode || product.barcodes,
         quantity: 1,
         availableStock,
+        sellingPrice: Number(product.selling_price || 0),
       },
     ])
     return true
@@ -453,6 +456,7 @@ export default function ReturnToAdminPage() {
         name: row.products?.name || "Unknown Product",
         barcode: row.products?.barcode,
         quantity: Number(row.quantity || 0),
+        sellingPrice: Number(row.products?.selling_price || 0),
       })),
     })
   }
@@ -539,6 +543,7 @@ export default function ReturnToAdminPage() {
           name: item.name,
           barcode: item.barcode,
           quantity: item.quantity,
+          sellingPrice: item.sellingPrice,
         })),
       }
 

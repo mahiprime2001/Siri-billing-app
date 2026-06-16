@@ -511,7 +511,7 @@ def get_store_damage_returns():
             return jsonify([]), 200
 
         query = supabase.table("store_damage_returns").select(
-            "*, products(id, name, barcode), stores(id, name)"
+            "*, products(id, name, barcode, selling_price), stores(id, name)"
         ).eq("store_id", store_id)
         if status:
             query = query.eq("status", status)

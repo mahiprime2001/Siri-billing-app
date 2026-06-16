@@ -5,6 +5,7 @@ export interface DamageReturnPrintItem {
   name: string;
   barcode?: string;
   quantity: number;
+  sellingPrice?: number;
 }
 
 export interface DamageReturnPrintData {
@@ -79,6 +80,12 @@ const PrintableDamageReturn = forwardRef<HTMLDivElement, PrintableDamageReturnPr
   ({ data, paperSize }, ref) => {
     const items = data.items || [];
     const totalQty = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    const totalAmount = items.reduce(
+      (sum, item) => sum + Number(item.sellingPrice || 0) * Number(item.quantity || 0),
+      0,
+    );
+    const fmt = (value: number) =>
+      Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
     const printedAtRaw = data.createdAt || new Date().toISOString();
 
     const divider = <div style={{ borderTop: "1px dashed #000", margin: "5px 0" }} />;
@@ -152,17 +159,21 @@ const PrintableDamageReturn = forwardRef<HTMLDivElement, PrintableDamageReturnPr
               fontWeight: 700,
             }}
           >
-            <span style={{ width: "8%", flexShrink: 0 }}>#</span>
+            <span style={{ width: "7%", flexShrink: 0 }}>#</span>
             <span style={{ flex: 1 }}>Product</span>
-            <span style={{ width: "18%", flexShrink: 0, textAlign: "right" }}>Qty</span>
+            <span style={{ width: "13%", flexShrink: 0, textAlign: "right" }}>Qty</span>
+            <span style={{ width: "26%", flexShrink: 0, textAlign: "right" }}>Price</span>
           </div>
           {items.map((item, i) => (
             <div key={i} style={{ marginBottom: "2px" }}>
               <div style={{ display: "flex", fontSize: "11px" }}>
-                <span style={{ width: "8%", flexShrink: 0 }}>{i + 1}</span>
+                <span style={{ width: "7%", flexShrink: 0 }}>{i + 1}</span>
                 <span style={{ flex: 1, wordBreak: "break-word" }}>{item.name}</span>
-                <span style={{ width: "18%", flexShrink: 0, textAlign: "right" }}>
+                <span style={{ width: "13%", flexShrink: 0, textAlign: "right" }}>
                   {item.quantity}
+                </span>
+                <span style={{ width: "26%", flexShrink: 0, textAlign: "right" }}>
+                  ₹{fmt(Number(item.sellingPrice || 0))}
                 </span>
               </div>
               {item.barcode && (
@@ -187,6 +198,18 @@ const PrintableDamageReturn = forwardRef<HTMLDivElement, PrintableDamageReturnPr
         >
           <span>Total Items: {items.length}</span>
           <span>Total Qty: {totalQty}</span>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            fontSize: "12px",
+            fontWeight: 800,
+            marginTop: "2px",
+          }}
+        >
+          <span>Total Amount</span>
+          <span>₹{fmt(totalAmount)}</span>
         </div>
 
         {divider}

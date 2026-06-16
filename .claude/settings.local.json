@@ -15,7 +15,9 @@
       "Bash(git -C d:/Siri-apps/Siri-billing-app status --short)",
       "Bash(git -C d:/Siri-apps/Siri-billing-app branch --show-current)",
       "Bash(git add *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(netstat -ano)",
+      "Bash(tasklist)"
     ]
   }
 }
