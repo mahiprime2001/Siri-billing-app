@@ -31,7 +31,6 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import TransferVerificationDialog from "@/components/transfer-verification-dialog"
-import ReturnToAdminDialog from "@/components/return-to-admin-dialog"
 
 interface User {
   id: string
@@ -61,7 +60,6 @@ export default function BillingPage() {
   const [activeTab, setActiveTab] = useState('billing')
   const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false)
   const [transferDialogInitialOrderId, setTransferDialogInitialOrderId] = useState<string>("")
-  const [isReturnToAdminOpen, setIsReturnToAdminOpen] = useState(false)
   const [billingCartRefreshKey, setBillingCartRefreshKey] = useState(0)
   const isMobile = useIsMobile()
   const router = useRouter()
@@ -333,7 +331,7 @@ export default function BillingPage() {
   }
 
   const handleReturnToAdmin = () => {
-    setIsReturnToAdminOpen(true)
+    router.push('/return-to-admin')
   }
 
   const handleEditInvoiceFromHistory = () => {
@@ -510,7 +508,6 @@ export default function BillingPage() {
         initialSelectedOrderId={transferDialogInitialOrderId || undefined}
         onVerificationSaved={() => setBillingCartRefreshKey((prev) => prev + 1)}
       />
-      <ReturnToAdminDialog isOpen={isReturnToAdminOpen} onClose={() => setIsReturnToAdminOpen(false)} />
     </div>
   )
 }

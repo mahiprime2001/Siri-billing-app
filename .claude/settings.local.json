@@ -11,7 +11,11 @@
       "Bash(npx next *)",
       "Bash(xargs ls *)",
       "Bash(python -m py_compile services/billing_service.py utils/offline_bill_queue.py)",
-      "Bash(py -3 -m py_compile services/billing_service.py utils/offline_bill_queue.py)"
+      "Bash(py -3 -m py_compile services/billing_service.py utils/offline_bill_queue.py)",
+      "Bash(git -C d:/Siri-apps/Siri-billing-app status --short)",
+      "Bash(git -C d:/Siri-apps/Siri-billing-app branch --show-current)",
+      "Bash(git add *)",
+      "Bash(git push *)"
     ]
   }
 }
