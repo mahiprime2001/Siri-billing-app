@@ -141,6 +141,26 @@ def create_return_order():
         }
 
         saved = _dispatch_return_order(supabase, current_user_id, store_id, header, line_rows)
+
+        # Notify the admin that a new return order arrived (best-effort).
+        try:
+            from notifications.notifications import create_notification
+            store_name = store_id
+            try:
+                sresp = supabase.table("stores").select("name").eq("id", store_id).limit(1).execute()
+                if sresp.data:
+                    store_name = sresp.data[0].get("name") or store_id
+            except Exception:
+                pass
+            create_notification(
+                "RETURN_ORDER",
+                f"New return order {return_id} from {store_name} ({len(line_rows)} item(s)).",
+                related_id=return_id,
+                store_id=None,
+            )
+        except Exception as notify_err:
+            app.logger.warning(f"Failed to create return-order notification: {notify_err}")
+
         return jsonify({
             "message": "Return order submitted",
             "queued": saved.get("queued", False),
