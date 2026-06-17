@@ -32,6 +32,7 @@ TABLE_FILE_MAP = {
     "systemsettings": SYSTEM_SETTINGS_FILE,
     "returns": RETURNS_FILE,
     "store_damage_returns": STORE_DAMAGE_RETURNS_FILE,
+    "return_products": os.path.join(JSON_DIR, "return_products.json"),
     "billformats": BILL_FORMATS_FILE,
     "userstores": USER_STORES_FILE,
     "storeinventory": STOREINVENTORY_FILE,

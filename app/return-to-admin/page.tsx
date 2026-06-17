@@ -37,50 +37,42 @@ interface ProductSearchResult {
 }
 
 interface SelectedItem {
+  lineId: string
   productId: string
   name: string
   barcode?: string
   quantity: number
   availableStock: number
   sellingPrice: number
+  reasonType: string
 }
 
-interface DamageReturnRow {
+interface ReturnOrderLine {
   id: string
-  store_id?: string
   product_id?: string
   quantity?: number
   reason?: string
   reason_type?: string
-  damage_origin?: string
-  status?: string
-  resolution_status?: string
-  notes?: string
-  created_by?: string
-  created_at?: string
+  verify_status?: string
+  holding_status?: string
   products?: { id: string; name?: string; barcode?: string; selling_price?: number } | null
-  stores?: { id: string; name?: string } | null
 }
 
-interface DamageReturnGroup {
-  key: string
-  createdAt?: string
-  reason?: string
-  reasonType?: string
-  damageOrigin?: string
-  status?: string
-  resolutionStatus?: string
-  storeName?: string
-  createdBy?: string
-  rows: DamageReturnRow[]
-  totalQty: number
+interface ReturnOrder {
+  return_id: string
+  admin_status?: string
+  return_quantity?: number
+  message?: string
+  created_at?: string
+  created_by?: string
+  return_products?: ReturnOrderLine[]
 }
 
 const REASONS = [
   { value: "damaged", label: "Damaged" },
   { value: "modification", label: "Needs Modification" },
   { value: "low_sales", label: "Low Sales" },
-  { value: "sold_offline", label: "Sold Offline" },
+  { value: "other", label: "Other" },
 ]
 
 const PAPER_SIZE = "Thermal 80mm"
@@ -88,6 +80,9 @@ const SYSTEM_DEFAULT_PRINTER_VALUE = "__SYSTEM_DEFAULT__"
 const PRINTER_STORAGE_KEY = "siri_selected_printer_history"
 
 const normalizeBarcode = (value: string) => value.trim().replace(/^0+/, "")
+
+const reasonLabel = (value: string | undefined | null) =>
+  REASONS.find((entry) => entry.value === value)?.label || titleCase(value)
 
 const titleCase = (value: string | undefined | null) =>
   value ? String(value).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "-"
@@ -152,11 +147,16 @@ const buildPrintHTML = (printContent: string, refId: string): string => `
   </html>
 `
 
+const distinctReasons = (values: (string | undefined)[]) => {
+  const labels = Array.from(new Set(values.map((v) => reasonLabel(v)).filter((v) => v && v !== "-")))
+  return labels.join(", ") || "-"
+}
+
 export default function ReturnToAdminPage() {
   const router = useRouter()
   const { toast } = useToast()
 
-  // form state
+  // form state. `reasonType` is the ACTIVE reason applied to newly scanned items.
   const [barcodeInput, setBarcodeInput] = useState("")
   const [reasonType, setReasonType] = useState("")
   const [items, setItems] = useState<SelectedItem[]>([])
@@ -168,8 +168,8 @@ export default function ReturnToAdminPage() {
   const [companyName, setCompanyName] = useState("")
   const [store, setStore] = useState<{ name?: string; address?: string; phone?: string } | null>(null)
 
-  // history state
-  const [history, setHistory] = useState<DamageReturnRow[]>([])
+  // history state (one entry per return order)
+  const [history, setHistory] = useState<ReturnOrder[]>([])
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
 
   // print state
@@ -183,7 +183,7 @@ export default function ReturnToAdminPage() {
   const [isPrinting, setIsPrinting] = useState(false)
   const [selectedPrinter, setSelectedPrinter] = useState(SYSTEM_DEFAULT_PRINTER_VALUE)
 
-  const canSubmit = items.length > 0 && !!reasonType && !isSubmitting
+  const canSubmit = items.length > 0 && !isSubmitting
 
   const totalQty = useMemo(
     () => items.reduce((sum, item) => sum + (item.quantity || 0), 0),
@@ -230,15 +230,15 @@ export default function ReturnToAdminPage() {
   const fetchHistory = useCallback(async () => {
     setIsLoadingHistory(true)
     try {
-      const response = await apiClient("/api/store-damage-returns?limit=200")
+      const response = await apiClient("/api/return-orders?limit=200")
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      const data = (await response.json()) as DamageReturnRow[]
+      const data = (await response.json()) as ReturnOrder[]
       setHistory(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error("Failed to fetch return history:", error)
       toast({
         title: "Failed to load history",
-        description: "Could not fetch previous returns.",
+        description: "Could not fetch previous return orders.",
         variant: "destructive",
       })
     } finally {
@@ -252,41 +252,24 @@ export default function ReturnToAdminPage() {
     fetchHistory()
   }, [fetchSettings, fetchStore, fetchHistory])
 
-  // Group history rows by submission batch (same created_at).
-  const historyGroups = useMemo<DamageReturnGroup[]>(() => {
-    const map = new Map<string, DamageReturnGroup>()
-    for (const row of history) {
-      const key = `${row.created_at || ""}|${row.reason || ""}|${row.created_by || ""}`
-      let group = map.get(key)
-      if (!group) {
-        group = {
-          key,
-          createdAt: row.created_at,
-          reason: row.reason,
-          reasonType: row.reason_type,
-          damageOrigin: row.damage_origin,
-          status: row.status,
-          resolutionStatus: row.resolution_status,
-          storeName: row.stores?.name,
-          createdBy: row.created_by,
-          rows: [],
-          totalQty: 0,
-        }
-        map.set(key, group)
-      }
-      group.rows.push(row)
-      group.totalQty += Number(row.quantity || 0)
-    }
-    return Array.from(map.values())
-  }, [history])
-
   const goBackToCart = () => {
     router.push("/billing")
   }
 
+  // New scans are tagged with the currently-selected reason. Re-scanning the same
+  // product under the same reason increments that line; the same product under a
+  // different reason becomes a separate line.
   const addOrIncrementItem = (product: ProductSearchResult): boolean => {
-    const availableStock = Number.isFinite(Number(product.stock)) ? Math.max(0, Number(product.stock)) : 0
+    if (!reasonType) {
+      toast({
+        title: "Select a reason first",
+        description: "Pick the reason, then scan the products for that reason.",
+        variant: "destructive",
+      })
+      return false
+    }
 
+    const availableStock = Number.isFinite(Number(product.stock)) ? Math.max(0, Number(product.stock)) : 0
     if (availableStock <= 0) {
       toast({
         title: "Out of Stock",
@@ -296,7 +279,8 @@ export default function ReturnToAdminPage() {
       return false
     }
 
-    const existing = items.find((item) => item.productId === product.id)
+    const lineId = `${product.id}__${reasonType}`
+    const existing = items.find((item) => item.lineId === lineId)
     if (existing) {
       if (existing.quantity >= existing.availableStock) {
         toast({
@@ -308,9 +292,7 @@ export default function ReturnToAdminPage() {
       }
       setItems((prev) =>
         prev.map((item) =>
-          item.productId === product.id
-            ? { ...item, quantity: item.quantity + 1, availableStock }
-            : item,
+          item.lineId === lineId ? { ...item, quantity: item.quantity + 1, availableStock } : item,
         ),
       )
       return true
@@ -319,20 +301,22 @@ export default function ReturnToAdminPage() {
     setItems((prev) => [
       ...prev,
       {
+        lineId,
         productId: product.id,
         name: product.name,
         barcode: product.barcode || product.barcodes,
         quantity: 1,
         availableStock,
         sellingPrice: Number(product.selling_price || 0),
+        reasonType,
       },
     ])
     return true
   }
 
-  const handleQtyChange = (productId: string, value: number) => {
+  const handleQtyChange = (lineId: string, value: number) => {
     const next = Math.max(1, Number.isFinite(value) ? Math.floor(value) : 1)
-    const existing = items.find((item) => item.productId === productId)
+    const existing = items.find((item) => item.lineId === lineId)
     if (!existing) return
 
     if (next > existing.availableStock) {
@@ -343,14 +327,32 @@ export default function ReturnToAdminPage() {
       })
       setItems((prev) =>
         prev.map((item) =>
-          item.productId === productId ? { ...item, quantity: existing.availableStock } : item,
+          item.lineId === lineId ? { ...item, quantity: existing.availableStock } : item,
         ),
       )
       return
     }
-    setItems((prev) =>
-      prev.map((item) => (item.productId === productId ? { ...item, quantity: next } : item)),
-    )
+    setItems((prev) => prev.map((item) => (item.lineId === lineId ? { ...item, quantity: next } : item)))
+  }
+
+  // Change a single line's reason. If a line for the same product + new reason
+  // already exists, merge the quantities into it.
+  const handleChangeItemReason = (lineId: string, newReason: string) => {
+    setItems((prev) => {
+      const target = prev.find((item) => item.lineId === lineId)
+      if (!target || target.reasonType === newReason) return prev
+      const newLineId = `${target.productId}__${newReason}`
+      const sibling = prev.find((item) => item.lineId === newLineId)
+      if (sibling) {
+        const mergedQty = Math.min(sibling.availableStock, sibling.quantity + target.quantity)
+        return prev
+          .filter((item) => item.lineId !== lineId)
+          .map((item) => (item.lineId === newLineId ? { ...item, quantity: mergedQty } : item))
+      }
+      return prev.map((item) =>
+        item.lineId === lineId ? { ...item, lineId: newLineId, reasonType: newReason } : item,
+      )
+    })
   }
 
   const handleSearch = async () => {
@@ -405,8 +407,8 @@ export default function ReturnToAdminPage() {
     }
   }
 
-  const handleRemove = (productId: string) => {
-    setItems((prev) => prev.filter((item) => item.productId !== productId))
+  const handleRemove = (lineId: string) => {
+    setItems((prev) => prev.filter((item) => item.lineId !== lineId))
   }
 
   const resetForm = () => {
@@ -438,25 +440,23 @@ export default function ReturnToAdminPage() {
     await loadPrinters()
   }
 
-  const handlePrintHistoryGroup = (group: DamageReturnGroup) => {
+  const handlePrintOrder = (order: ReturnOrder) => {
+    const lines = order.return_products || []
     openPrintDialog({
-      id: group.rows[0]?.id,
+      id: order.return_id,
       companyName,
-      storeName: group.storeName || store?.name,
+      storeName: store?.name,
       storeAddress: store?.address,
       storePhone: store?.phone,
-      createdAt: group.createdAt,
-      reason: group.reason,
-      reasonType: group.reasonType,
-      damageOrigin: group.damageOrigin,
-      status: group.status,
-      resolutionStatus: group.resolutionStatus,
-      createdBy: group.createdBy,
-      items: group.rows.map((row) => ({
-        name: row.products?.name || "Unknown Product",
-        barcode: row.products?.barcode,
-        quantity: Number(row.quantity || 0),
-        sellingPrice: Number(row.products?.selling_price || 0),
+      createdAt: order.created_at,
+      reason: distinctReasons(lines.map((l) => l.reason_type)),
+      status: order.admin_status,
+      createdBy: order.created_by,
+      items: lines.map((line) => ({
+        name: line.products?.name || "Unknown Product",
+        barcode: line.products?.barcode,
+        quantity: Number(line.quantity || 0),
+        sellingPrice: Number(line.products?.selling_price || 0),
       })),
     })
   }
@@ -506,16 +506,15 @@ export default function ReturnToAdminPage() {
     setIsSubmitting(true)
     try {
       const payload = {
-        selectedItems: items.map((item) => ({
+        items: items.map((item) => ({
           productId: item.productId,
           quantity: item.quantity,
+          reasonType: item.reasonType,
+          reason: reasonLabel(item.reasonType),
         })),
-        reason: REASONS.find((entry) => entry.value === reasonType)?.label || reasonType,
-        reasonType,
-        damageOrigin: "store",
       }
 
-      const response = await apiClient("/api/store-damage-returns", {
+      const response = await apiClient("/api/return-orders", {
         method: "POST",
         body: JSON.stringify(payload),
       })
@@ -524,8 +523,7 @@ export default function ReturnToAdminPage() {
         throw new Error(result?.message || `HTTP ${response.status}`)
       }
 
-      const reasonLabel = REASONS.find((entry) => entry.value === reasonType)?.label || reasonType
-      const createdRefId: string | undefined = result?.rows?.[0]?.id
+      const createdRefId: string | undefined = result?.return?.return_id
 
       // Snapshot the receipt before clearing the form.
       const receipt: DamageReturnPrintData = {
@@ -534,10 +532,8 @@ export default function ReturnToAdminPage() {
         storeName: store?.name,
         storeAddress: store?.address,
         storePhone: store?.phone,
-        createdAt: result?.rows?.[0]?.created_at || new Date().toISOString(),
-        reason: reasonLabel,
-        reasonType,
-        damageOrigin: "store",
+        createdAt: result?.return?.created_at || new Date().toISOString(),
+        reason: distinctReasons(items.map((item) => item.reasonType)),
         status: "sent_to_admin",
         items: items.map((item) => ({
           name: item.name,
@@ -548,8 +544,10 @@ export default function ReturnToAdminPage() {
       }
 
       toast({
-        title: "Sent to Admin",
-        description: `Submitted ${items.length} product(s) (Qty ${totalQty}).`,
+        title: result?.queued ? "Saved offline" : "Sent to Admin",
+        description: result?.queued
+          ? `Return order queued (Qty ${totalQty}); will sync when online.`
+          : `Return order submitted with ${items.length} line(s) (Qty ${totalQty}).`,
       })
 
       setConfirmOpen(false)
@@ -582,7 +580,7 @@ export default function ReturnToAdminPage() {
               Return to Admin
             </h1>
             <p className="text-sm text-muted-foreground">
-              Scan or enter product barcodes, select a reason, and send items back to admin.
+              Pick a reason, scan the products for it, switch reason and scan more, then submit one return order.
             </p>
           </div>
         </div>
@@ -597,12 +595,31 @@ export default function ReturnToAdminPage() {
 
           {/* ── NEW RETURN ── */}
           <TabsContent value="new" className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <Label>Reason for scanned items</Label>
+              <Select value={reasonType} onValueChange={setReasonType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a reason, then scan products" />
+                </SelectTrigger>
+                <SelectContent>
+                  {REASONS.map((entry) => (
+                    <SelectItem key={entry.value} value={entry.value}>
+                      {entry.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Items you scan are added under this reason. Change it any time to scan items with a different reason.
+              </p>
+            </div>
+
             <div className="flex gap-2">
               <div className="flex-1">
                 <Label htmlFor="return-barcode">Barcode</Label>
                 <Input
                   id="return-barcode"
-                  placeholder="Scan or enter barcode"
+                  placeholder={reasonType ? "Scan or enter barcode" : "Select a reason first"}
                   autoFocus
                   value={barcodeInput}
                   onChange={(e) => setBarcodeInput(e.target.value)}
@@ -614,26 +631,10 @@ export default function ReturnToAdminPage() {
                   }}
                 />
               </div>
-              <Button onClick={handleSearch} disabled={isSearching} className="mt-6">
+              <Button onClick={handleSearch} disabled={isSearching || !reasonType} className="mt-6">
                 <Search className="h-4 w-4 mr-2" />
                 {isSearching ? "Searching..." : "Add"}
               </Button>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Reason</Label>
-              <Select value={reasonType} onValueChange={setReasonType}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select reason" />
-                </SelectTrigger>
-                <SelectContent>
-                  {REASONS.map((entry) => (
-                    <SelectItem key={entry.value} value={entry.value}>
-                      {entry.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
 
             <div className="rounded-md border">
@@ -642,38 +643,52 @@ export default function ReturnToAdminPage() {
                   <TableRow>
                     <TableHead>Product</TableHead>
                     <TableHead>Barcode</TableHead>
-                    <TableHead className="w-32">Qty</TableHead>
-                    <TableHead className="w-20"></TableHead>
+                    <TableHead className="w-40">Reason</TableHead>
+                    <TableHead className="w-28">Qty</TableHead>
+                    <TableHead className="w-16"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {items.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
+                      <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
                         No products added yet.
                       </TableCell>
                     </TableRow>
                   ) : (
                     items.map((item) => (
-                      <TableRow key={item.productId}>
+                      <TableRow key={item.lineId}>
                         <TableCell className="font-medium">{item.name}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">
                           {item.barcode || "-"}
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={item.reasonType}
+                            onValueChange={(value) => handleChangeItemReason(item.lineId, value)}
+                          >
+                            <SelectTrigger className="h-8">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {REASONS.map((entry) => (
+                                <SelectItem key={entry.value} value={entry.value}>
+                                  {entry.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </TableCell>
                         <TableCell>
                           <Input
                             type="number"
                             min={1}
                             value={item.quantity}
-                            onChange={(e) => handleQtyChange(item.productId, Number(e.target.value))}
+                            onChange={(e) => handleQtyChange(item.lineId, Number(e.target.value))}
                           />
                         </TableCell>
                         <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleRemove(item.productId)}
-                          >
+                          <Button variant="ghost" size="icon" onClick={() => handleRemove(item.lineId)}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </TableCell>
@@ -686,9 +701,6 @@ export default function ReturnToAdminPage() {
 
             <div className="flex items-center justify-between">
               <Badge variant="secondary">Total Qty: {totalQty}</Badge>
-              {!reasonType && items.length > 0 && (
-                <span className="text-xs text-destructive">Reason is required.</span>
-              )}
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
@@ -704,9 +716,7 @@ export default function ReturnToAdminPage() {
           {/* ── HISTORY ── */}
           <TabsContent value="history" className="mt-4 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium text-muted-foreground">
-                Previous returns to admin
-              </h2>
+              <h2 className="text-sm font-medium text-muted-foreground">Previous return orders</h2>
               <Button variant="outline" size="sm" onClick={fetchHistory} disabled={isLoadingHistory}>
                 <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingHistory ? "animate-spin" : ""}`} />
                 Refresh
@@ -715,59 +725,60 @@ export default function ReturnToAdminPage() {
 
             {isLoadingHistory ? (
               <p className="text-sm text-muted-foreground py-8 text-center">Loading history...</p>
-            ) : historyGroups.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">No returns yet.</p>
+            ) : history.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">No return orders yet.</p>
             ) : (
               <div className="space-y-3">
-                {historyGroups.map((group) => (
-                  <div key={group.key} className="rounded-md border p-3 space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="space-y-1">
-                        <div className="text-sm font-medium">{formatDateTime(group.createdAt)}</div>
-                        <div className="flex flex-wrap gap-2">
-                          <Badge variant="secondary">{group.reason || titleCase(group.reasonType)}</Badge>
-                          <Badge variant="outline">{titleCase(group.status)}</Badge>
-                          {group.resolutionStatus && (
-                            <Badge variant="outline">{titleCase(group.resolutionStatus)}</Badge>
-                          )}
-                          <Badge variant="outline">Qty: {group.totalQty}</Badge>
+                {history.map((order) => {
+                  const lines = order.return_products || []
+                  const totalOrderQty =
+                    Number(order.return_quantity || 0) ||
+                    lines.reduce((sum, line) => sum + Number(line.quantity || 0), 0)
+                  return (
+                    <div key={order.return_id} className="rounded-md border p-3 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="space-y-1">
+                          <div className="text-sm font-medium">{formatDateTime(order.created_at)}</div>
+                          <div className="text-xs text-muted-foreground">Order: {order.return_id}</div>
+                          <div className="flex flex-wrap gap-2">
+                            <Badge variant="outline">{titleCase(order.admin_status)}</Badge>
+                            <Badge variant="outline">Qty: {totalOrderQty}</Badge>
+                          </div>
                         </div>
+                        <Button variant="outline" size="sm" onClick={() => handlePrintOrder(order)}>
+                          <Printer className="h-4 w-4 mr-2" />
+                          Print
+                        </Button>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handlePrintHistoryGroup(group)}
-                      >
-                        <Printer className="h-4 w-4 mr-2" />
-                        Print
-                      </Button>
-                    </div>
-                    <div className="rounded border bg-muted/20">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Product</TableHead>
-                            <TableHead>Barcode</TableHead>
-                            <TableHead className="w-20 text-right">Qty</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {group.rows.map((row) => (
-                            <TableRow key={row.id}>
-                              <TableCell className="font-medium">
-                                {row.products?.name || "Unknown Product"}
-                              </TableCell>
-                              <TableCell className="text-xs text-muted-foreground">
-                                {row.products?.barcode || "-"}
-                              </TableCell>
-                              <TableCell className="text-right">{row.quantity}</TableCell>
+                      <div className="rounded border bg-muted/20">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Product</TableHead>
+                              <TableHead>Barcode</TableHead>
+                              <TableHead className="w-32">Reason</TableHead>
+                              <TableHead className="w-16 text-right">Qty</TableHead>
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                          </TableHeader>
+                          <TableBody>
+                            {lines.map((line) => (
+                              <TableRow key={line.id}>
+                                <TableCell className="font-medium">
+                                  {line.products?.name || "Unknown Product"}
+                                </TableCell>
+                                <TableCell className="text-xs text-muted-foreground">
+                                  {line.products?.barcode || "-"}
+                                </TableCell>
+                                <TableCell>{reasonLabel(line.reason_type)}</TableCell>
+                                <TableCell className="text-right">{line.quantity}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </TabsContent>
@@ -780,8 +791,8 @@ export default function ReturnToAdminPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm Return to Admin</AlertDialogTitle>
             <AlertDialogDescription>
-              This will submit {items.length} product(s) (Qty {totalQty}) to admin and reduce stock.
-              Continue?
+              This will send {items.length} line(s) (Qty {totalQty}) to admin as one return order.
+              Stock is removed when the admin verifies the items. Continue?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

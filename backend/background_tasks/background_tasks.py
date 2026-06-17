@@ -11,6 +11,7 @@ from helpers.utils import write_json_file, read_json_file
 from utils.sync_controller import SyncController  # Global instance is fine as it manages client pool
 from utils.offline_bill_queue import process_offline_bill_queue
 from utils.offline_damage_return_queue import process_offline_damage_return_queue
+from utils.offline_return_order_queue import process_offline_return_order_queue
 from utils.offline_transfer_verification_queue import process_offline_transfer_verification_queue
 from utils.connection_pool import get_supabase_client, warmup_supabase_connection
 
@@ -245,6 +246,12 @@ def start_background_tasks(app: Flask):
     offline_transfer_verification_queue_thread.start()
     app.logger.info("Background offline transfer-verification queue scheduler started.")
 
+    offline_return_order_queue_thread = threading.Thread(
+        target=background_offline_return_order_queue_scheduler, daemon=True, args=(app, 1,)
+    )
+    offline_return_order_queue_thread.start()
+    app.logger.info("Background offline return-order queue scheduler started.")
+
 
 def background_offline_bill_queue_scheduler(app: Flask, interval_minutes=1):
     """Periodically retry offline bill operations saved to local queue."""
@@ -281,5 +288,18 @@ def background_offline_transfer_verification_queue_scheduler(app: Flask, interva
                 process_offline_transfer_verification_queue(app_logger=app.logger, max_items=25)
             except Exception as e:
                 app.logger.error(f"Error while processing offline transfer-verification queue: {e}")
+
+            time.sleep(interval_minutes * 60)
+
+
+def background_offline_return_order_queue_scheduler(app: Flask, interval_minutes=1):
+    """Periodically retry offline store->admin return orders saved to local queue."""
+    with app.app_context():
+        app.logger.info("Starting offline return-order queue scheduler.")
+        while True:
+            try:
+                process_offline_return_order_queue(app_logger=app.logger, max_items=25)
+            except Exception as e:
+                app.logger.error(f"Error while processing offline return-order queue: {e}")
 
             time.sleep(interval_minutes * 60)

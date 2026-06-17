@@ -90,6 +90,14 @@ CREATE TABLE public.discounts (
   CONSTRAINT discounts_user_fk FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT discounts_bill_fk FOREIGN KEY (bill_id) REFERENCES public.bills(id)
 );
+CREATE TABLE public.gst_registrations (
+  id character varying NOT NULL,
+  gst_number character varying NOT NULL UNIQUE,
+  state character varying NOT NULL,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT gst_registrations_pkey PRIMARY KEY (id)
+);
 CREATE TABLE public.hsn_codes (
   hsn_code character varying NOT NULL UNIQUE,
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
@@ -229,6 +237,25 @@ CREATE TABLE public.replacements (
   CONSTRAINT replacements_replaced_product_fk FOREIGN KEY (replaced_product_id) REFERENCES public.products(id),
   CONSTRAINT replacements_bill_fk FOREIGN KEY (bill_id) REFERENCES public.bills(id)
 );
+CREATE TABLE public.return_products (
+  id character varying NOT NULL,
+  return_id character varying NOT NULL,
+  product_id character varying NOT NULL,
+  quantity integer NOT NULL DEFAULT 0,
+  reason text,
+  reason_type text DEFAULT 'damaged'::text,
+  verified_qty integer DEFAULT 0,
+  verify_status text DEFAULT 'pending'::text,
+  verified_by character varying,
+  verified_at timestamp without time zone,
+  holding_status text DEFAULT 'with_admin'::text,
+  notes text,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT return_products_pkey PRIMARY KEY (id),
+  CONSTRAINT return_products_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
+  CONSTRAINT return_products_verified_by_fkey FOREIGN KEY (verified_by) REFERENCES public.users(id)
+);
 CREATE TABLE public.returns (
   return_id character varying NOT NULL,
   product_id character varying,
@@ -253,10 +280,64 @@ CREATE TABLE public.returns (
   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
   is_damaged boolean DEFAULT false,
   damaged_qty integer DEFAULT 0,
+  return_type text DEFAULT 'customer'::text,
+  admin_status text DEFAULT 'sent_to_admin'::text,
   CONSTRAINT returns_pkey PRIMARY KEY (s_no),
   CONSTRAINT returns_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id),
   CONSTRAINT returns_customer_fk FOREIGN KEY (customer_id) REFERENCES public.customers(id),
   CONSTRAINT returns_ibfk_2 FOREIGN KEY (product_id) REFERENCES public.products(id)
+);
+CREATE TABLE public.store_audit_items (
+  id character varying NOT NULL,
+  audit_id character varying NOT NULL,
+  product_id character varying,
+  name character varying,
+  barcode character varying,
+  system_qty integer NOT NULL DEFAULT 0,
+  counted_qty integer NOT NULL DEFAULT 0,
+  outcome character varying NOT NULL,
+  price numeric NOT NULL DEFAULT 0,
+  line_value numeric NOT NULL DEFAULT 0,
+  resolution_action character varying,
+  resolution_qty integer DEFAULT 0,
+  resolution_amount numeric,
+  resolution_note text,
+  resolved boolean DEFAULT false,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT store_audit_items_pkey PRIMARY KEY (id),
+  CONSTRAINT store_audit_items_audit_id_fkey FOREIGN KEY (audit_id) REFERENCES public.store_audits(id)
+);
+CREATE TABLE public.store_audits (
+  id character varying NOT NULL,
+  store_id character varying NOT NULL,
+  store_name character varying,
+  store_code character varying,
+  audited_by character varying,
+  started_at timestamp without time zone,
+  completed_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  verified_lines integer NOT NULL DEFAULT 0,
+  short_lines integer NOT NULL DEFAULT 0,
+  unscanned_lines integer NOT NULL DEFAULT 0,
+  missing_lines integer NOT NULL DEFAULT 0,
+  found_lines integer NOT NULL DEFAULT 0,
+  over_count_lines integer NOT NULL DEFAULT 0,
+  scanned_units integer NOT NULL DEFAULT 0,
+  system_units integer NOT NULL DEFAULT 0,
+  discrepancy_units integer NOT NULL DEFAULT 0,
+  discrepancy_value numeric NOT NULL DEFAULT 0,
+  shortage_value numeric NOT NULL DEFAULT 0,
+  surplus_value numeric NOT NULL DEFAULT 0,
+  accuracy_pct integer NOT NULL DEFAULT 0,
+  status character varying DEFAULT 'completed'::character varying,
+  note text,
+  reconciled_at timestamp without time zone,
+  reconciled_by character varying,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT store_audits_pkey PRIMARY KEY (id),
+  CONSTRAINT store_audits_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id),
+  CONSTRAINT store_audits_audited_by_fkey FOREIGN KEY (audited_by) REFERENCES public.users(id),
+  CONSTRAINT store_audits_reconciled_by_fkey FOREIGN KEY (reconciled_by) REFERENCES public.users(id)
 );
 CREATE TABLE public.store_damage_returns (
   id character varying NOT NULL,
@@ -299,14 +380,6 @@ CREATE TABLE public.storeinventory (
   CONSTRAINT storeinventory_pkey PRIMARY KEY (id),
   CONSTRAINT storeinventory_ibfk_2 FOREIGN KEY (productid) REFERENCES public.products(id),
   CONSTRAINT storeinventory_ibfk_1 FOREIGN KEY (storeid) REFERENCES public.stores(id)
-);
-CREATE TABLE public.gst_registrations (
-  id character varying NOT NULL,
-  gst_number character varying NOT NULL UNIQUE,
-  state character varying NOT NULL,
-  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-  updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT gst_registrations_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.stores (
   id character varying NOT NULL,

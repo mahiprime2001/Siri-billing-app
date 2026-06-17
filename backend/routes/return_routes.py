@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import uuid
 import traceback
 from helpers.utils import read_json_file, write_json_file
-from config.config import STORE_DAMAGE_RETURNS_FILE, PRODUCTS_FILE, STOREINVENTORY_FILE, USER_STORES_FILE
+from config.config import STORE_DAMAGE_RETURNS_FILE, RETURN_PRODUCTS_FILE, PRODUCTS_FILE, STOREINVENTORY_FILE, USER_STORES_FILE
 from utils.offline_damage_return_queue import enqueue_damage_return_create
 
 return_bp = Blueprint('return', __name__)

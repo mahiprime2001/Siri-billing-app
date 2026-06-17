@@ -914,17 +914,17 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
 
     fetchProducts()
 
-    const streamUrl = "http://localhost:8080/api/stock/stream"
-    const source = new EventSource(streamUrl, { withCredentials: true })
-
     // Track stream drops so we can reconcile missed events on reconnect.
     let streamWasDisconnected = false
+    // The stream is (re)created via connectStream() so each connection picks up a
+    // FRESH auth token. EventSource can't send the Authorization header, so the
+    // token rides in the query string and would otherwise go stale on reconnect.
+    let source: EventSource | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let streamClosed = false
 
-    // Safety net: the SSE stock stream can drop events (full queue) or miss
-    // them entirely while disconnected, and it has no replay. Without an
-    // occasional full refresh, stale stock (often 0) silently hides products
-    // from the grid until the user logs out and back in. A slow background
-    // refresh keeps the list self-healing without a remount.
+    // Backup refresh: the SSE stock stream has no replay, so an occasional full
+    // refresh keeps the list self-healing if an event is ever missed.
     const PRODUCTS_SAFETY_REFRESH_MS = 90 * 1000
     const safetyRefreshTimer = setInterval(() => {
       fetchProducts()
@@ -981,40 +981,65 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
       }
     }
 
-    source.addEventListener("stock", (event) => {
-      try {
-        const data = JSON.parse((event as MessageEvent).data || "{}")
-        if (data.store_id && data.store_id !== currentStore.id) return
+    const connectStream = () => {
+      if (streamClosed) return
+      // EventSource cannot set the Authorization header, so the JWT is passed in
+      // the query string; the backend accepts ?token= for this endpoint only.
+      const token = authManager.getToken()
+      const streamUrl = `http://localhost:8080/api/stock/stream${token ? `?token=${encodeURIComponent(token)}` : ""}`
+      source = new EventSource(streamUrl, { withCredentials: true })
 
-        const ids: string[] = Array.isArray(data.product_ids) ? data.product_ids.map(String) : []
-        if (ids.length > 0) {
-          applyDeltaForIds(ids)
-        } else {
+      source.addEventListener("stock", (event) => {
+        try {
+          const data = JSON.parse((event as MessageEvent).data || "{}")
+          if (data.store_id && data.store_id !== currentStore.id) return
+
+          const ids: string[] = Array.isArray(data.product_ids) ? data.product_ids.map(String) : []
+          if (ids.length > 0) {
+            applyDeltaForIds(ids)
+          } else {
+            fetchProducts()
+          }
+        } catch (error) {
+          console.error("❌ Failed to parse stock event:", error)
+        }
+      })
+
+      // On reconnect, pull a fresh full list to recover any events dropped or
+      // emitted while the stream was down (this SSE channel has no replay).
+      source.addEventListener("open", () => {
+        if (streamWasDisconnected) {
+          streamWasDisconnected = false
+          console.log("🔄 Stock stream reconnected — refreshing products to catch up")
           fetchProducts()
         }
-      } catch (error) {
-        console.error("❌ Failed to parse stock event:", error)
-      }
-    })
+      })
 
-    // On reconnect, pull a fresh full list to recover any events dropped or
-    // emitted while the stream was down (this SSE channel has no replay).
-    source.addEventListener("open", () => {
-      if (streamWasDisconnected) {
-        streamWasDisconnected = false
-        console.log("🔄 Stock stream reconnected — refreshing products to catch up")
-        fetchProducts()
-      }
-    })
+      source.addEventListener("error", (event) => {
+        streamWasDisconnected = true
+        console.warn("⚠️ Stock stream disconnected:", event)
+        // Recreate the connection ourselves (instead of EventSource's built-in
+        // retry) so the reconnect uses a fresh, non-expired token.
+        if (source) {
+          source.close()
+          source = null
+        }
+        if (!streamClosed && !reconnectTimer) {
+          reconnectTimer = setTimeout(() => {
+            reconnectTimer = null
+            connectStream()
+          }, 3000)
+        }
+      })
+    }
 
-    source.addEventListener("error", (event) => {
-      streamWasDisconnected = true
-      console.warn("⚠️ Stock stream disconnected:", event)
-    })
+    connectStream()
 
     return () => {
+      streamClosed = true
       clearInterval(safetyRefreshTimer)
-      source.close()
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      if (source) source.close()
     }
   }, [currentStore?.id])
 
@@ -1292,71 +1317,87 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
     if (!rawInput) return
 
     const input = normalizeBarcode(rawInput)
-
-    const product = products.find((p) => {
-      if (!p.barcodes) return false
-
-      const productBarcodes = p.barcodes
-        .split(",")
-        .map((b) => normalizeBarcode(b))
-
-      return productBarcodes.includes(input)
-    })
-
-    if (product) {
-      const added = addToCart(product.id, 1)
-      if (added) {
-        setLastScanned(product)
-        setBarcodeInput("")
-      }
-
+    const focusBarcode = () =>
       setTimeout(() => {
         barcodeInputRef.current?.focus()
       }, 0)
-    } else {
-      const serverMatchedProduct = await lookupProductByBarcode(rawInput)
-      if (serverMatchedProduct) {
-        setProducts((prev) => {
-          const next = [...prev]
-          const existingIndex = next.findIndex((item) => item.id === serverMatchedProduct.id)
-          if (existingIndex >= 0) {
-            next[existingIndex] = serverMatchedProduct
-          } else {
-            next.push(serverMatchedProduct)
-          }
-          return sortProductsByName(next)
-        })
 
+    const matchesBarcode = (p: Product) => {
+      if (!p.barcodes) return false
+      return p.barcodes
+        .split(",")
+        .map((b) => normalizeBarcode(b))
+        .includes(input)
+    }
+
+    // 1) Fast path: product is in the local list AND looks in stock — add it.
+    const localMatch = products.find(matchesBarcode)
+    if (localMatch && localMatch.stock > 0) {
+      const added = addToCart(localMatch.id, 1)
+      if (added) {
+        setLastScanned(localMatch)
+        setBarcodeInput("")
+      }
+      focusBarcode()
+      return
+    }
+
+    // 2) Local says the product is missing or shows 0 stock. Don't trust a
+    //    possibly-stale in-memory 0 — re-check the backend for the TRUE current
+    //    number. Online this reads the cloud; offline the backend serves the
+    //    local JSON fallback. Either way we use a verified value, not a stale one.
+    const serverMatchedProduct = await lookupProductByBarcode(rawInput)
+    if (serverMatchedProduct) {
+      // Merge the fresh row back into the in-memory list so the grid heals too.
+      setProducts((prev) => {
+        const next = [...prev]
+        const existingIndex = next.findIndex((item) => item.id === serverMatchedProduct.id)
+        if (existingIndex >= 0) {
+          next[existingIndex] = serverMatchedProduct
+        } else {
+          next.push(serverMatchedProduct)
+        }
+        return sortProductsByName(next)
+      })
+
+      if (serverMatchedProduct.stock > 0) {
         const added = addToCart(serverMatchedProduct.id, 1, serverMatchedProduct)
         if (added) {
           setLastScanned(serverMatchedProduct)
         }
         setBarcodeInput("")
-        setTimeout(() => {
-          barcodeInputRef.current?.focus()
-        }, 0)
+        focusBarcode()
         return
       }
-
-      const pendingTransferMatch = await findPendingTransferForBarcode(input)
-      setBarcodeInput("")
-      if (pendingTransferMatch) {
-        setPendingVerificationPrompt({
-          orderId: pendingTransferMatch.orderId,
-          barcode: rawInput,
-          productName: pendingTransferMatch.productName,
-        })
-      } else {
-        setMissingBarcodeAlert({
-          barcode: rawInput,
-          message: `Product with barcode "${rawInput}" was not found in this store's inventory.`,
-        })
-      }
-
-      setTimeout(() => {
-        barcodeInputRef.current?.focus()
-      }, 0)
+      // Found, but genuinely 0 — fall through to verification / out-of-stock.
     }
+
+    // 3) Stock is genuinely 0 (or unknown). If there is a pending transfer for
+    //    this barcode, route to verification — incoming stock must be verified
+    //    before it is sellable (this also works offline; verification queues).
+    const pendingTransferMatch = await findPendingTransferForBarcode(input)
+    setBarcodeInput("")
+    if (pendingTransferMatch) {
+      setPendingVerificationPrompt({
+        orderId: pendingTransferMatch.orderId,
+        barcode: rawInput,
+        productName: pendingTransferMatch.productName,
+      })
+    } else if (serverMatchedProduct) {
+      // Known product, truly out of stock, with no incoming transfer to verify.
+      toast({
+        title: "Out of Stock",
+        description: `${serverMatchedProduct.name} is out of stock.`,
+        variant: "destructive",
+      })
+    } else {
+      setMissingBarcodeAlert({
+        barcode: rawInput,
+        message: `Product with barcode "${rawInput}" was not found in this store's inventory.`,
+      })
+    }
+
+    focusBarcode()
   }
 
   const handlePendingVerificationConfirm = () => {

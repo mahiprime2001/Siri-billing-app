@@ -46,6 +46,7 @@ from routes.settings_routes import settings_bp
 from routes.customer_routes import customer_bp
 from routes.billing_routes import billing_bp
 from routes.return_routes import return_bp
+from routes.return_order_routes import return_order_bp
 from routes.sync_routes import sync_bp
 from routes.health_routes import health_bp
 from routes.notification_routes import notification_bp
@@ -262,6 +263,7 @@ app.register_blueprint(settings_bp, url_prefix='/api')
 app.register_blueprint(customer_bp, url_prefix='/api')
 app.register_blueprint(billing_bp, url_prefix='/api')
 app.register_blueprint(return_bp, url_prefix='/api')
+app.register_blueprint(return_order_bp, url_prefix='/api')
 app.register_blueprint(sync_bp, url_prefix='/api')
 app.register_blueprint(health_bp, url_prefix='/api')
 app.register_blueprint(notification_bp, url_prefix='/api')
