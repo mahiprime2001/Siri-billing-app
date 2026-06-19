@@ -735,9 +735,19 @@ def create_bill_transaction(
 def dispatch_bill_create(current_user_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
     # Local import breaks the circular dep: offline_bill_queue already imports create_bill_transaction.
     from utils.offline_bill_queue import enqueue_bill_create
+    from utils.queue_common import log_offline_event
 
-    def _queue(message: str) -> Dict[str, Any]:
+    def _queue(message: str, trigger: str, reason: str = "") -> Dict[str, Any]:
         result = enqueue_bill_create(current_user_id=current_user_id, bill_payload=data)
+        log_offline_event(
+            "bill_queued_offline",
+            queue="bills",
+            bill_id=result.get("bill_id"),
+            queue_id=result.get("queue_id"),
+            store_id=data.get("store_id"),
+            trigger=trigger,
+            reason=reason or None,
+        )
         return {
             "queued": True,
             "bill_id": result["bill_id"],
@@ -748,7 +758,8 @@ def dispatch_bill_create(current_user_id: str, data: Dict[str, Any]) -> Dict[str
     supabase = get_supabase_client()
     if getattr(supabase, "is_offline_fallback", False):
         return _queue(
-            "System offline. Invoice queued and will sync automatically when internet returns."
+            "System offline. Invoice queued and will sync automatically when internet returns.",
+            trigger="offline_fallback",
         )
 
     try:
@@ -767,6 +778,8 @@ def dispatch_bill_create(current_user_id: str, data: Dict[str, Any]) -> Dict[str
         if getattr(client, "is_offline_fallback", False) or _is_network_offline_error(exc) \
                 or isinstance(exc, SupabaseCircuitOpenError):
             return _queue(
-                "Connection lost. Invoice queued and will sync automatically when internet returns."
+                "Connection lost. Invoice queued and will sync automatically when internet returns.",
+                trigger="connection_lost",
+                reason=str(exc),
             )
         raise

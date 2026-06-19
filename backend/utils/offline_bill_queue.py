@@ -1,6 +1,7 @@
 import threading
 import uuid
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Dict, Any
 import re
@@ -10,9 +11,18 @@ from config.config import OFFLINE_BILL_QUEUE_FILE, BILLS_FILE, STOREINVENTORY_FI
 from helpers.utils import read_json_file, write_json_file, read_json_file_strict, QueueReadError
 from services.billing_service import create_bill_transaction
 from utils.connection_pool import get_supabase_client
+from utils.queue_common import (
+    classify_error,
+    quarantine_item,
+    log_offline_event,
+    MAX_PERMANENT_ATTEMPTS,
+)
 
 _queue_lock = threading.Lock()
-MAX_RETRIES = 100
+# How many bills to replay concurrently once connectivity returns. Replay is
+# idempotent (create_bill_transaction resolves by forced_bill_id), so parallel
+# draining is safe and clears a post-outage backlog quickly.
+REPLAY_WORKERS = 4
 INVOICE_ID_REGEX = re.compile(r"^INV-([A-Z0-9]+)-(\d{8})(\d{4})$")
 IST_ZONE = ZoneInfo("Asia/Kolkata")
 BILL_ITEMS_FILE = os.path.join(JSON_DIR, "billitems.json")
@@ -292,59 +302,143 @@ def get_queue_status() -> Dict[str, Any]:
         }
 
 
-def process_offline_bill_queue(app_logger=None, max_items: int = 20) -> Dict[str, int]:
+def _replay_one(item: Dict[str, Any], app=None):
+    """Replay a single queued bill. Returns (status, item, reason).
+
+    status is one of: "success" | "retry" | "poison". A transient (network)
+    failure always retries; a permanent failure retries a few times then is
+    flagged for quarantine. Runs inside the Flask app context so local-file
+    writes inside create_bill_transaction have access to current_app.
+    """
+    def _run():
+        try:
+            if item.get("type") != "create_bill":
+                raise RuntimeError(f"Unsupported queue item type: {item.get('type')}")
+            create_bill_transaction(
+                current_user_id=item["user_id"],
+                data=item["payload"],
+                forced_bill_id=item.get("forced_bill_id"),
+            )
+            return ("success", item, None)
+        except Exception as e:
+            updated = dict(item)
+            updated["attempts"] = int(item.get("attempts", 0)) + 1
+            updated["last_error"] = str(e)
+            updated["last_error_class"] = classify_error(e)
+            updated["updated_at"] = _utc_now()
+            if (
+                updated["last_error_class"] == "permanent"
+                and updated["attempts"] >= MAX_PERMANENT_ATTEMPTS
+            ):
+                return ("poison", updated, str(e))
+            return ("retry", updated, str(e))
+
+    if app is not None:
+        with app.app_context():
+            return _run()
+    return _run()
+
+
+def process_offline_bill_queue(app=None, app_logger=None, max_items: int = 25) -> Dict[str, int]:
+    """Drain the offline bill queue without ever blocking new offline saves.
+
+    Phase 1 (short lock): claim a batch — no network here.
+    Phase 2 (no lock): replay the batch in parallel; the cashier can still
+        enqueue new bills meanwhile.
+    Phase 3 (short lock): re-read the queue (to keep bills enqueued mid-drain)
+        and write back only the items we handled.
+    Phase 4: preserve any poison items in the dead-letter store and log them.
+    """
+    logger = app_logger or (getattr(app, "logger", None) if app else None)
+
+    # Phase 1 — claim a batch under a brief lock (no network while held).
     with _queue_lock:
         queue = read_json_file(OFFLINE_BILL_QUEUE_FILE, [])
-        if not queue:
-            return {"processed": 0, "succeeded": 0, "failed": 0, "remaining": 0}
+        if not isinstance(queue, list) or not queue:
+            return {"processed": 0, "succeeded": 0, "failed": 0, "quarantined": 0, "remaining": 0}
         supabase = get_supabase_client()
         if not supabase or getattr(supabase, "is_offline_fallback", False):
-            return {"processed": 0, "succeeded": 0, "failed": 0, "remaining": len(queue)}
+            return {"processed": 0, "succeeded": 0, "failed": 0, "quarantined": 0, "remaining": len(queue)}
+        batch = list(queue[:max_items])
 
-        processed = 0
-        succeeded = 0
-        failed = 0
-        remaining = []
+    # Phase 2 — replay lock-free, in parallel (idempotent, so safe).
+    if len(batch) == 1:
+        results = [_replay_one(batch[0], app=app)]
+    else:
+        with ThreadPoolExecutor(max_workers=min(REPLAY_WORKERS, len(batch))) as pool:
+            results = list(pool.map(lambda it: _replay_one(it, app=app), batch))
 
-        for item in queue:
-            if processed >= max_items:
-                remaining.append(item)
+    succeeded_ids = set()
+    updated_by_id: Dict[str, Any] = {}
+    poisoned = []
+    for status, item, _reason in results:
+        qid = item.get("queue_id")
+        if status == "success":
+            succeeded_ids.add(qid)
+        elif status == "poison":
+            poisoned.append(item)
+        else:  # retry
+            updated_by_id[qid] = item
+    poison_ids = {p.get("queue_id") for p in poisoned}
+
+    # Phase 3 — write back under a brief lock. Re-read first so any bills the
+    # cashier enqueued DURING phase 2 are preserved (we touch only our items).
+    with _queue_lock:
+        current = read_json_file(OFFLINE_BILL_QUEUE_FILE, [])
+        if not isinstance(current, list):
+            current = []
+        new_queue = []
+        for it in current:
+            qid = it.get("queue_id")
+            if qid in succeeded_ids or qid in poison_ids:
                 continue
+            new_queue.append(updated_by_id.get(qid, it))
+        write_json_file(OFFLINE_BILL_QUEUE_FILE, new_queue)
 
-            processed += 1
-            try:
-                if item.get("type") != "create_bill":
-                    raise RuntimeError(f"Unsupported queue item type: {item.get('type')}")
-
-                create_bill_transaction(
-                    current_user_id=item["user_id"],
-                    data=item["payload"],
-                    forced_bill_id=item.get("forced_bill_id"),
-                )
-                succeeded += 1
-            except Exception as e:
-                item["attempts"] = int(item.get("attempts", 0)) + 1
-                item["last_error"] = str(e)
-                item["updated_at"] = _utc_now()
-                failed += 1
-
-                if item["attempts"] < MAX_RETRIES:
-                    remaining.append(item)
-                elif app_logger:
-                    app_logger.error(
-                        f"Dropping offline queue item {item.get('queue_id')} after max retries. Error: {e}"
-                    )
-
-        write_json_file(OFFLINE_BILL_QUEUE_FILE, remaining)
-
-    if app_logger and processed > 0:
-        app_logger.info(
-            f"Offline bill queue processed: processed={processed}, succeeded={succeeded}, failed={failed}, remaining={len(remaining)}"
+    # Phase 4 — preserve poison (never dropped) and record it in diagnostics.
+    for p in poisoned:
+        quarantine_item(OFFLINE_BILL_QUEUE_FILE, p, p.get("last_error"))
+        log_offline_event(
+            "quarantined",
+            queue="bills",
+            bill_id=p.get("forced_bill_id"),
+            queue_id=p.get("queue_id"),
+            attempts=p.get("attempts"),
+            reason=p.get("last_error"),
         )
+        if logger:
+            logger.error(
+                f"Quarantined offline bill {p.get('forced_bill_id')} after "
+                f"{p.get('attempts')} permanent failures: {p.get('last_error')}"
+            )
+
+    processed = len(results)
+    succeeded = len(succeeded_ids)
+    quarantined = len(poisoned)
+    retried = len(updated_by_id)
+    remaining = len(new_queue)
+
+    if processed > 0:
+        if logger:
+            logger.info(
+                f"Offline bill queue: processed={processed}, succeeded={succeeded}, "
+                f"retry={retried}, quarantined={quarantined}, remaining={remaining}"
+            )
+        if succeeded or quarantined:
+            log_offline_event(
+                "replay_batch",
+                queue="bills",
+                processed=processed,
+                succeeded=succeeded,
+                retried=retried,
+                quarantined=quarantined,
+                remaining=remaining,
+            )
 
     return {
         "processed": processed,
         "succeeded": succeeded,
-        "failed": failed,
-        "remaining": len(remaining),
+        "failed": retried,
+        "quarantined": quarantined,
+        "remaining": remaining,
     }

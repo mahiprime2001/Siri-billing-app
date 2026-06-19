@@ -6,9 +6,9 @@ from typing import Any, Dict
 from config.config import OFFLINE_TRANSFER_VERIFICATION_QUEUE_FILE
 from helpers.utils import read_json_file, write_json_file
 from utils.connection_pool import get_supabase_client
+from utils.queue_common import register_failure, quarantine_item, log_offline_event
 
 _queue_lock = threading.Lock()
-MAX_RETRIES = 100
 
 
 def _utc_now() -> str:
@@ -81,17 +81,24 @@ def process_offline_transfer_verification_queue(app_logger=None, max_items: int 
                 else:
                     raise RuntimeError(result.get("message") or f"Verification failed with status {status_code}")
             except Exception as e:
-                item["attempts"] = int(item.get("attempts", 0)) + 1
-                item["last_error"] = str(e)
-                item["updated_at"] = _utc_now()
                 failed += 1
-
-                if item["attempts"] < MAX_RETRIES:
-                    remaining.append(item)
-                elif app_logger:
-                    app_logger.error(
-                        f"Dropping transfer-verification queue item {item.get('queue_id')} after max retries. Error: {e}"
+                if register_failure(item, e) == "poison":
+                    quarantine_item(OFFLINE_TRANSFER_VERIFICATION_QUEUE_FILE, item, item["last_error"])
+                    log_offline_event(
+                        "quarantined",
+                        queue="transfer_verification",
+                        queue_id=item.get("queue_id"),
+                        order_id=item.get("order_id"),
+                        attempts=item.get("attempts"),
+                        reason=item.get("last_error"),
                     )
+                    if app_logger:
+                        app_logger.error(
+                            f"Quarantined transfer-verification {item.get('queue_id')} after "
+                            f"{item.get('attempts')} permanent failures. Error: {e}"
+                        )
+                else:
+                    remaining.append(item)
 
         write_json_file(OFFLINE_TRANSFER_VERIFICATION_QUEUE_FILE, remaining)
 

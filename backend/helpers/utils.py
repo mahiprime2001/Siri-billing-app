@@ -6,7 +6,30 @@ from datetime import datetime, date
 from decimal import Decimal
 from flask import current_app as app
 
+# Backwards-compat: some modules may still import this symbol. It is no longer
+# used to guard every file (that single global lock serialized ALL json reads
+# and writes, so a slow sync write could block a cashier's bill save). We now
+# use a lock-per-file (see _lock_for) so unrelated files never block each other.
 file_lock = threading.Lock()
+
+_locks_guard = threading.Lock()
+_file_locks: dict[str, threading.Lock] = {}
+
+
+def _lock_for(file_path: str) -> threading.Lock:
+    """Return a dedicated lock for a single file path.
+
+    Each distinct file gets its own lock, so writing bills.json never blocks the
+    offline queue file (and vice-versa). Paths are normalized so the same file
+    referenced different ways still shares one lock.
+    """
+    key = os.path.normcase(os.path.abspath(file_path))
+    with _locks_guard:
+        lock = _file_locks.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _file_locks[key] = lock
+        return lock
 
 
 class QueueReadError(Exception):
@@ -42,7 +65,7 @@ def write_json_file(file_path, data):
     report success for data that did not actually persist.
     """
     tmp_path = f"{file_path}.tmp"
-    with file_lock:
+    with _lock_for(file_path):
         try:
             with open(tmp_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, default=json_serial, ensure_ascii=False)
@@ -64,7 +87,7 @@ def read_json_file(file_path, default_value=None):
     if default_value is None:
         default_value = []
 
-    with file_lock:
+    with _lock_for(file_path):
         if not os.path.exists(file_path):
             return default_value
         try:
@@ -84,7 +107,7 @@ def read_json_file_strict(file_path):
     is raised. Use this for the offline queue files, where returning [] would let
     the next write erase everything that was queued.
     """
-    with file_lock:
+    with _lock_for(file_path):
         if not os.path.exists(file_path):
             return []
         try:

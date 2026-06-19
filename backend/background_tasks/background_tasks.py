@@ -13,7 +13,8 @@ from utils.offline_bill_queue import process_offline_bill_queue
 from utils.offline_damage_return_queue import process_offline_damage_return_queue
 from utils.offline_return_order_queue import process_offline_return_order_queue
 from utils.offline_transfer_verification_queue import process_offline_transfer_verification_queue
-from utils.connection_pool import get_supabase_client, warmup_supabase_connection
+from utils.connection_pool import get_supabase_client, warmup_supabase_connection, reset_circuit
+from utils.queue_common import log_offline_event
 
 # Map table names to their corresponding file paths
 TABLE_FILE_MAP = {
@@ -213,6 +214,16 @@ def start_background_tasks(app: Flask):
             return
         _background_started = True
 
+    # Self-heal: a stuck poison item used to keep the in-memory breaker open
+    # across restarts (so only deleting the data folder cured it). Start every
+    # boot from a clean ONLINE slate and re-evaluate connectivity from scratch.
+    try:
+        reset_circuit()
+        log_offline_event("self_heal", action="circuit_reset_on_startup")
+        app.logger.info("🩺 [SELF-HEAL] Circuit breaker reset to online at startup.")
+    except Exception as heal_err:
+        app.logger.warning(f"Self-heal circuit reset failed: {heal_err}")
+
     # Pull sync (Supabase to JSON)
     pull_scheduler_thread = threading.Thread(
         target=background_pull_sync_scheduler, daemon=True, args=(app, 5,)
@@ -259,7 +270,7 @@ def background_offline_bill_queue_scheduler(app: Flask, interval_minutes=1):
         app.logger.info("Starting offline bill queue scheduler.")
         while True:
             try:
-                process_offline_bill_queue(app_logger=app.logger, max_items=25)
+                process_offline_bill_queue(app=app, max_items=25)
             except Exception as e:
                 app.logger.error(f"Error while processing offline bill queue: {e}")
 

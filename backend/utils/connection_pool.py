@@ -34,6 +34,12 @@ _last_failure_at: float = 0.0
 _last_error: str = ""
 _consecutive_network_failures: int = 0
 _consecutive_probe_failures: int = 0
+_consecutive_gateway_errors: int = 0
+# Gateway statuses (502/503/504) mean the upstream DB is unreachable behind the
+# proxy — a genuine outage. We require this many in a row before tripping, so a
+# single transient 503 blip does not knock everyone offline.
+_GATEWAY_TRIP_THRESHOLD = 2
+_GATEWAY_STATUSES = frozenset({502, 503, 504})
 _PROBE_INTERVAL_SECONDS = 5
 _BASE_OFFLINE_COOLDOWN_SECONDS = 3
 _MAX_OFFLINE_COOLDOWN_SECONDS = 15
@@ -48,11 +54,20 @@ class SupabaseCircuitOpenError(Exception):
     pass
 
 
-def _is_network_offline_error(err: Exception | str) -> bool:
-    timeout_types: tuple[type[Any], ...] = (
+def _is_transport_error(err: Exception | str) -> bool:
+    """True only for a genuine TRANSPORT/network failure — we could not reach the
+    server at all (timeout, connection refused, DNS, reset).
+
+    Deliberately does NOT treat an HTTP status (500/502/...) as a transport
+    error: if the server answered, the network is up. This is what the circuit
+    breaker uses to decide "are we really offline", so a single bad/slow request
+    can no longer flip the whole app offline.
+    """
+    transport_types: tuple[type[Any], ...] = (
         httpx.ConnectTimeout,
         httpx.ReadTimeout,
         httpx.WriteTimeout,
+        httpx.PoolTimeout,
         httpx.ConnectError,
         httpx.ReadError,
         httpx.WriteError,
@@ -60,7 +75,7 @@ def _is_network_offline_error(err: Exception | str) -> bool:
     )
     if isinstance(err, SupabaseCircuitOpenError):
         return False
-    if isinstance(err, timeout_types):
+    if isinstance(err, transport_types):
         return True
     text = str(err).lower()
     return any(
@@ -70,21 +85,54 @@ def _is_network_offline_error(err: Exception | str) -> bool:
             "timeout",
             "connection reset",
             "connection refused",
+            "connection aborted",
             "temporary failure",
             "name resolution",
-            "dns",
-            "bad gateway",
-            "gateway timeout",
-            "502",
-            "503",
-            "504",
+            "name or service not known",
+            "network is unreachable",
+            "failed to establish a new connection",
+            "remotedisconnected",
             "remoteprotocolerror",
+            "dns",
         ]
+    )
+
+
+def _is_network_offline_error(err: Exception | str) -> bool:
+    """True if a bill/operation should be QUEUED rather than errored.
+
+    That means either a transport failure (above) OR a gateway error
+    (502/503/504 / bad gateway / service unavailable) — both indicate the
+    database is currently unreachable, so the safe move is to queue and replay.
+    A plain 500 is NOT included: that is a server/data error, handled inline.
+    Used by the billing dispatch layer, not by the breaker itself.
+    """
+    if isinstance(err, SupabaseCircuitOpenError):
+        return False
+    if _is_transport_error(err):
+        return True
+    text = str(err).lower()
+    return any(
+        token in text
+        for token in ["bad gateway", "gateway timeout", "service unavailable", "502", "503", "504"]
     )
 
 
 def _is_server_error_response(response: httpx.Response) -> bool:
     return response.status_code >= 500
+
+
+def _log_breaker_event(event: str, **fields: Any) -> None:
+    """Best-effort write to the dedicated offline diagnostics log.
+
+    Lazy import so connection_pool <-> queue_common never form an import cycle.
+    """
+    try:
+        from utils.queue_common import log_offline_event
+
+        log_offline_event(event, **fields)
+    except Exception:
+        pass
 
 
 def _mark_supabase_offline(reason: Exception | str):
@@ -97,6 +145,7 @@ def _mark_supabase_offline(reason: Exception | str):
     )
     # Add light jitter so multiple workers don't probe at the exact same moment.
     jitter = random.uniform(0, 2.0)
+    was_online = _supabase_offline_until <= now
     _supabase_offline_until = max(_supabase_offline_until, now + cooldown + jitter)
     _last_failure_at = now
     _last_error = str(reason)
@@ -104,17 +153,40 @@ def _mark_supabase_offline(reason: Exception | str):
         f"⚠️ [CONNECTION-POOL] Supabase marked offline for ~{int(cooldown)}s "
         f"(failures={_consecutive_network_failures}): {reason}"
     )
+    # Only log the first transition into offline (avoid spamming the diagnostics
+    # log every few seconds while we stay offline).
+    if was_online:
+        _log_breaker_event(
+            "breaker_open",
+            reason=str(reason),
+            cooldown_s=int(cooldown),
+            consecutive=_consecutive_network_failures,
+        )
 
 
 def _mark_supabase_online():
-    global _supabase_offline_until, _last_success_at, _consecutive_network_failures, _consecutive_probe_failures, _last_error
-    if _supabase_offline_until != 0:
+    global _supabase_offline_until, _last_success_at, _consecutive_network_failures
+    global _consecutive_probe_failures, _consecutive_gateway_errors, _last_error
+    was_offline = _supabase_offline_until != 0
+    if was_offline:
         logger.info("✅ [CONNECTION-POOL] Supabase connectivity restored; using Supabase as primary source")
+        _log_breaker_event("breaker_close", reason="connectivity restored")
     _supabase_offline_until = 0.0
     _last_success_at = time.time()
     _consecutive_network_failures = 0
     _consecutive_probe_failures = 0
+    _consecutive_gateway_errors = 0
     _last_error = ""
+
+
+def reset_circuit():
+    """Force the breaker closed (used by startup self-heal).
+
+    A stuck poison item used to keep the in-memory breaker open across restarts;
+    resetting on boot guarantees the app starts ONLINE and re-evaluates from a
+    clean slate instead of inheriting a tripped state.
+    """
+    _mark_supabase_online()
 
 
 def _is_supabase_offline() -> bool:
@@ -127,21 +199,45 @@ def _offline_remaining_seconds() -> int:
 
 class ResilientHTTPClient(httpx.Client):
     def request(self, method, url, *args, **kwargs):  # type: ignore[override]
+        global _consecutive_gateway_errors
+
         if _is_supabase_offline():
             raise SupabaseCircuitOpenError(
                 f"Supabase offline circuit is open ({_offline_remaining_seconds()}s remaining)"
             )
         try:
             response = super().request(method, url, *args, **kwargs)
-            if _is_server_error_response(response):
-                _mark_supabase_offline(f"HTTP {response.status_code} for {url}")
-            else:
-                _mark_supabase_online()
-            return response
         except Exception as e:
-            if _is_network_offline_error(e):
+            # We never got a response: only a genuine TRANSPORT error means the
+            # network is down. (A SupabaseCircuitOpenError or any HTTP status is
+            # not a transport error and must not trip the breaker.)
+            if _is_transport_error(e):
                 _mark_supabase_offline(e)
             raise
+
+        status = response.status_code
+        if status in _GATEWAY_STATUSES:
+            # Upstream DB unreachable behind the proxy — a real outage, but only
+            # trip after a couple in a row so a one-off 503 blip is tolerated.
+            _consecutive_gateway_errors += 1
+            _log_breaker_event(
+                "gateway_error", status=status, consecutive=_consecutive_gateway_errors, url=str(url)
+            )
+            if _consecutive_gateway_errors >= _GATEWAY_TRIP_THRESHOLD:
+                _mark_supabase_offline(f"HTTP {status} (gateway) for {url}")
+        elif status >= 500:
+            # A 500 means we REACHED the server; it is an application/data error
+            # (e.g. statement timeout, trigger), not a connectivity outage. Do
+            # NOT trip the breaker — let the caller handle this one request. The
+            # connection is healthy, so reset the offline state.
+            _log_breaker_event("server_error", status=status, url=str(url))
+            _consecutive_gateway_errors = 0
+            _mark_supabase_online()
+        else:
+            # 2xx/3xx/4xx: a clean answer from the server. We are online.
+            _consecutive_gateway_errors = 0
+            _mark_supabase_online()
+        return response
 
 
 def _probe_supabase_health() -> bool:

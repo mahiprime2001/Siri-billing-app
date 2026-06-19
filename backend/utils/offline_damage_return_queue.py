@@ -6,10 +6,10 @@ from typing import Dict, Any
 from config.config import OFFLINE_DAMAGE_RETURN_QUEUE_FILE
 from helpers.utils import read_json_file, write_json_file
 from utils.connection_pool import get_supabase_client
+from utils.queue_common import register_failure, quarantine_item, log_offline_event
 from data_access.data_access import update_both_inventory_and_product_stock
 
 _queue_lock = threading.Lock()
-MAX_RETRIES = 100
 
 
 def _utc_now() -> str:
@@ -102,16 +102,24 @@ def process_offline_damage_return_queue(app_logger=None, max_items: int = 20) ->
 
                 succeeded += 1
             except Exception as e:
-                item["attempts"] = int(item.get("attempts", 0)) + 1
-                item["last_error"] = str(e)
-                item["updated_at"] = _utc_now()
                 failed += 1
-                if item["attempts"] < MAX_RETRIES:
-                    remaining.append(item)
-                elif app_logger:
-                    app_logger.error(
-                        f"Dropping offline damage-return queue item {item.get('queue_id')} after max retries. Error: {e}"
+                if register_failure(item, e) == "poison":
+                    quarantine_item(OFFLINE_DAMAGE_RETURN_QUEUE_FILE, item, item["last_error"])
+                    log_offline_event(
+                        "quarantined",
+                        queue="damage_return",
+                        queue_id=item.get("queue_id"),
+                        row_id=row_id,
+                        attempts=item.get("attempts"),
+                        reason=item.get("last_error"),
                     )
+                    if app_logger:
+                        app_logger.error(
+                            f"Quarantined offline damage-return {item.get('queue_id')} after "
+                            f"{item.get('attempts')} permanent failures. Error: {e}"
+                        )
+                else:
+                    remaining.append(item)
 
         write_json_file(OFFLINE_DAMAGE_RETURN_QUEUE_FILE, remaining)
 
