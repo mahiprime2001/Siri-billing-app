@@ -1,6 +1,7 @@
 "use client"
 
 import { useRef, useState, useEffect } from "react"
+import { flushSync } from "react-dom"
 
 interface Customer {
   id: string;
@@ -65,6 +66,9 @@ export default function InvoicePreview({
   
   const [isPrinting, setIsPrinting] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  // The exact invoice the hidden print copy renders — set synchronously right
+  // before capture so the printout always shows the real saved invoice number.
+  const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null)
   const [printError, setPrintError] = useState<string | null>(null)
   const [discountApprovalStatus, setDiscountApprovalStatus] = useState<Invoice["discountApprovalStatus"]>(
     invoice.discountApprovalStatus || "not_required"
@@ -427,7 +431,10 @@ export default function InvoicePreview({
       }
 
       onUpdateInvoice?.(updatedInvoice)
-      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      // Render the hidden print copy with the REAL saved invoice now, committing
+      // synchronously so the captured HTML can't show the stale preview number.
+      flushSync(() => setPrintInvoice(updatedInvoice))
 
       console.log('🖨️ Starting print process...')
       if (!printRef.current) {
@@ -769,7 +776,7 @@ export default function InvoicePreview({
               pointerEvents: "none",
               zIndex: -1,
             }}>
-              <PrintableInvoice ref={printRef} invoice={getUpdatedInvoice()} paperSize={paperSize} />
+              <PrintableInvoice ref={printRef} invoice={printInvoice ?? getUpdatedInvoice()} paperSize={paperSize} />
             </div>
           </div>
         </div>
