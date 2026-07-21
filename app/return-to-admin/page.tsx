@@ -20,11 +20,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
-import { Trash2, Search, ScanLine, ArrowLeft, Printer, RefreshCw } from "lucide-react"
+import { Trash2, Search, ScanLine, ArrowLeft, Printer, RefreshCw, FileDown } from "lucide-react"
 import { apiClient } from "@/lib/api-client"
 import { useToast } from "@/hooks/use-toast"
 import { isTauriApp, listPrinters, printHtmlContent } from "@/lib/tauriPrinter"
 import { safePrint } from "@/lib/printUtils"
+import { saveElementAsPdf } from "@/lib/pdfUtils"
 import PrintableDamageReturn, { DamageReturnPrintData } from "@/components/printable-damage-return"
 
 interface ProductSearchResult {
@@ -75,7 +76,7 @@ const REASONS = [
   { value: "other", label: "Other" },
 ]
 
-const PAPER_SIZE = "Thermal 80mm"
+const PAPER_SIZE = "A4"
 const SYSTEM_DEFAULT_PRINTER_VALUE = "__SYSTEM_DEFAULT__"
 const PRINTER_STORAGE_KEY = "siri_selected_printer_history"
 
@@ -113,11 +114,11 @@ const buildPrintHTML = (printContent: string, refId: string): string => `
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <title>ReturnToAdmin-${refId}</title>
       <style>
-        @page { size: 80mm auto; margin: 0; }
+        @page { size: A4; margin: 15mm; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
           font-family: "Courier New", monospace;
-          font-size: 12px;
+          font-size: 13px;
           line-height: 1.5;
           -webkit-print-color-adjust: exact;
           print-color-adjust: exact;
@@ -128,13 +129,12 @@ const buildPrintHTML = (printContent: string, refId: string): string => `
         }
         @media print {
           html, body { margin: 0 !important; overflow: visible !important; height: auto !important; }
-          @page { margin: 0; }
         }
         .print-container {
           width: 100%;
-          max-width: 80mm;
+          max-width: 210mm;
           margin: 0 auto;
-          padding: 0 4mm;
+          padding: 0;
           box-sizing: border-box;
         }
       </style>
@@ -182,6 +182,10 @@ export default function ReturnToAdminPage() {
   const [isLoadingPrinters, setIsLoadingPrinters] = useState(false)
   const [isPrinting, setIsPrinting] = useState(false)
   const [selectedPrinter, setSelectedPrinter] = useState(SYSTEM_DEFAULT_PRINTER_VALUE)
+
+  // save-to-device (PDF) state
+  const [savingPdfId, setSavingPdfId] = useState<string | null>(null)
+  const [isSavingCurrentPdf, setIsSavingCurrentPdf] = useState(false)
 
   const canSubmit = items.length > 0 && !isSubmitting
 
@@ -440,9 +444,9 @@ export default function ReturnToAdminPage() {
     await loadPrinters()
   }
 
-  const handlePrintOrder = (order: ReturnOrder) => {
+  const buildReceiptData = (order: ReturnOrder): DamageReturnPrintData => {
     const lines = order.return_products || []
-    openPrintDialog({
+    return {
       id: order.return_id,
       companyName,
       storeName: store?.name,
@@ -458,7 +462,50 @@ export default function ReturnToAdminPage() {
         quantity: Number(line.quantity || 0),
         sellingPrice: Number(line.products?.selling_price || 0),
       })),
-    })
+    }
+  }
+
+  const handlePrintOrder = (order: ReturnOrder) => {
+    openPrintDialog(buildReceiptData(order))
+  }
+
+  // Renders the order into the offscreen receipt (without opening the print
+  // dialog) just long enough to rasterize and save it as a PDF.
+  const handleSaveOrderPdf = async (order: ReturnOrder) => {
+    setSavingPdfId(order.return_id)
+    try {
+      setPrintData(buildReceiptData(order))
+      await new Promise((resolve) => setTimeout(resolve, 60))
+      if (!printRef.current) throw new Error("Receipt not ready. Try again.")
+      await saveElementAsPdf(printRef.current, `return-to-admin-${order.return_id}.pdf`)
+    } catch (error) {
+      console.error("Save PDF failed:", error)
+      toast({
+        title: "Save Failed",
+        description: error instanceof Error ? error.message : "Could not save PDF.",
+        variant: "destructive",
+      })
+    } finally {
+      setSavingPdfId(null)
+    }
+  }
+
+  // Saves whatever receipt is currently open in the print dialog.
+  const handleSaveCurrentPdf = async () => {
+    if (!printData || !printRef.current) return
+    setIsSavingCurrentPdf(true)
+    try {
+      await saveElementAsPdf(printRef.current, `return-to-admin-${printData.id || "order"}.pdf`)
+    } catch (error) {
+      console.error("Save PDF failed:", error)
+      toast({
+        title: "Save Failed",
+        description: error instanceof Error ? error.message : "Could not save PDF.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSavingCurrentPdf(false)
+    }
   }
 
   const handleConfirmPrint = async () => {
@@ -745,10 +792,21 @@ export default function ReturnToAdminPage() {
                             <Badge variant="outline">Qty: {totalOrderQty}</Badge>
                           </div>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => handlePrintOrder(order)}>
-                          <Printer className="h-4 w-4 mr-2" />
-                          Print
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleSaveOrderPdf(order)}
+                            disabled={savingPdfId === order.return_id}
+                          >
+                            <FileDown className="h-4 w-4 mr-2" />
+                            {savingPdfId === order.return_id ? "Saving..." : "Save PDF"}
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => handlePrintOrder(order)}>
+                            <Printer className="h-4 w-4 mr-2" />
+                            Print
+                          </Button>
+                        </div>
                       </div>
                       <div className="rounded border bg-muted/20">
                         <Table>
@@ -804,8 +862,10 @@ export default function ReturnToAdminPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Hidden printable used as the print source */}
-      <div className="hidden print:block">
+      {/* Offscreen printable used as the print + PDF-save source. Positioned off
+          canvas (not display:none) so html2canvas can rasterize it even when the
+          print dialog isn't open. */}
+      <div style={{ position: "fixed", top: 0, left: "-10000px", width: "794px", zIndex: -1 }}>
         {printData && <PrintableDamageReturn ref={printRef} data={printData} paperSize={PAPER_SIZE} />}
       </div>
 
@@ -880,6 +940,14 @@ export default function ReturnToAdminPage() {
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setShowPrintDialog(false)} disabled={isPrinting}>
               Close
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleSaveCurrentPdf}
+              disabled={!printData || isSavingCurrentPdf}
+            >
+              <FileDown className="h-4 w-4 mr-2" />
+              {isSavingCurrentPdf ? "Saving..." : "Save PDF"}
             </Button>
             <Button onClick={handleConfirmPrint} disabled={!printData || isPrinting}>
               {isPrinting ? "Printing..." : "Print"}
