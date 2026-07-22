@@ -257,7 +257,13 @@ def _fetch_store_stock_map(supabase, store_id: str, product_ids):
         product_id = row.get("productid")
         if not product_id:
             continue
-        stock_map[product_id] = _parse_positive_int(row.get("quantity"), default=0)
+        qty = _parse_positive_int(row.get("quantity"), default=0)
+        # Defensive against duplicate storeinventory rows for the same
+        # (store, product): without a unique constraint a stale qty=0 duplicate
+        # can otherwise overwrite the live quantity (last-row-wins), producing an
+        # intermittent phantom "insufficient stock" 400. Take the highest qty so
+        # a lingering duplicate can never block a legitimate sale.
+        stock_map[product_id] = max(stock_map.get(product_id, 0), qty)
     return stock_map
 
 

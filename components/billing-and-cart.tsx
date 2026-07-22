@@ -1985,8 +1985,33 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
           errorMessage = `Server error: ${response.status} ${response.statusText}`;
         }
 
+        // The backend rejects bills with stale stock as
+        //   "Insufficient stock for one or more products: <id>: required=N, available=M"
+        // using raw product IDs. Translate those IDs to names, refresh live stock
+        // so the cart's own guards self-correct, and show an actionable message —
+        // so a stale cached stock value never forces a "delete the json folder" reset.
+        const stockMatches = [
+          ...String(errorMessage).matchAll(/([^:;]+?):\s*required=(\d+),\s*available=(\d+)/g),
+        ];
+        if (stockMatches.length > 0) {
+          const friendly = stockMatches.map((m) => {
+            const productId = m[1].trim();
+            const available = m[3];
+            const name = getProductById(productId)?.name || "An item";
+            return `${name} (only ${available} left)`;
+          });
+          errorMessage = `Stock changed since these were added: ${friendly.join(
+            ", ",
+          )}. The cart has been refreshed with current stock — please review and save again.`;
+          try {
+            await fetchProducts();
+          } catch (refreshError) {
+            console.warn("Stock refresh after insufficient-stock error skipped:", refreshError);
+          }
+        }
+
         toast({
-          title: "Error",
+          title: stockMatches.length > 0 ? "Stock Updated" : "Error",
           description: errorMessage,
           variant: "destructive",
         });

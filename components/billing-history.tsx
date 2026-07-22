@@ -16,6 +16,10 @@ import { apiClient } from "@/lib/api-client"
 import { isTauriApp, listPrinters, printHtmlContent } from "@/lib/tauriPrinter"
 import { safePrint } from "@/lib/printUtils"
 import { useToast } from "@/components/ui/use-toast"
+import {
+  canEditInvoice as canEditInvoiceByWindow,
+  getInvoiceEditSecondsRemaining,
+} from "@/lib/billing-edit-window"
 
 // Raw invoice shape returned by backend (snake_case).
 interface RawInvoice {
@@ -1260,37 +1264,14 @@ const handleOpenDayReportDialog = async (group: DayInvoiceGroup, event?: MouseEv
   }
 
   const getSecondsRemaining = (invoice: Invoice): number => {
-    if (typeof invoice.secondsRemaining === "number" && invoice.secondsRemaining >= 0) {
-      if (!invoice.editExpiresAt) return invoice.secondsRemaining
-      const expiresMs = new Date(invoice.editExpiresAt).getTime()
-      if (Number.isNaN(expiresMs)) return invoice.secondsRemaining
-      return Math.max(0, Math.floor((expiresMs - clockNowMs) / 1000))
-    }
-    if (!invoice.editExpiresAt) return 0
-    const expiresMs = new Date(invoice.editExpiresAt).getTime()
-    if (Number.isNaN(expiresMs)) return 0
-    return Math.max(0, Math.floor((expiresMs - clockNowMs) / 1000))
+    return getInvoiceEditSecondsRemaining(invoice, clockNowMs)
   }
 
   const canEditInvoice = (invoice: Invoice) => {
-    const status = String(invoice.status || "").toLowerCase()
-    const isEligibleStatus = ["completed", "paid", "pending"].includes(status)
-
-    if (typeof invoice.canEdit === "boolean") {
-      if (!invoice.canEdit) return false
-      // Backend confirmed editable — verify with real-time remaining time
-      if (getSecondsRemaining(invoice) > 0) return true
-      // Fallback: re-check from createdAt in case editExpiresAt is stale or missing
-      const createdDate = parseServerDate(invoice.createdAt || invoice.timestamp)
-      if (!createdDate) return false
-      return isEligibleStatus && createdDate.getTime() + 24 * 60 * 60 * 1000 > clockNowMs
+    if (!canEditInvoiceByWindow(invoice, clockNowMs)) {
+      return false
     }
-
-    // No canEdit from backend — compute locally
-    if (!isEligibleStatus) return false
-    const createdDate = parseServerDate(invoice.createdAt || invoice.timestamp)
-    if (!createdDate) return false
-    return createdDate.getTime() + 24 * 60 * 60 * 1000 > clockNowMs
+    return getSecondsRemaining(invoice) > 0
   }
 
   const formatRemaining = (totalSeconds: number): string => {
