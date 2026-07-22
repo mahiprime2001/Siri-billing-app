@@ -524,40 +524,61 @@ fn main() {
                 info!("🔌 Starting Backend Sidecar");
                 info!("=================================================");
 
-                let cmd = handle.shell().sidecar("Siribilling-backend")?;
-                let (mut rx, command_child) = cmd.spawn()?;
-                let pid = command_child.pid();
+                // Guard against a second backend process: whether this is a
+                // duplicate launch that slipped past single-instance (e.g. a
+                // rapid double-click race) or a leftover orphan from a prior
+                // crash, spawning another Siribilling-backend.exe on top of a
+                // live one causes two writers to hit the same local JSON files
+                // (bills/products/inventory) with no cross-process locking,
+                // which can corrupt them. So before spawning, check if a
+                // backend is already answering on :8080; if so, reuse it
+                // instead of starting a duplicate.
+                let backend_already_running = Client::builder()
+                    .timeout(Duration::from_millis(800))
+                    .build()
+                    .ok()
+                    .and_then(|c| c.get("http://localhost:8080/api/health").send().ok())
+                    .map(|r| r.status().is_success())
+                    .unwrap_or(false);
 
-                info!("✅ Backend spawned successfully");
-                info!("🆔 Process ID: {}", pid);
+                if backend_already_running {
+                    info!("✅ Backend already running and healthy on :8080 — reusing it, not spawning a duplicate.");
+                } else {
+                    let cmd = handle.shell().sidecar("Siribilling-backend")?;
+                    let (mut rx, command_child) = cmd.spawn()?;
+                    let pid = command_child.pid();
 
-                *child_handle.lock().unwrap() = Some(command_child);
+                    info!("✅ Backend spawned successfully");
+                    info!("🆔 Process ID: {}", pid);
 
-                let child_handle_clone = Arc::clone(&child_handle);
-                tauri::async_runtime::spawn(async move {
-                    while let Some(event) = rx.recv().await {
-                        match event {
-                            CommandEvent::Stdout(line) => {
-                                let output = String::from_utf8_lossy(&line);
-                                info!("🔵 [Backend] {}", output.trim());
+                    *child_handle.lock().unwrap() = Some(command_child);
+
+                    let child_handle_clone = Arc::clone(&child_handle);
+                    tauri::async_runtime::spawn(async move {
+                        while let Some(event) = rx.recv().await {
+                            match event {
+                                CommandEvent::Stdout(line) => {
+                                    let output = String::from_utf8_lossy(&line);
+                                    info!("🔵 [Backend] {}", output.trim());
+                                }
+                                CommandEvent::Stderr(line) => {
+                                    let output = String::from_utf8_lossy(&line);
+                                    error!("🔴 [Backend] {}", output.trim());
+                                }
+                                CommandEvent::Error(err) => {
+                                    error!("❌ [Backend] Error: {}", err);
+                                }
+                                CommandEvent::Terminated(payload) => {
+                                    warn!("⚠️ [Backend] Terminated with code: {:?}", payload.code);
+                                }
+                                _ => {}
                             }
-                            CommandEvent::Stderr(line) => {
-                                let output = String::from_utf8_lossy(&line);
-                                error!("🔴 [Backend] {}", output.trim());
-                            }
-                            CommandEvent::Error(err) => {
-                                error!("❌ [Backend] Error: {}", err);
-                            }
-                            CommandEvent::Terminated(payload) => {
-                                warn!("⚠️ [Backend] Terminated with code: {:?}", payload.code);
-                            }
-                            _ => {}
                         }
-                    }
 
-                    let _ = child_handle_clone.lock().unwrap().take();
-                    warn!("🛑 Backend sidecar process ended");
-                });
+                        let _ = child_handle_clone.lock().unwrap().take();
+                        warn!("🛑 Backend sidecar process ended");
+                    });
+                }
 
                 let main_win = app.get_webview_window("main").unwrap();
 

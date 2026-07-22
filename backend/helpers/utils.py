@@ -60,11 +60,18 @@ def write_json_file(file_path, data):
     offline queue being wiped: a crash mid-write left corrupt JSON, which
     read_json_file then turned into [] and the next write erased everything.
 
+    The temp filename includes our own PID so that if a second backend process
+    ever ends up running against the same data folder (e.g. an orphaned
+    instance), the two processes can't both open the *same* tmp file and
+    interleave their writes into it before either calls os.replace — that
+    cross-process race silently produced a garbled file even though each
+    process's own write+rename was individually atomic.
+
     Returns True on success, False on failure (and logs it). Existing callers can
     ignore the return value; the offline queue paths check it so they never
     report success for data that did not actually persist.
     """
-    tmp_path = f"{file_path}.tmp"
+    tmp_path = f"{file_path}.{os.getpid()}.tmp"
     with _lock_for(file_path):
         try:
             with open(tmp_path, 'w', encoding='utf-8') as f:
@@ -83,7 +90,17 @@ def write_json_file(file_path, data):
             return False
 
 def read_json_file(file_path, default_value=None):
-    """Read JSON file with fallback default"""
+    """Read JSON file with fallback default.
+
+    On a parse error the file is corrupt (most commonly from two backend
+    processes racing to write it — see write_json_file). We still return
+    default_value so callers keep working, but a corrupt file used to just
+    silently vanish into an empty list with one easy-to-miss log line, which
+    looked like "the app is randomly broken" with no obvious cause. Now the
+    corrupt file is preserved as a ``.corrupt-<ts>`` backup (same pattern as
+    read_json_file_strict) and logged loudly, so there's hard evidence to
+    diagnose instead of a mystery.
+    """
     if default_value is None:
         default_value = []
 
@@ -95,6 +112,22 @@ def read_json_file(file_path, default_value=None):
                 return json.load(f)
         except (json.JSONDecodeError, IOError) as e:
             app.logger.error(f"Error reading file {file_path}: {e}")
+            if isinstance(e, json.JSONDecodeError):
+                backup = f"{file_path}.corrupt-{int(time.time())}"
+                try:
+                    os.replace(file_path, backup)
+                    app.logger.error(
+                        f"🚨 CORRUPT DATA FILE: {file_path} was not valid JSON and has been "
+                        f"backed up to {backup} instead of being silently discarded. The app "
+                        f"is now treating it as empty ({default_value!r}) until it is "
+                        "restored or resynced. This usually means two backend processes "
+                        "wrote to this file at the same time."
+                    )
+                except OSError as backup_err:
+                    app.logger.error(
+                        f"🚨 CORRUPT DATA FILE: {file_path} was not valid JSON and could not "
+                        f"be backed up ({backup_err}); it is being left in place."
+                    )
             return default_value
 
 

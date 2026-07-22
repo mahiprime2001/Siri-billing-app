@@ -5,6 +5,7 @@ import time
 import re
 import logging
 import shutil
+import socket
 import tempfile
 import glob
 from datetime import datetime, timedelta, timezone, date
@@ -272,25 +273,56 @@ app.register_blueprint(discount_bp, url_prefix='/api')
 app.register_blueprint(discount_otp_bp, url_prefix='/api')
 app.register_blueprint(hsn_codes_bp, url_prefix='/api')
 
+def _port_is_free(host: str, port: int) -> bool:
+    """True if we can bind (host, port) ourselves right now.
+
+    Used as a last-resort guard against a second backend process (e.g. an
+    orphaned instance from a prior crash, or a launch race that slipped past
+    the Tauri-side single-instance/health-check guard). Two backend processes
+    sharing one data folder both write the same local JSON files with no
+    cross-process locking, which can corrupt them — so if another process
+    already owns this port, we must not start the background sync/queue
+    threads at all.
+    """
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        probe.bind((host, port))
+        return True
+    except OSError:
+        return False
+    finally:
+        probe.close()
+
+
 # ==================== Main ====================
 if __name__ == '__main__':
     app.logger.info("Billing Flask server starting...")
-    
+
     # 🆕 CLEANUP OLD PYINSTALLER FOLDERS ON STARTUP
     cleanup_pyinstaller_temp_folders(keep_newest=True)
-    
+
     port = 8080
     host = 'localhost'
     app.logger.info(f"Billing app will run on {host}:{port}")
     app.logger.info(f"CORS: Accepting all requests from local machine")
     app.logger.info("🛑 Shutdown endpoint available at /api/shutdown (POST)")
-    
+
+    # Refuse to start a second instance against the same data folder: another
+    # process already owns this port, so starting our own background sync/
+    # queue threads here would give two writers to the same JSON files.
+    if not _port_is_free(host, port):
+        app.logger.error(
+            f"❌ Port {port} is already in use — another billing backend instance "
+            "appears to be running. Exiting instead of starting a duplicate."
+        )
+        sys.exit(1)
+
     # Start background tasks only once when Werkzeug reloader is active.
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
         start_background_tasks(app)
     else:
         app.logger.info("Skipping background task startup in reloader parent process.")
-    
+
     try:
         app.run(debug=False, port=port, host=host)
     except Exception as e:
