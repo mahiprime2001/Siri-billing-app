@@ -68,6 +68,7 @@ class OfflineSupabaseQuery:
         self._filters: List[Tuple[str, str, Any]] = []
         self._or_clause: Optional[str] = None
         self._limit: Optional[int] = None
+        self._range: Optional[Tuple[int, int]] = None
         self._order_by: Optional[Tuple[str, bool]] = None
         self._op: str = "select"
         self._payload: Any = None
@@ -133,6 +134,10 @@ class OfflineSupabaseQuery:
         self._limit = int(value)
         return self
 
+    def range(self, start: int, end: int):
+        self._range = (int(start), int(end))
+        return self
+
     def execute(self) -> LocalResponse:
         rows = self._load_rows()
         if self._op == "select":
@@ -141,7 +146,10 @@ class OfflineSupabaseQuery:
             if self._order_by:
                 col, desc = self._order_by
                 matched.sort(key=lambda row: str(row.get(col, "")), reverse=desc)
-            if self._limit is not None:
+            if self._range is not None:
+                start, end = self._range
+                matched = matched[start : end + 1]
+            elif self._limit is not None:
                 matched = matched[: self._limit]
             return LocalResponse(data=matched, count=total if self._want_count else None)
 

@@ -10,22 +10,28 @@ def require_auth(f):
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # The JWT itself (signature + expiry) IS the authentication. Only a
+        # failure here means the caller is genuinely not authenticated.
         try:
-            # Verify JWT token is present and valid
             verify_jwt_in_request()
-            
-            # Get user_id from JWT
             user_id = get_jwt_identity()
-            
             app.logger.info(f"Authenticating user_id from JWT: {user_id}")
-            
-            # Optional: Verify user still exists in database
+        except Exception as e:
+            app.logger.error(f"Authentication error: {str(e)}")
+            return jsonify({"message": "Authentication required"}), 401
+
+        # Optional: verify the user still exists (defense-in-depth revocation
+        # check, not the authentication itself). This used to sit inside the
+        # same try/except as the JWT check above, so a Supabase network blip
+        # (e.g. a DNS hiccup) here got reported as "Authentication required"
+        # and logged out an otherwise validly-authenticated request — on
+        # every route, since require_auth gates almost all of them. A DB/
+        # network failure here must degrade like the existing offline-
+        # fallback path already does, not masquerade as an auth failure.
+        try:
             supabase = get_supabase_client()
             response = supabase.table('users').select('id').eq('id', user_id).execute()
-            
-            if not response.data or len(response.data) == 0:
-                # In offline fallback mode, local users snapshot may be stale/missing.
-                # Do not hard-fail authenticated desktop requests in that state.
+            if not response.data:
                 if getattr(supabase, "is_offline_fallback", False):
                     app.logger.warning(
                         f"User {user_id} not found in local fallback users snapshot; allowing JWT-authenticated request in offline mode."
@@ -33,13 +39,13 @@ def require_auth(f):
                 else:
                     app.logger.warning(f"User {user_id} not found in database")
                     return jsonify({"message": "User not found"}), 404
-            
-            return f(*args, **kwargs)
-            
         except Exception as e:
-            app.logger.error(f"Authentication error: {str(e)}")
-            return jsonify({"message": "Authentication required"}), 401
-    
+            app.logger.warning(
+                f"User-existence check failed for {user_id} ({e}); trusting the JWT and proceeding."
+            )
+
+        return f(*args, **kwargs)
+
     return decorated_function
 
 
