@@ -2,6 +2,7 @@ from functools import wraps
 from flask import jsonify, current_app as app
 from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity, get_jwt
 from utils.connection_pool import get_supabase_client
+from utils.known_issues_log import log_known_issue  # TEMPORARY — see that module's docstring
 
 def require_auth(f):
     """
@@ -43,6 +44,9 @@ def require_auth(f):
             app.logger.warning(
                 f"User-existence check failed for {user_id} ({e}); trusting the JWT and proceeding."
             )
+            # TEMPORARY — remove this call and known_issues_log.py once the
+            # underlying connectivity flakiness is confirmed fixed.
+            log_known_issue("auth.require_auth", f"user={user_id} error={e}")
 
         return f(*args, **kwargs)
 
