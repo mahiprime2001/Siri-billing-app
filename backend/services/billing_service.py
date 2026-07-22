@@ -329,7 +329,13 @@ def create_bill_transaction(
 
     supabase = get_supabase_client()
     if not supabase or getattr(supabase, "is_offline_fallback", False):
-        raise RuntimeError("Supabase client unavailable")
+        # This is a connectivity condition (we're still offline), not a data
+        # problem — raising the dedicated transient error means the offline
+        # queue's classifier retries it forever instead of quarantining it.
+        # A plain RuntimeError here used to be misclassified as "permanent"
+        # and could get a perfectly good queued bill permanently given up on
+        # mid-outage (see queue_common.classify_error).
+        raise SupabaseCircuitOpenError("Supabase client unavailable (offline fallback active)")
 
     bill_id = forced_bill_id or _generate_daily_invoice_id(supabase, store_id)
     now = datetime.now(timezone.utc).isoformat()

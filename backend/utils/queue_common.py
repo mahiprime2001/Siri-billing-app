@@ -77,14 +77,25 @@ def register_failure(item: Dict[str, Any], err: Exception | str) -> str:
     """Record a failed attempt on a queue item in place and decide its fate.
 
     Returns "retry" (keep it in the live queue) or "poison" (move it to the
-    dead-letter store). Transient (network) failures always retry; permanent
-    failures retry only up to MAX_PERMANENT_ATTEMPTS, then quarantine.
+    dead-letter store). Transient (network) failures always retry, forever,
+    and never count toward quarantine. Permanent failures quarantine after
+    MAX_PERMANENT_ATTEMPTS *consecutive* permanent failures specifically —
+    not total attempts. Total `attempts` also keeps climbing across retries
+    (kept for diagnostics/display), but it must never gate quarantine on its
+    own: during a long outage an item can rack up dozens of legitimate
+    transient retries, and using the total count meant a single misclassified
+    failure arriving after that point would quarantine it immediately instead
+    of getting its own 5 tries.
     """
     item["attempts"] = int(item.get("attempts", 0)) + 1
     item["last_error"] = str(err)
     item["last_error_class"] = classify_error(err)
     item["updated_at"] = _utc_now()
-    if item["last_error_class"] == "permanent" and item["attempts"] >= MAX_PERMANENT_ATTEMPTS:
+    if item["last_error_class"] == "permanent":
+        item["consecutive_permanent_failures"] = int(item.get("consecutive_permanent_failures", 0)) + 1
+    else:
+        item["consecutive_permanent_failures"] = 0
+    if item["last_error_class"] == "permanent" and item["consecutive_permanent_failures"] >= MAX_PERMANENT_ATTEMPTS:
         return "poison"
     return "retry"
 

@@ -12,10 +12,9 @@ from helpers.utils import read_json_file, write_json_file, read_json_file_strict
 from services.billing_service import create_bill_transaction
 from utils.connection_pool import get_supabase_client
 from utils.queue_common import (
-    classify_error,
+    register_failure,
     quarantine_item,
     log_offline_event,
-    MAX_PERMANENT_ATTEMPTS,
 )
 
 _queue_lock = threading.Lock()
@@ -322,16 +321,8 @@ def _replay_one(item: Dict[str, Any], app=None):
             return ("success", item, None)
         except Exception as e:
             updated = dict(item)
-            updated["attempts"] = int(item.get("attempts", 0)) + 1
-            updated["last_error"] = str(e)
-            updated["last_error_class"] = classify_error(e)
-            updated["updated_at"] = _utc_now()
-            if (
-                updated["last_error_class"] == "permanent"
-                and updated["attempts"] >= MAX_PERMANENT_ATTEMPTS
-            ):
-                return ("poison", updated, str(e))
-            return ("retry", updated, str(e))
+            status = "poison" if register_failure(updated, e) == "poison" else "retry"
+            return (status, updated, str(e))
 
     if app is not None:
         with app.app_context():
