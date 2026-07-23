@@ -76,7 +76,12 @@ const REASONS = [
   { value: "other", label: "Other" },
 ]
 
-const PAPER_SIZE = "A4"
+// Physical printing matches the bill thermal format; "Save as PDF" stays A4
+// regardless (a full-page document reads better as a saved/emailed file than
+// a narrow receipt strip would). The two are decoupled via receiptPaperSize
+// state below, not a single shared constant.
+const PRINT_PAPER_SIZE = "Thermal 80mm"
+const PDF_PAPER_SIZE = "A4"
 const SYSTEM_DEFAULT_PRINTER_VALUE = "__SYSTEM_DEFAULT__"
 const PRINTER_STORAGE_KEY = "siri_selected_printer_history"
 
@@ -177,6 +182,11 @@ export default function ReturnToAdminPage() {
   const [isTauriRuntime, setIsTauriRuntime] = useState(false)
   const [showPrintDialog, setShowPrintDialog] = useState(false)
   const [printData, setPrintData] = useState<DamageReturnPrintData | null>(null)
+  // Drives what the offscreen PrintableDamageReturn (the shared source for
+  // both native print and PDF capture) actually renders. Defaults to the
+  // thermal print format; PDF-save handlers switch it to PDF_PAPER_SIZE for
+  // the duration of the capture and restore it afterward.
+  const [receiptPaperSize, setReceiptPaperSize] = useState<string>(PRINT_PAPER_SIZE)
   const [printCopies, setPrintCopies] = useState(1)
   const [printers, setPrinters] = useState<string[]>([])
   const [isLoadingPrinters, setIsLoadingPrinters] = useState(false)
@@ -186,6 +196,12 @@ export default function ReturnToAdminPage() {
   // save-to-device (PDF) state
   const [savingPdfId, setSavingPdfId] = useState<string | null>(null)
   const [isSavingCurrentPdf, setIsSavingCurrentPdf] = useState(false)
+
+  // True while any operation is using the shared offscreen receipt (print
+  // dialog printing/saving, or a history-row PDF save) — that receipt's
+  // paperSize toggles between thermal (print) and A4 (PDF) during capture,
+  // so overlapping actions could race and capture the wrong format.
+  const isReceiptBusy = isPrinting || isSavingCurrentPdf || savingPdfId !== null
 
   const canSubmit = items.length > 0 && !isSubmitting
 
@@ -475,6 +491,7 @@ export default function ReturnToAdminPage() {
     setSavingPdfId(order.return_id)
     try {
       setPrintData(buildReceiptData(order))
+      setReceiptPaperSize(PDF_PAPER_SIZE)
       await new Promise((resolve) => setTimeout(resolve, 60))
       if (!printRef.current) throw new Error("Receipt not ready. Try again.")
       await saveElementAsPdf(printRef.current, `return-to-admin-${order.return_id}.pdf`)
@@ -486,6 +503,7 @@ export default function ReturnToAdminPage() {
         variant: "destructive",
       })
     } finally {
+      setReceiptPaperSize(PRINT_PAPER_SIZE)
       setSavingPdfId(null)
     }
   }
@@ -495,6 +513,9 @@ export default function ReturnToAdminPage() {
     if (!printData || !printRef.current) return
     setIsSavingCurrentPdf(true)
     try {
+      setReceiptPaperSize(PDF_PAPER_SIZE)
+      await new Promise((resolve) => setTimeout(resolve, 60))
+      if (!printRef.current) throw new Error("Receipt not ready. Try again.")
       await saveElementAsPdf(printRef.current, `return-to-admin-${printData.id || "order"}.pdf`)
     } catch (error) {
       console.error("Save PDF failed:", error)
@@ -504,6 +525,7 @@ export default function ReturnToAdminPage() {
         variant: "destructive",
       })
     } finally {
+      setReceiptPaperSize(PRINT_PAPER_SIZE)
       setIsSavingCurrentPdf(false)
     }
   }
@@ -512,6 +534,11 @@ export default function ReturnToAdminPage() {
     if (!printData) return
     setIsPrinting(true)
     try {
+      // Defensive re-assert: the offscreen receipt is shared with the PDF
+      // handlers, which briefly flip it to PDF_PAPER_SIZE. Buttons are now
+      // disabled while either operation is in flight, but this keeps print
+      // correct even if that ever changes.
+      setReceiptPaperSize(PRINT_PAPER_SIZE)
       await new Promise((resolve) => setTimeout(resolve, 0))
       const printOuter = printRef.current?.outerHTML || ""
       if (!printOuter) {
@@ -523,13 +550,13 @@ export default function ReturnToAdminPage() {
 
       if (isTauriRuntime) {
         const printerName = selectedPrinter === SYSTEM_DEFAULT_PRINTER_VALUE ? "" : selectedPrinter
-        await printHtmlContent(printContent, { paperSize: PAPER_SIZE, printerName, copies })
+        await printHtmlContent(printContent, { paperSize: PRINT_PAPER_SIZE, printerName, copies })
         toast({
           title: "Print job queued",
           description: `Printer: ${printerName || "System default"} • Copies: ${copies}`,
         })
       } else {
-        const result = await safePrint(printContent, PAPER_SIZE)
+        const result = await safePrint(printContent, PRINT_PAPER_SIZE)
         if (!result.success) {
           throw new Error(result.error || "Browser print failed")
         }
@@ -797,12 +824,17 @@ export default function ReturnToAdminPage() {
                             variant="outline"
                             size="sm"
                             onClick={() => handleSaveOrderPdf(order)}
-                            disabled={savingPdfId === order.return_id}
+                            disabled={isReceiptBusy}
                           >
                             <FileDown className="h-4 w-4 mr-2" />
                             {savingPdfId === order.return_id ? "Saving..." : "Save PDF"}
                           </Button>
-                          <Button variant="outline" size="sm" onClick={() => handlePrintOrder(order)}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePrintOrder(order)}
+                            disabled={isReceiptBusy}
+                          >
                             <Printer className="h-4 w-4 mr-2" />
                             Print
                           </Button>
@@ -866,7 +898,7 @@ export default function ReturnToAdminPage() {
           canvas (not display:none) so html2canvas can rasterize it even when the
           print dialog isn't open. */}
       <div style={{ position: "fixed", top: 0, left: "-10000px", width: "794px", zIndex: -1 }}>
-        {printData && <PrintableDamageReturn ref={printRef} data={printData} paperSize={PAPER_SIZE} />}
+        {printData && <PrintableDamageReturn ref={printRef} data={printData} paperSize={receiptPaperSize} />}
       </div>
 
       {/* Print dialog (same UI/method as billing history) */}
@@ -930,7 +962,7 @@ export default function ReturnToAdminPage() {
 
             <div className="md:col-span-2 max-h-[70vh] overflow-y-auto rounded border bg-muted/20 p-2">
               {printData ? (
-                <PrintableDamageReturn data={printData} paperSize={PAPER_SIZE} />
+                <PrintableDamageReturn data={printData} paperSize={receiptPaperSize} />
               ) : (
                 <p className="text-sm text-muted-foreground">Nothing selected for preview.</p>
               )}
@@ -938,18 +970,18 @@ export default function ReturnToAdminPage() {
           </div>
 
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setShowPrintDialog(false)} disabled={isPrinting}>
+            <Button variant="outline" onClick={() => setShowPrintDialog(false)} disabled={isReceiptBusy}>
               Close
             </Button>
             <Button
               variant="outline"
               onClick={handleSaveCurrentPdf}
-              disabled={!printData || isSavingCurrentPdf}
+              disabled={!printData || isReceiptBusy}
             >
               <FileDown className="h-4 w-4 mr-2" />
               {isSavingCurrentPdf ? "Saving..." : "Save PDF"}
             </Button>
-            <Button onClick={handleConfirmPrint} disabled={!printData || isPrinting}>
+            <Button onClick={handleConfirmPrint} disabled={!printData || isReceiptBusy}>
               {isPrinting ? "Printing..." : "Print"}
             </Button>
           </div>
