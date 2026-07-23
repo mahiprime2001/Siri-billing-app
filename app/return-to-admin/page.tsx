@@ -111,46 +111,125 @@ const formatDateTime = (value: string | undefined) => {
   }).format(parsed)
 }
 
-const buildPrintHTML = (printContent: string, refId: string): string => `
-  <!DOCTYPE html>
-  <html lang="en">
-    <head>
-      <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>ReturnToAdmin-${refId}</title>
-      <style>
-        @page { size: A4; margin: 15mm; }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+// Ported from billing-history.tsx's generatePrintHTML (same function bills
+// use) — that one is the proven-correct version: proper @page sizing per
+// paper type, and thermal paper gets a narrower print-container (72mm/50mm
+// content on 80mm/58mm rolls) so nothing gets clipped by the printer's
+// actual print-head width. The previous version here hardcoded A4 sizing
+// regardless of the requested paperSize, which is why thermal prints looked
+// wrong.
+const buildPrintHTML = (printContent: string, paperSize: string, refId: string): string => {
+  const getPageStyles = (): string => {
+    if (paperSize === "Thermal 58mm") {
+      return `
+        @page { size: 58mm auto; margin: 0; }
         html, body {
-          font-family: "Courier New", monospace;
-          font-size: 13px;
-          line-height: 1.5;
+          width: 100%;
+          margin: 0;
+          padding: 0;
           -webkit-print-color-adjust: exact;
           print-color-adjust: exact;
-          background: white;
-          color: black;
-          height: auto;
-          width: 100%;
         }
-        @media print {
-          html, body { margin: 0 !important; overflow: visible !important; height: auto !important; }
-        }
+        body { display: block; }
         .print-container {
-          width: 100%;
-          max-width: 210mm;
-          margin: 0 auto;
-          padding: 0;
-          box-sizing: border-box;
+          width: 100% !important;
+          max-width: 50mm !important;
+          margin: 0 auto !important;
+          padding-left: 3px !important;
+          padding-right: 2px !important;
+          box-sizing: border-box !important;
         }
-      </style>
-    </head>
-    <body>
-      <div class="print-container">
-        ${printContent}
-      </div>
-    </body>
-  </html>
-`
+      `
+    } else if (paperSize === "Thermal 80mm") {
+      return `
+        @page { size: 80mm auto; margin: 0; }
+        html, body {
+          width: 100%;
+          margin: 0;
+          padding: 0;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        body { display: block; }
+        .print-container {
+          width: 100% !important;
+          max-width: 72mm !important;
+          margin: 0 auto !important;
+          padding-left: 5px !important;
+          padding-right: 2px !important;
+          box-sizing: border-box !important;
+        }
+      `
+    } else if (paperSize === "A4") {
+      return `
+        @page { size: A4 portrait; margin: 5mm 8mm 8mm 8mm; }
+        body { margin: 0; padding: 0; }
+      `
+    } else if (paperSize === "Letter") {
+      return `
+        @page { size: Letter portrait; margin: 0.2in 0.25in 0.25in 0.25in; }
+        body { margin: 0; padding: 0; }
+      `
+    }
+    return `
+      @page { size: A4 portrait; margin: 5mm 8mm 8mm 8mm; }
+      body { margin: 0; padding: 0; }
+    `
+  }
+
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>ReturnToAdmin-${refId}</title>
+        <style>
+          ${getPageStyles()}
+          * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+          }
+          html, body {
+            font-family: "Courier New", monospace;
+            font-size: ${paperSize.includes("Thermal") ? "12px" : "14px"};
+            line-height: 1.5;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            background: white;
+            color: black;
+            height: auto;
+          }
+          @media print {
+            html, body {
+              margin: 0 !important;
+              overflow: visible !important;
+              height: auto !important;
+            }
+            @page { margin: 0; }
+          }
+          .print-container {
+            width: 100%;
+            max-width: 100%;
+            padding: 0;
+            margin: 0 auto;
+            box-sizing: border-box;
+          }
+          .invoice-wrapper {
+            break-after: avoid-page;
+            page-break-after: avoid;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="print-container">
+          ${printContent}
+        </div>
+      </body>
+    </html>
+  `
+}
 
 const distinctReasons = (values: (string | undefined)[]) => {
   const labels = Array.from(new Set(values.map((v) => reasonLabel(v)).filter((v) => v && v !== "-")))
@@ -545,7 +624,7 @@ export default function ReturnToAdminPage() {
         throw new Error("Print content is not ready yet")
       }
 
-      const printContent = buildPrintHTML(printOuter, printData.id || "return")
+      const printContent = buildPrintHTML(printOuter, PRINT_PAPER_SIZE, printData.id || "return")
       const copies = Math.max(1, Math.trunc(Number(printCopies || 1)))
 
       if (isTauriRuntime) {
