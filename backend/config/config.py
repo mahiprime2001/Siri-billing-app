@@ -60,6 +60,12 @@ BILL_ITEM_SNAPSHOTS_FILE = os.path.join(JSON_DIR, "bill_item_snapshots.json")
 GST_REGISTRATIONS_FILE = os.path.join(JSON_DIR, "gst_registrations.json")
 
 # =========================================================
+# 🗄️ SQLITE DATABASE (single file, many tables — see migration plan)
+# =========================================================
+
+SQLITE_DB_FILE = os.path.join(DATA_DIR, "siri_billing.db")
+
+# =========================================================
 # 📝 LOGGING
 # =========================================================
 
