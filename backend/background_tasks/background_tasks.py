@@ -164,6 +164,47 @@ def background_pull_sync_scheduler(app: Flask, interval_minutes=5):
             time.sleep(interval_minutes * 60)
 
 
+def background_json_to_supabase_sync_scheduler(app: Flask, interval_minutes=5):
+    """Periodically push data from local JSON files (backup) to Supabase (primary)"""
+    with app.app_context():
+        app.logger.info("Starting background JSON to Supabase push sync scheduler.")
+        while True:
+            app.logger.info(f"Background JSON to Supabase push sync starting. Next push in {interval_minutes} minutes.")
+            full_sync_data = {}
+            
+            for table_name, file_path in TABLE_FILE_MAP.items():
+                if os.path.exists(file_path):
+                    try:
+                        data = read_json_file(file_path, default_value=[] if table_name != 'SystemSettings' else {})
+                        if data:
+                            # push_sync expects a list of records for all table types
+                            if table_name == 'SystemSettings' and isinstance(data, dict):
+                                full_sync_data[table_name] = [data]
+                            elif isinstance(data, list):
+                                full_sync_data[table_name] = data
+                            else:
+                                app.logger.warning(f"Unexpected data format in {file_path} for {table_name}. Skipping for push sync.")
+                                continue
+                    except Exception as e:
+                        app.logger.error(f"Error reading JSON file {file_path} for push sync: {e}")
+                else:
+                    app.logger.debug(f"JSON file for {table_name} not found at {file_path}. Skipping for push sync.")
+            
+            if full_sync_data:
+                try:
+                    push_results = sync_controller.push_sync(full_sync_data)
+                    if push_results['success']:
+                        app.logger.info(f"Background JSON to Supabase push sync completed successfully. Stats: {push_results['stats']}")
+                    else:
+                        app.logger.error(f"Background JSON to Supabase push sync failed with errors: {push_results['errors']}")
+                except Exception as e:
+                    app.logger.error(f"Error during background JSON to Supabase push sync: {e}")
+            else:
+                app.logger.info("No data found in JSON files to push to Supabase.")
+            
+            time.sleep(interval_minutes * 60)
+
+
 def start_background_tasks(app: Flask):
     """Starts all background tasks."""
     global _background_started
@@ -190,6 +231,13 @@ def start_background_tasks(app: Flask):
     pull_scheduler_thread.start()
     app.logger.info("Background pull sync scheduler (Supabase -> JSON) started.")
     
+    # Push sync (JSON to Supabase)
+    json_push_scheduler_thread = threading.Thread(
+        target=background_json_to_supabase_sync_scheduler, daemon=True, args=(app, 5,)
+    )
+    json_push_scheduler_thread.start()
+    app.logger.info("Background JSON to Supabase push sync scheduler (JSON -> Supabase) started.")
+
     # Replay queued offline bill operations
     offline_bill_queue_thread = threading.Thread(
         target=background_offline_bill_queue_scheduler, daemon=True, args=(app, 1,)

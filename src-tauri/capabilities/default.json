@@ -6,7 +6,7 @@
     {
       "identifier": "shell:allow-spawn",
       "allow": [
-        { "name": "binaries/Siribilling-backend", "sidecar": true }
+        { "name": "binaries/Siriadmin-backend", "sidecar": true }
       ]
     },
     {

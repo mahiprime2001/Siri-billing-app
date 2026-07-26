@@ -59,26 +59,19 @@ def _refresh_local_cache(table_name: str, records: List[Dict]) -> None:
 
 def sync_to_supabase_immediately(table_name: str, record: Dict, operation: str = "INSERT") -> bool:
     """
-    DELETE operations sync directly to Supabase here. INSERT/UPDATE used to be
-    handed off to SyncController.queue_for_sync(), an in-memory list that
-    nothing ever drained (process_sync_queue() was never called anywhere) —
-    items just accumulated and were lost on restart. That machinery was
-    removed; INSERT/UPDATE callers already treat local JSON as the source of
-    truth for these paths (see data_access.py's save_*_data functions), so
-    this is a no-op for them now, same net effect as before minus the fake
-    queue, until row-level Supabase sync is actually implemented here.
+    Immediately sync a record to Supabase using SyncController's queue_for_sync.
+    Handles INSERT and UPDATE operations via SyncController for consistency and validation.
+    DELETE operations are handled directly here as queue_for_sync does not support them.
     """
     logger.info(f"Attempting immediate sync for {operation} on {table_name}: {record.get('id')}")
     try:
         from utils.sync_controller import SyncController
         sync_controller_instance = SyncController()  # Get an instance of SyncController
-
-        if operation in ("INSERT", "UPDATE"):
-            logger.debug(
-                f"Skipping row-level Supabase sync for {operation} on {table_name} "
-                f"(JSON-only write path; not yet implemented)."
-            )
-            return True
+        
+        if operation == "INSERT":
+            return sync_controller_instance.queue_for_sync(table_name, record, change_type="INSERT")
+        elif operation == "UPDATE":
+            return sync_controller_instance.queue_for_sync(table_name, record, change_type="UPDATE")
         elif operation == "DELETE":
             supabase: Client = get_supabase_client()
             if not supabase:

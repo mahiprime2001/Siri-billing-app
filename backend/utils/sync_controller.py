@@ -1,13 +1,38 @@
 import logging
 import json
-from datetime import datetime, date
+from datetime import datetime, timedelta, date
 from decimal import Decimal
 from typing import List, Dict, Any, Optional
 from supabase import Client
+from postgrest.exceptions import APIError
 from utils.connection_pool import get_supabase_client, get_client_status
+from helpers.utils import read_json_file, write_json_file
+from config.config import (
+    USERS_FILE, PRODUCTS_FILE, BILLS_FILE, CUSTOMERS_FILE,
+    SYSTEM_SETTINGS_FILE, STORES_FILE, RETURNS_FILE, BILL_FORMATS_FILE, USER_STORES_FILE
+)
 
 logger = logging.getLogger("sync_controller")
 
+
+def _extract_base_markers(record: Dict[str, Any]) -> tuple[Optional[int], Optional[str]]:
+    base_version_raw = (
+        record.pop("baseVersion", None)
+        or record.pop("base_version", None)
+        or record.pop("baseversion", None)
+    )
+    base_updated_at = (
+        record.pop("baseUpdatedAt", None)
+        or record.pop("base_updated_at", None)
+        or record.pop("baseupdatedat", None)
+    )
+    base_version = None
+    if base_version_raw is not None:
+        try:
+            base_version = int(base_version_raw)
+        except (TypeError, ValueError):
+            base_version = None
+    return base_version, str(base_updated_at) if base_updated_at is not None else None
 
 def json_serial(obj):
     """JSON serializer for objects not serializable by default"""
@@ -28,6 +53,7 @@ class SyncController:
 
     def __init__(self):
         if not self._is_initialized:
+            self.sync_queue = []
             self.last_sync_timestamp: Optional[str] = None
             self._is_initialized = True
 
@@ -63,12 +89,14 @@ class SyncController:
             transfer_q = {"size": 0}
 
         offline_total = int(bill_q.get("size", 0)) + int(damage_q.get("size", 0)) + int(transfer_q.get("size", 0))
+        sync_total = len(self.sync_queue)
 
         return {
             "database_connected": database_connected,
             "mode": "cloud" if database_connected else "fallback",
             "last_sync": self.last_sync_timestamp,
-            "queue_size": offline_total,
+            "queue_size": sync_total + offline_total,
+            "sync_controller_queue_size": sync_total,
             "cloud_connection": get_client_status(),
             "offline_queues": {
                 "bills": bill_q,
@@ -106,6 +134,127 @@ class SyncController:
                 logger.error(f"Failed to log sync operation to sync_table: {response.data}")
         except Exception as e:
             logger.error(f"Error logging to sync_table for {table_name}:{record_id}: {e}")
+
+    def queue_for_sync(self, table_name: str, record: Dict, change_type: str) -> bool:
+        """
+        Queues a record for synchronization to Supabase.
+        change_type should be 'INSERT' or 'UPDATE'.
+        """
+        if not record or not record.get("id"):
+            logger.error(f"Invalid record for queuing: {record}")
+            return False
+
+        item = {
+            "table_name": table_name,
+            "record": record,
+            "change_type": change_type,
+            "timestamp": datetime.now().isoformat(),
+            "attempts": 0
+        }
+
+        self.sync_queue.append(item)
+        logger.info(f"Queued {change_type} for {table_name}: {record.get('id')}. Queue size: {len(self.sync_queue)}")
+        return True
+
+    def process_sync_queue(self):
+        """
+        Processes the synchronization queue, pushing changes to Supabase.
+        """
+        logger.info(f"Processing sync queue. Current size: {len(self.sync_queue)}")
+        supabase: Client = get_supabase_client()
+
+        if not supabase or getattr(supabase, "is_offline_fallback", False):
+            logger.error("Supabase client not available for processing sync queue.")
+            return
+
+        items_to_retry = []
+
+        while self.sync_queue:
+            item = self.sync_queue.pop(0)  # Get the oldest item
+            table_name = item["table_name"]
+            record = item["record"]
+            change_type = item["change_type"]
+            record_id = record.get("id")
+            item["attempts"] += 1
+
+            try:
+                record_for_db = dict(record)
+                base_version, base_updated_at = _extract_base_markers(record_for_db)
+
+                if change_type == "INSERT":
+                    response = supabase.from_(table_name.lower()).insert(record_for_db).execute()
+                elif change_type == "UPDATE":
+                    update_query = supabase.from_(table_name.lower()).update(record_for_db).eq("id", record_id)
+                    if base_version is not None:
+                        update_query = update_query.eq("version", base_version)
+                        record_for_db["version"] = base_version + 1
+                    elif base_updated_at:
+                        # Support both common timestamp columns across tables.
+                        table_l = table_name.lower()
+                        updated_col = "updatedat" if table_l in {"users", "products", "customers", "stores", "batch", "storeinventory"} else "updated_at"
+                        update_query = update_query.eq(updated_col, base_updated_at)
+                    response = update_query.execute()
+                else:
+                    logger.error(f"Unsupported change type in queue: {change_type}")
+                    self._log_to_sync_table(supabase, table_name, record_id, change_type, record, status="failed", error_message=f"Unsupported change type: {change_type}")
+                    continue
+
+                if response.data:
+                    logger.info(f"Successfully synced {change_type} for {table_name}: {record_id}")
+                    self._log_to_sync_table(supabase, table_name, record_id, change_type, record, status="synced")
+                else:
+                    if change_type == "UPDATE":
+                        latest = supabase.from_(table_name.lower()).select("*").eq("id", record_id).limit(1).execute()
+                        latest_row = latest.data[0] if latest.data else None
+                        error_message = f"Conflict detected for {table_name}:{record_id}. latest={latest_row}"
+                    else:
+                        error_message = f"Supabase response error: {response.data}"
+                    logger.error(f"Failed to sync {change_type} for {table_name}: {record_id} - {error_message}")
+                    if item["attempts"] < 3:  # Retry a few times
+                        items_to_retry.append(item)
+                        self._log_to_sync_table(supabase, table_name, record_id, change_type, record, status="pending", error_message=error_message)
+                    else:
+                        logger.error(f"Max retries reached for {table_name}:{record_id}. Giving up.")
+                        self._log_to_sync_table(supabase, table_name, record_id, change_type, record, status="failed", error_message=error_message)
+
+            except APIError as e:
+                logger.error(f"Supabase API error during {change_type} for {table_name}:{record_id}: {str(e)}")
+                error_message = str(e)
+                if item["attempts"] < 3:  # Retry a few times
+                    items_to_retry.append(item)
+                    self._log_to_sync_table(supabase, table_name, record_id, change_type, record, status="pending", error_message=error_message)
+                else:
+                    logger.error(f"Max retries reached for {table_name}:{record_id}. Giving up.")
+                    self._log_to_sync_table(supabase, table_name, record_id, change_type, record, status="failed", error_message=error_message)
+
+            except Exception as e:
+                logger.error(f"Error processing sync item for {table_name}:{record_id}: {e}")
+                error_message = str(e)
+                if item["attempts"] < 3:  # Retry a few times
+                    items_to_retry.append(item)
+                    self._log_to_sync_table(supabase, table_name, record_id, change_type, record, status="pending", error_message=error_message)
+                else:
+                    logger.error(f"Max retries reached for {table_name}:{record_id}. Giving up.")
+                    self._log_to_sync_table(supabase, table_name, record_id, change_type, record, status="failed", error_message=error_message)
+
+        # Add items that need to be retried back to the queue
+        self.sync_queue.extend(items_to_retry)
+        if items_to_retry:
+            logger.warning(f"Added {len(items_to_retry)} items back to queue for retry.")
+
+    def push_sync(self, sync_data: Dict[str, List[Dict]]) -> Dict[str, Any]:
+        """
+        Legacy bulk push is intentionally disabled to avoid stale local snapshots
+        overwriting newer cloud rows.
+        """
+        results = {
+            "success": True,
+            "stats": {},
+            "errors": [],
+            "message": "Bulk push disabled. Use row-level queue_for_sync/process_sync_queue only."
+        }
+        logger.warning(results["message"])
+        return results
 
     def pull_sync(self, last_sync: Optional[str], tables: Optional[List[str]] = None) -> Dict[str, Any]:
         """

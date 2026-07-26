@@ -1,6 +1,6 @@
 {
   "identifier": "main-capability",
-  "description": "Main capability for Siri Billing App",
+  "description": "Main capability for Siri Admin App",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -19,7 +19,7 @@
       "identifier": "shell:allow-spawn",
       "allow": [
         {
-          "name": "Siribilling-backend",
+          "name": "Siriadmin-backend",
           "sidecar": true
         }
       ]
