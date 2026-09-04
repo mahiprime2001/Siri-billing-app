@@ -5,6 +5,7 @@ from utils.connection_pool import get_supabase_client
 from utils.offline_transfer_verification_queue import enqueue_transfer_verification_create
 from datetime import datetime, timezone
 import hashlib
+import uuid
 from helpers.utils import read_json_file, write_json_file
 from config.config import STORES_FILE, USER_STORES_FILE, STOREINVENTORY_FILE, GST_REGISTRATIONS_FILE
 
@@ -893,7 +894,11 @@ def _apply_transfer_order_verification(supabase, current_user_id: str, store_id:
         for scan in scans:
             scan_rows.append(
                 {
-                    "id": f"SCAN-{datetime.now(timezone.utc).timestamp()}",
+                    # A timestamp alone can collide when multiple scans land in the same
+                    # tick (e.g. a batch verify); a uuid suffix keeps every id unique so
+                    # this insert can't 23505 and abort the rest of the function before
+                    # the order status ever gets recomputed below.
+                    "id": f"SCAN-{datetime.now(timezone.utc).timestamp()}-{uuid.uuid4().hex[:8]}",
                     "transfer_item_id": scan.get("transfer_item_id") or scan.get("transferItemId"),
                     "barcode": scan.get("barcode"),
                     "quantity": int(scan.get("quantity") or 1),
@@ -904,7 +909,12 @@ def _apply_transfer_order_verification(supabase, current_user_id: str, store_id:
                 }
             )
         if scan_rows:
-            supabase.table("inventory_transfer_scans").insert(scan_rows).execute()
+            try:
+                supabase.table("inventory_transfer_scans").insert(scan_rows).execute()
+            except Exception as scan_log_err:
+                # Best-effort like the item-verified-qty write above: a failure here
+                # must never block the order-status finalization further down.
+                app.logger.error(f"❌ Failed to insert transfer scan log rows for order {order_id}: {scan_log_err}")
 
     if damaged_event_rows:
         supabase.table("damaged_inventory_events").insert(damaged_event_rows).execute()
