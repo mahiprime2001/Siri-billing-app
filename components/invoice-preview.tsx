@@ -62,6 +62,11 @@ export default function InvoicePreview({
   const printRef = useRef<HTMLDivElement>(null)
   const nameInputRef = useRef<HTMLDivElement>(null)
   const phoneInputRef = useRef<HTMLDivElement>(null)
+  // Synchronous guard against a double-fired Print & Save click. `isPrinting`
+  // (React state) can't block this — it takes a render cycle to actually
+  // disable the button, and a fast double-click lands both calls before that
+  // render happens. A plain ref flips instantly, no render required.
+  const isPrintAndSaveInFlight = useRef(false)
   const { toast } = useToast()
   
   const [isPrinting, setIsPrinting] = useState(false)
@@ -399,6 +404,8 @@ export default function InvoicePreview({
    * ✅ Uses native Tauri printing when available; browser dialog otherwise
    */
   const handlePrintAndSave = async () => {
+    if (isPrintAndSaveInFlight.current) return
+    isPrintAndSaveInFlight.current = true
     setIsPrinting(true)
     setPrintError(null)
 
@@ -481,6 +488,7 @@ export default function InvoicePreview({
       console.error('❌ Print error:', error)
       setPrintError(error instanceof Error ? error.message : 'Unknown print error')
     } finally {
+      isPrintAndSaveInFlight.current = false
       setIsPrinting(false)
     }
   }
