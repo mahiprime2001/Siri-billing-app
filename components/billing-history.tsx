@@ -169,6 +169,12 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
   const [openDayKeys, setOpenDayKeys] = useState<string[]>([])
   const [isBackfillingHistory, setIsBackfillingHistory] = useState(false)
   const loadIdRef = useRef(0)
+  // Tracks the store we last auto-picked a default open day for, so the
+  // chunked history loader and the 30s background refresh (both of which
+  // hand groupedInvoices a new array reference on every page/tick) don't
+  // repeatedly force openDayKeys back to "today only" and silently close
+  // whatever day the user just clicked open.
+  const autoOpenAppliedForStoreRef = useRef<string>("")
 
   const IST_TIMEZONE = "Asia/Kolkata"
   const HISTORY_PRINTER_STORAGE_KEY = "siri_selected_printer_history"
@@ -641,24 +647,33 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
   }, [filteredInvoices])
 
   useEffect(() => {
+    if (searchTerm.trim()) {
+      // Search results should always show every matching day expanded.
+      // Clearing the search re-applies the "open today by default" logic
+      // below exactly once (the ref reset here forces that).
+      setOpenDayKeys(groupedInvoices.map((group) => group.dateKey))
+      autoOpenAppliedForStoreRef.current = ""
+      return
+    }
+
     if (!groupedInvoices.length) {
       setOpenDayKeys([])
       return
     }
 
-    if (searchTerm.trim()) {
-      setOpenDayKeys(groupedInvoices.map((group) => group.dateKey))
-      return
-    }
+    // Only pick the default open day once per store. Both the chunked
+    // history loader and the periodic background refresh call setInvoices
+    // repeatedly as new pages/ticks arrive, which changes groupedInvoices'
+    // reference and previously re-ran this whole effect every time --
+    // stomping "today only" back over whatever day the user had manually
+    // opened a couple of seconds earlier.
+    const storeId = currentStore?.id || ""
+    if (autoOpenAppliedForStoreRef.current === storeId) return
+    autoOpenAppliedForStoreRef.current = storeId
 
     const todayKey = getTodayIstDateKey()
-    if (groupedInvoices.some((group) => group.dateKey === todayKey)) {
-      setOpenDayKeys([todayKey])
-      return
-    }
-
-    setOpenDayKeys([])
-  }, [groupedInvoices, searchTerm])
+    setOpenDayKeys(groupedInvoices.some((group) => group.dateKey === todayKey) ? [todayKey] : [])
+  }, [groupedInvoices, searchTerm, currentStore])
 
   const handleViewInvoice = async (invoice: Invoice) => {
     const [items, replacements] = await Promise.all([
