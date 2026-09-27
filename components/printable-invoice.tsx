@@ -89,7 +89,50 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
       })) || [],
     };
 
-    const itemRows = safeInvoice.items.map((item) => {
+    // Returned items sit in the POS cart as negative "replacement_credit"
+    // lines -- they belong in the Replacement section, not the item table.
+    const isCreditLine = (item: any) => item?.lineType === "replacement_credit";
+    const saleItems = safeInvoice.items.filter((item) => !isCreditLine(item));
+    const creditLines = safeInvoice.items.filter(isCreditLine);
+
+    // One row per returned item. Saved bills pass replacementSummary (the
+    // replacements table rows), where the credit is backed out of the
+    // recorded swap numbers (new amount − charged) rather than re-derived
+    // from live tax rates, so it always reconciles with what was paid. A
+    // bill still being rung up at the POS only has its credit lines.
+    const replacementSummary = Array.isArray((invoice as any).replacementSummary)
+      ? ((invoice as any).replacementSummary as any[])
+      : [];
+    const replacementRows = replacementSummary.length > 0
+      ? replacementSummary.map((rep) => {
+          const qty = Number(rep?.quantity || 0);
+          const creditAmount = rep?.credit_amount != null
+            ? Number(rep.credit_amount)
+            : Math.round((Number(rep?.price || 0) * qty - Number(rep?.final_amount || 0)) * 100) / 100;
+          return {
+            id: rep?.id,
+            qty,
+            creditAmount,
+            originalBillId: String(rep?.original_bill_id || ""),
+            replacedName: rep?.replaced_product?.name || rep?.replaced_product_id || "",
+            replacedBarcode: String(rep?.replaced_product?.barcode || "").split(",")[0].trim(),
+            reason: rep?.damage_reason || "",
+          };
+        })
+      : creditLines.map((line: any) => ({
+          id: line.id,
+          qty: Number(line.quantity || 0),
+          creditAmount: Math.abs(Number(line.total || 0)),
+          originalBillId: String(line.replacementMeta?.originalBillId || ""),
+          replacedName:
+            line.replacementMeta?.originalProductName ||
+            String(line.name || "").replace(/ \(Replacement Credit\)$/, ""),
+          replacedBarcode: String(line.barcodes || line.barcode || "").split(",")[0].trim(),
+          reason: "",
+        }));
+    const totalReturnCredit = Math.round(replacementRows.reduce((s, r) => s + r.creditAmount, 0) * 100) / 100;
+
+    const itemRows = saleItems.map((item) => {
       const quantity = Number(item.quantity || 0);
       const itemTotal = Number(item.total || 0);
       const taxPercent = Number(item.taxPercentage || 0);
@@ -104,8 +147,10 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
     const totalQuantity = itemRows.reduce((sum, r) => sum + r.quantity, 0);
     const totalAfterTax = itemRows.reduce((sum, r) => sum + r.lineTotalAfterTax, 0);
     const totalAfterTaxRounded = Math.round(totalAfterTax * 100) / 100;
+    // A replacement bill's stored subtotal is net of the return credit, which
+    // would contradict the gross item lines above it -- use the items there.
     const totalBeforeTax =
-      Number(safeInvoice.subtotal || 0) > 0
+      replacementRows.length === 0 && Number(safeInvoice.subtotal || 0) > 0
         ? Number(safeInvoice.subtotal || 0)
         : Math.round(itemRows.reduce((sum, r) => sum + Number(r.total || 0), 0) * 100) / 100;
 
@@ -364,6 +409,45 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
 
           {divider}
 
+          {/* ── REPLACEMENT / RETURN CREDIT ── before the grand total, so the
+             receipt shows exactly how the bill amount is reduced. */}
+          {replacementRows.length > 0 && (
+            <>
+              <div style={{ fontSize: "10px", marginBottom: "6px" }}>
+                <div style={{ fontWeight: 800, fontSize: "12px", marginBottom: "3px" }}>
+                  Replacement / Return Credit
+                </div>
+                {replacementRows.map((r, idx) => (
+                  <div
+                    key={r.id || idx}
+                    style={{ borderBottom: "1px dashed #000", paddingBottom: "3px", marginBottom: "3px" }}
+                  >
+                    <div style={{ fontWeight: 700 }}>Returned: {r.replacedName}</div>
+                    <div>Barcode: {r.replacedBarcode || "-"}</div>
+                    {r.originalBillId && <div>From bill: {r.originalBillId}</div>}
+                    {r.reason && <div>Reason: {r.reason}</div>}
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>
+                        Price ({r.qty} × ₹{fmt(r.qty > 0 ? Math.round((r.creditAmount / r.qty) * 100) / 100 : r.creditAmount)})
+                      </span>
+                      <span>-₹{fmt(r.creditAmount)}</span>
+                    </div>
+                  </div>
+                ))}
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>Bill amount (After Tax)</span>
+                  <span>₹{fmt(totalAfterTaxRounded)}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+                  <span>Less: Return credit</span>
+                  <span>-₹{fmt(totalReturnCredit)}</span>
+                </div>
+              </div>
+
+              {divider}
+            </>
+          )}
+
           {/* ── GRAND TOTAL ── */}
           <div style={{ marginTop: "4px", marginBottom: "4px" }}>
             {safeInvoice.discountPercentage > 0 && (
@@ -387,61 +471,6 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
           {divider}
 
           {/* ── TERMS ── */}
-          {/* ── REPLACEMENT SUMMARY ──
-             Renders one block per replacement row attached to this bill.
-             Shows what was returned (replaced product + barcode + original
-             bill id + reason) and what was given (new product + barcode + qty
-             + extra charged). Only visible on replacement bills. */}
-          {Array.isArray((invoice as any).replacementSummary) &&
-            (invoice as any).replacementSummary.length > 0 && (
-              <>
-                <div style={{ fontSize: "10px", marginBottom: "6px" }}>
-                  <div style={{ fontWeight: 800, fontSize: "12px", marginBottom: "3px" }}>
-                    Replacement Details
-                  </div>
-                  {((invoice as any).replacementSummary as any[]).map((rep, idx) => {
-                    const qty = Number(rep?.quantity || 0);
-                    const finalAmount = Number(rep?.final_amount || 0);
-                    const originalBillId = String(rep?.original_bill_id || "");
-                    const replacedName = rep?.replaced_product?.name || rep?.replaced_product_id || "";
-                    const replacedBarcode = String(rep?.replaced_product?.barcode || "").split(",")[0].trim();
-                    const newName = rep?.new_product?.name || rep?.new_product_id || "";
-                    const newBarcode = String(rep?.new_product?.barcode || "").split(",")[0].trim();
-                    const reason = rep?.damage_reason || "";
-                    return (
-                      <div
-                        key={rep?.id || idx}
-                        style={{
-                          borderBottom: "1px dashed #000",
-                          paddingBottom: "3px",
-                          marginBottom: "3px",
-                        }}
-                      >
-                        <div style={{ fontWeight: 700 }}>
-                          #{idx + 1} · Qty: {qty}
-                          {finalAmount !== 0 && (
-                            <span> · Extra: ₹{fmt(finalAmount)}</span>
-                          )}
-                        </div>
-                        <div>
-                          Returned: {replacedName}
-                          {replacedBarcode ? ` (${replacedBarcode})` : ""}
-                        </div>
-                        <div>
-                          Given: {newName}
-                          {newBarcode ? ` (${newBarcode})` : ""}
-                        </div>
-                        {originalBillId && <div>From bill: {originalBillId}</div>}
-                        {reason && <div>Reason: {reason}</div>}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {divider}
-              </>
-            )}
-
           <div style={{ fontSize: "10px", lineHeight: "1.5", marginBottom: "4px" }}>
             <div style={{ fontWeight: 800, marginBottom: "2px" }}>Terms and Conditions:</div>
             <div>* NO GURANTEE, NO RETURN</div>

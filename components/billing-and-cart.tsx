@@ -1703,6 +1703,11 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
       billedBy: currentUser?.name || "",  // ✅ ADDED: User name who created the bill
       items: activeBillingInstance.cartItems.map((item) => ({
         ...item,
+        // Credit lines carry no barcode; the receipt's Replacement section
+        // shows the returned product's, so look it up for display.
+        barcodes: isCreditLine(item)
+          ? products.find((p) => p.id === item.replacementMeta?.originalProductId)?.barcodes || ""
+          : item.barcodes,
         replacementTag: item.replacementMeta ? `Replaced Qty: ${getMappedQuantityForItem(item)}` : "",
         replacementMappedQty: item.replacementMeta ? getMappedQuantityForItem(item) : 0,
       })),
