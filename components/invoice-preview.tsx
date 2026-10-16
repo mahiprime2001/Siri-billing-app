@@ -153,18 +153,18 @@ export default function InvoicePreview({
     window.localStorage.setItem(PRINTER_STORAGE_KEY, selectedPrinter)
   }, [selectedPrinter])
 
-  // Simplified fetch - just get customers directly
+  // Goes through apiClient (not a raw fetch) so the Bearer token actually
+  // gets attached -- this used to call localhost:8080 directly with no
+  // Authorization header at all, which the backend's @require_auth always
+  // rejects with 401, every single time this ran (every cart addition that
+  // opens the preview, not just a transient timing issue).
   useEffect(() => {
     const fetchCustomers = async () => {
       try {
-        const customersResponse = await fetch('http://localhost:8080/api/customers', {
+        const customersResponse = await apiClient('/api/customers', {
           method: 'GET',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          }
         })
-        
+
         if (customersResponse.ok) {
           const data = await customersResponse.json()
           console.log('✅ Fetched customers:', data)
