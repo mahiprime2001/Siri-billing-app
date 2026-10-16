@@ -176,43 +176,30 @@ async fn print_html_native(
     info!("?? Temp HTML: {}", html_url.as_str());
 
     // ?? Step 2: Resolve printer name ???????????????????????????????????????
-    // If no printer specified, get the system default via PowerShell so we
-    // can pass it explicitly to WebView2.
-    let resolved_printer = if printer_name.is_empty() {
-        info!("?? No printer specified ? resolving system default...");
-        let ps_out = Command::new("powershell")
-            .args(&[
-                "-NonInteractive",
-                "-ExecutionPolicy", "Bypass",
-                "-Command",
-                "(Get-CimInstance -ClassName Win32_Printer -Filter 'Default=True').Name",
-            ])
-            .output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-            .unwrap_or_default();
+    // Spawning PowerShell is slow (a few hundred ms, .NET startup overhead)
+    // -- this used to do it TWICE, once for resolved_printer and again for
+    // system_default_printer, with the exact same query, on every single
+    // print job. One spawn now, reused for both.
+    let system_default_printer = Command::new("powershell")
+        .args(&[
+            "-NonInteractive",
+            "-ExecutionPolicy", "Bypass",
+            "-Command",
+            "(Get-CimInstance -ClassName Win32_Printer -Filter 'Default=True').Name",
+        ])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
 
-        if ps_out.is_empty() {
+    // If no printer specified, use the system default resolved above.
+    let resolved_printer = if printer_name.is_empty() {
+        if system_default_printer.is_empty() {
             return Err("Could not determine system default printer. Please select a printer manually.".to_string());
         }
-        info!("? System default printer: {}", ps_out);
-        ps_out
+        info!("?? No printer specified ? using system default: {}", system_default_printer);
+        system_default_printer.clone()
     } else {
         printer_name.clone()
-    };
-
-    // Keep a copy of the system default for fallback attempts.
-    let system_default_printer = {
-        let ps_out = Command::new("powershell")
-            .args(&[
-                "-NonInteractive",
-                "-ExecutionPolicy", "Bypass",
-                "-Command",
-                "(Get-CimInstance -ClassName Win32_Printer -Filter 'Default=True').Name",
-            ])
-            .output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-            .unwrap_or_default();
-        ps_out
     };
 
     let printer_candidates: Vec<String> = if !system_default_printer.is_empty()
