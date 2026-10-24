@@ -909,7 +909,8 @@ export function BillingHistory({ currentStore, onEditInvoice }: BillingHistoryPr
     const effectiveDiscountPercentage = totalSubtotal > 0 ? (totalDiscountAmount / totalSubtotal) * 100 : 0
 
     return {
-      companyName: settings?.companyName || currentStore?.name || "Company",
+      // Report header identifies the store, not the parent company.
+      companyName: currentStore?.name || settings?.companyName || "Company",
       reportTitle: `${formatIstDateKey(group.dateKey)} Billing Report`,
       rows: printableInvoices.map((invoice) => ({
         id: invoice.id,
