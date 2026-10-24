@@ -27,6 +27,7 @@ use webview2_com::{
         ICoreWebView2_16, ICoreWebView2Environment6, ICoreWebView2PrintSettings2,
         COREWEBVIEW2_PRINT_STATUS_SUCCEEDED,
         COREWEBVIEW2_PRINT_STATUS_PRINTER_UNAVAILABLE, COREWEBVIEW2_PRINT_STATUS_OTHER_ERROR,
+        COREWEBVIEW2_PRINT_MEDIA_SIZE_CUSTOM,
     },
     PrintCompletedHandler,
 };
@@ -408,16 +409,6 @@ async fn print_html_native(
             let _ = print_settings.SetMarginLeft(0.0);
             let _ = print_settings.SetMarginRight(0.0);
 
-            // This is the ACTUAL page width WebView2 prints to -- @page CSS
-            // size is not authoritative for native printing via Print(),
-            // only for print-to-PDF. Without this, the job silently uses
-            // whatever default page width the driver/engine falls back to,
-            // which is why every CSS-only width change this session had no
-            // effect on the physical printout. Inches, like the margins above.
-            if let Some(width_in) = page_width_inches {
-                let _ = print_settings.SetPageWidth(width_in);
-            }
-
             // Extended print settings (required for printer + copies)
             let settings2: ICoreWebView2PrintSettings2 = print_settings
                 .cast()
@@ -427,6 +418,21 @@ async fn print_html_native(
             settings2
                 .SetCopies(1)
                 .map_err(|e| format!("SetCopies failed: {}", e))?;
+
+            // PageWidth/PageHeight (the ACTUAL page size WebView2 prints to --
+            // @page CSS size is not authoritative for native Print(), only for
+            // print-to-PDF) are silently IGNORED unless MediaSize is switched
+            // to CUSTOM first -- by default the job uses the driver's current
+            // default media size regardless of what PageWidth says. This is
+            // why setting PageWidth alone (previous commit) had no effect.
+            // PageHeight has no "auto" concept via this API, so it's set
+            // generously large; continuous-roll thermal drivers feed/cut at
+            // the actual content length regardless, same as before this change.
+            if let Some(width_in) = page_width_inches {
+                let _ = settings2.SetMediaSize(COREWEBVIEW2_PRINT_MEDIA_SIZE_CUSTOM);
+                let _ = print_settings.SetPageWidth(width_in);
+                let _ = print_settings.SetPageHeight(100.0);
+            }
 
             for candidate_printer in printer_candidates.iter() {
                 let printer_wide = Arc::new(
