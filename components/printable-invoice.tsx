@@ -217,7 +217,16 @@ const PrintableInvoice = forwardRef<HTMLDivElement, PrintableInvoiceProps>(
     );
 
     const isThermalPaper = paperSize.includes("Thermal")
-    const wrapperWidth = "100%"
+    const is58mmPaper = paperSize === "Thermal 58mm"
+    // 80mm/58mm thermal paper's PRINTABLE width is narrower than the paper
+    // itself (the print head physically can't reach the full edge) -- this
+    // printer prints ~72mm of an 80mm roll, ~52mm of a 58mm roll. Content
+    // laid out at the full page width runs past that and gets cut off on
+    // the right, regardless of @page/print margins (those only affect
+    // where the page STARTS printing, not how wide the head can print).
+    // Same convention already used correctly elsewhere in this codebase
+    // for the daily report (billing-history.tsx's thermalContent).
+    const wrapperWidth = isThermalPaper ? (is58mmPaper ? "52mm" : "72mm") : "100%"
     const wrapperMargin = "0 auto"
     const wrapperPadding = isThermalPaper ? "0" : "2mm"
 
