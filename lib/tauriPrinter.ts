@@ -169,16 +169,6 @@ export async function printHtmlContent(
 
   const printReadyHtml = buildPrintHtml(html, options?.paperSize);
 
-  // Always-on (not gated behind the printerDebug localStorage flag) so this
-  // is pullable straight from DevTools console without any setup -- matches
-  // the [PRINT-DEBUG] tag used in the Rust app log for the same print job.
-  console.log("[PRINT-DEBUG]", {
-    printer: printerName || "SYSTEM_DEFAULT",
-    copies,
-    paperSize: options?.paperSize ?? "Thermal 80mm",
-    htmlLength: printReadyHtml.length,
-  });
-
   try {
     // Pass paperSize for logging and future print settings alignment.
     const result = await invoke<string>("print_html_native", {
@@ -189,7 +179,6 @@ export async function printHtmlContent(
     });
 
     debugLog(options?.debug, "Print result:", result);
-    console.log("[PRINT-DEBUG] result:", result);
     console.info("[tauriPrinter] printHtmlContent result:", result);
     return result;
   } catch (error) {

@@ -27,7 +27,6 @@ use webview2_com::{
         ICoreWebView2_16, ICoreWebView2Environment6, ICoreWebView2PrintSettings2,
         COREWEBVIEW2_PRINT_STATUS_SUCCEEDED,
         COREWEBVIEW2_PRINT_STATUS_PRINTER_UNAVAILABLE, COREWEBVIEW2_PRINT_STATUS_OTHER_ERROR,
-        COREWEBVIEW2_PRINT_MEDIA_SIZE_CUSTOM, COREWEBVIEW2_PRINT_MEDIA_SIZE,
     },
     PrintCompletedHandler,
 };
@@ -35,8 +34,6 @@ use webview2_com::{
 use windows_core::Interface;
 #[cfg(target_os = "windows")]
 use windows::core::PCWSTR;
-#[cfg(target_os = "windows")]
-use windows::Win32::Graphics::Gdi::{CreateDCW, DeleteDC, GetDeviceCaps, HORZRES, LOGPIXELSX, PHYSICALOFFSETX, PHYSICALWIDTH};
 
 #[derive(Clone, Serialize, Deserialize)]
 struct UpdateInfo {
@@ -139,100 +136,6 @@ async fn install_update(app_handle: tauri::AppHandle) -> Result<String, String> 
 // any dialog or require extra tools.
 // ============================================================================
 
-// Different printer brands/heads report different real printable widths --
-// verified empirically on this machine: one installed thermal printer
-// reports ~80mm printable out of 80mm paper (nearly edge-to-edge), another
-// reports clearly broken values (printable area larger than the physical
-// paper). Rather than hardcode one brand's number, ask the Windows driver
-// for the actual printable area of whichever printer is selected, with
-// sanity checks that fall back to the existing hardcoded layout whenever
-// the driver's numbers look implausible.
-#[cfg(target_os = "windows")]
-struct PrinterPrintableArea {
-    printable_width_mm: f64,
-    offset_left_mm: f64,
-    physical_width_mm: f64,
-}
-
-#[cfg(target_os = "windows")]
-fn query_printer_printable_area(printer_name: &str) -> Option<PrinterPrintableArea> {
-    unsafe {
-        let device_wide: Vec<u16> = printer_name.encode_utf16().chain(std::iter::once(0)).collect();
-        let device_pcw = PCWSTR::from_raw(device_wide.as_ptr());
-        let hdc = CreateDCW(PCWSTR::null(), device_pcw, PCWSTR::null(), None);
-        if hdc.is_invalid() {
-            return None;
-        }
-
-        let dpi_x = GetDeviceCaps(Some(hdc), LOGPIXELSX);
-        let phys_w = GetDeviceCaps(Some(hdc), PHYSICALWIDTH);
-        let off_x = GetDeviceCaps(Some(hdc), PHYSICALOFFSETX);
-        let horz_res = GetDeviceCaps(Some(hdc), HORZRES);
-
-        let _ = DeleteDC(hdc);
-
-        if dpi_x <= 0 {
-            return None;
-        }
-
-        let to_mm = |px: i32| (px as f64 / dpi_x as f64) * 25.4;
-        Some(PrinterPrintableArea {
-            printable_width_mm: to_mm(horz_res),
-            offset_left_mm: to_mm(off_x),
-            physical_width_mm: to_mm(phys_w),
-        })
-    }
-}
-
-// Reject obviously broken driver data (seen in the wild: printable area
-// reported larger than the physical paper, or a physical size that doesn't
-// match the thermal roll the app thinks is loaded) rather than trust a
-// lying driver. Returns (physical_width_mm, printable_width_mm, offset_left_mm).
-#[cfg(target_os = "windows")]
-fn sanity_checked_printable_area(
-    area: &PrinterPrintableArea,
-    expected_nominal_mm: f64,
-) -> Option<(f64, f64, f64)> {
-    if area.printable_width_mm <= 0.0 || area.physical_width_mm <= 0.0 {
-        return None;
-    }
-    if area.printable_width_mm > area.physical_width_mm * 1.05 {
-        return None;
-    }
-    if (area.physical_width_mm - expected_nominal_mm).abs() > expected_nominal_mm * 0.15 {
-        return None;
-    }
-    if area.offset_left_mm < 0.0 || area.offset_left_mm > expected_nominal_mm {
-        return None;
-    }
-    Some((area.physical_width_mm, area.printable_width_mm, area.offset_left_mm))
-}
-
-// Dedicated, append-only log just for print jobs -- the main app log is
-// dominated by backend sync/API traffic noise, making it slow to find the
-// handful of lines that actually matter for a print issue. Each line here
-// is self-timestamped (seconds since epoch; no date/time crate dependency).
-#[cfg(target_os = "windows")]
-fn append_print_debug_log(app_handle: &tauri::AppHandle, line: &str) {
-    use std::io::Write;
-    let Ok(app_data_dir) = app_handle.path().app_data_dir() else {
-        return;
-    };
-    let logs_dir = app_data_dir.join("logs");
-    let _ = fs::create_dir_all(&logs_dir);
-    let ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(logs_dir.join("print-debug.log"))
-    {
-        let _ = writeln!(file, "[{}] {}", ts, line);
-    }
-}
-
 #[tauri::command]
 async fn print_html_native(
     app_handle: tauri::AppHandle,
@@ -257,14 +160,6 @@ async fn print_html_native(
 
     let copies = copies.max(1);
 
-    append_print_debug_log(&app_handle, &format!(
-        "=== print job start === printer='{}' copies={} paper='{}' html_len={}",
-        if printer_name.is_empty() { "System Default" } else { &printer_name },
-        copies,
-        paper_size.as_deref().unwrap_or("Thermal 80mm"),
-        html.len()
-    ));
-
     // ?? Step 1: Write HTML to temp file ?????????????????????????????????????
     let temp_dir = std::env::temp_dir();
     let ts = SystemTime::now()
@@ -281,30 +176,43 @@ async fn print_html_native(
     info!("?? Temp HTML: {}", html_url.as_str());
 
     // ?? Step 2: Resolve printer name ???????????????????????????????????????
-    // Spawning PowerShell is slow (a few hundred ms, .NET startup overhead)
-    // -- this used to do it TWICE, once for resolved_printer and again for
-    // system_default_printer, with the exact same query, on every single
-    // print job. One spawn now, reused for both.
-    let system_default_printer = Command::new("powershell")
-        .args(&[
-            "-NonInteractive",
-            "-ExecutionPolicy", "Bypass",
-            "-Command",
-            "(Get-CimInstance -ClassName Win32_Printer -Filter 'Default=True').Name",
-        ])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_default();
-
-    // If no printer specified, use the system default resolved above.
+    // If no printer specified, get the system default via PowerShell so we
+    // can pass it explicitly to WebView2.
     let resolved_printer = if printer_name.is_empty() {
-        if system_default_printer.is_empty() {
+        info!("?? No printer specified ? resolving system default...");
+        let ps_out = Command::new("powershell")
+            .args(&[
+                "-NonInteractive",
+                "-ExecutionPolicy", "Bypass",
+                "-Command",
+                "(Get-CimInstance -ClassName Win32_Printer -Filter 'Default=True').Name",
+            ])
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_default();
+
+        if ps_out.is_empty() {
             return Err("Could not determine system default printer. Please select a printer manually.".to_string());
         }
-        info!("?? No printer specified ? using system default: {}", system_default_printer);
-        system_default_printer.clone()
+        info!("? System default printer: {}", ps_out);
+        ps_out
     } else {
         printer_name.clone()
+    };
+
+    // Keep a copy of the system default for fallback attempts.
+    let system_default_printer = {
+        let ps_out = Command::new("powershell")
+            .args(&[
+                "-NonInteractive",
+                "-ExecutionPolicy", "Bypass",
+                "-Command",
+                "(Get-CimInstance -ClassName Win32_Printer -Filter 'Default=True').Name",
+            ])
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_default();
+        ps_out
     };
 
     let printer_candidates: Vec<String> = if !system_default_printer.is_empty()
@@ -314,71 +222,6 @@ async fn print_html_native(
     } else {
         vec![resolved_printer.clone()]
     };
-
-    // Auto-detect this specific printer's real printable width/offset and,
-    // if the driver's numbers look trustworthy, overwrite the temp HTML
-    // (already written above with the frontend's generic guess) with the
-    // detected-correct content layout before WebView2 loads it. This alone
-    // does NOT control the actual physical page size WebView2 prints to --
-    // see page_width_inches below, set via SetPageWidth further down. CSS
-    // @page size is not authoritative for native WebView2 printing; this
-    // API call is.
-    let mut page_width_inches: Option<f64> = None;
-    if let Some(paper) = paper_size.as_deref() {
-        if paper.contains("Thermal") {
-            let expected_nominal_mm = if paper == "Thermal 58mm" { 58.0 } else { 80.0 };
-            let mut effective_width_mm = expected_nominal_mm;
-            match query_printer_printable_area(&resolved_printer) {
-                Some(area) => match sanity_checked_printable_area(&area, expected_nominal_mm) {
-                    Some((physical_mm, printable_mm, offset_mm)) => {
-                        info!(
-                            "Detected real printable area for '{}': {:.2}mm wide, {:.2}mm left offset (physical {:.2}mm)",
-                            resolved_printer, printable_mm, offset_mm, physical_mm
-                        );
-                        append_print_debug_log(&app_handle, &format!(
-                            "detected printable area: printer='{}' printable_mm={:.2} offset_mm={:.2} physical_mm={:.2}",
-                            resolved_printer, printable_mm, offset_mm, physical_mm
-                        ));
-                        effective_width_mm = physical_mm;
-                        let override_style = format!(
-                            "<style>.invoice-wrapper{{width:{:.2}mm !important;margin-left:{:.2}mm !important;margin-right:auto !important;}}</style></head>",
-                            printable_mm, offset_mm
-                        );
-                        let overridden_html = if html.contains("</head>") {
-                            html.replacen("</head>", &override_style, 1)
-                        } else {
-                            format!("{}{}", override_style, html)
-                        };
-                        if let Err(e) = fs::write(&temp_html, overridden_html.as_bytes()) {
-                            warn!("Failed to apply detected printable-area override, keeping default layout: {}", e);
-                            append_print_debug_log(&app_handle, &format!("FAILED to write override HTML: {}", e));
-                        }
-                    }
-                    None => {
-                        info!(
-                            "Printer '{}' reported an implausible printable area, using nominal {:.0}mm page width",
-                            resolved_printer, expected_nominal_mm
-                        );
-                        append_print_debug_log(&app_handle, &format!(
-                            "implausible printable area for '{}', falling back to nominal {:.0}mm",
-                            resolved_printer, expected_nominal_mm
-                        ));
-                    }
-                },
-                None => {
-                    append_print_debug_log(&app_handle, &format!(
-                        "could not query printable area for '{}', falling back to nominal {:.0}mm",
-                        resolved_printer, expected_nominal_mm
-                    ));
-                    info!(
-                        "Could not query printable area for '{}', using nominal {:.0}mm page width",
-                        resolved_printer, expected_nominal_mm
-                    );
-                }
-            }
-            page_width_inches = Some(effective_width_mm / 25.4);
-        }
-    }
 
     // ?? Step 3: Open hidden WebView2 window and wait for load ???????????????
     let (page_tx, page_rx) = std::sync::mpsc::channel::<()>();
@@ -421,7 +264,6 @@ async fn print_html_native(
     let (print_tx, print_rx) = std::sync::mpsc::channel::<Result<String, String>>();
     let printer_for_settings = resolved_printer.clone();
     let printer_candidates = printer_candidates.clone();
-    let app_handle_for_debug = app_handle.clone();
 
     let with_webview_result = print_window.with_webview(move |webview| {
         let result: Result<String, String> = (|| unsafe {
@@ -444,17 +286,6 @@ async fn print_html_native(
             // Base print settings
             let _ = print_settings.SetShouldPrintBackgrounds(true);
             let _ = print_settings.SetShouldPrintHeaderAndFooter(false);
-            // The HTML's own CSS already sets @page { margin: 0 } and lays
-            // out receipt content edge-to-edge for the full paper width --
-            // but WebView2's print settings default to the driver's normal
-            // page margins (not zero) regardless of the page's own CSS.
-            // That reserved margin eats into the same physical width the
-            // CSS assumed it had, so the rightmost content runs past the
-            // printable area and gets cut off. Margins here are inches.
-            let _ = print_settings.SetMarginTop(0.0);
-            let _ = print_settings.SetMarginBottom(0.0);
-            let _ = print_settings.SetMarginLeft(0.0);
-            let _ = print_settings.SetMarginRight(0.0);
 
             // Extended print settings (required for printer + copies)
             let settings2: ICoreWebView2PrintSettings2 = print_settings
@@ -465,38 +296,6 @@ async fn print_html_native(
             settings2
                 .SetCopies(1)
                 .map_err(|e| format!("SetCopies failed: {}", e))?;
-
-            // PageWidth/PageHeight (the ACTUAL page size WebView2 prints to --
-            // @page CSS size is not authoritative for native Print(), only for
-            // print-to-PDF) are silently IGNORED unless MediaSize is switched
-            // to CUSTOM first -- by default the job uses the driver's current
-            // default media size regardless of what PageWidth says. This is
-            // why setting PageWidth alone (previous commit) had no effect.
-            // PageHeight has no "auto" concept via this API, so it's set
-            // generously large; continuous-roll thermal drivers feed/cut at
-            // the actual content length regardless, same as before this change.
-            if let Some(width_in) = page_width_inches {
-                let media_result = settings2.SetMediaSize(COREWEBVIEW2_PRINT_MEDIA_SIZE_CUSTOM);
-                let width_result = print_settings.SetPageWidth(width_in);
-                let height_result = print_settings.SetPageHeight(100.0);
-
-                let mut readback_media = COREWEBVIEW2_PRINT_MEDIA_SIZE(-1);
-                let _ = settings2.MediaSize(&mut readback_media);
-                let mut readback_width = -1.0f64;
-                let _ = print_settings.PageWidth(&mut readback_width);
-
-                let debug_line = format!(
-                    "requested_width_in={:.4} set_media_size={:?} set_page_width={:?} set_page_height={:?} readback_media_size={} readback_page_width_in={:.4}",
-                    width_in,
-                    media_result.is_ok(),
-                    width_result.is_ok(),
-                    height_result.is_ok(),
-                    readback_media.0,
-                    readback_width
-                );
-                info!("[PRINT-DEBUG] {}", debug_line);
-                append_print_debug_log(&app_handle_for_debug, &debug_line);
-            }
 
             for candidate_printer in printer_candidates.iter() {
                 let printer_wide = Arc::new(
@@ -594,7 +393,7 @@ async fn print_html_native(
     let _ = fs::remove_file(&temp_html);
 
     // ?? Step 6: Return result ??????????????????????????????????????????????
-    let final_result = match print_status {
+    match print_status {
         Ok(Ok(used_printer)) => {
             let msg = format!(
                 "Printed {} cop{} to '{}'",
@@ -614,10 +413,7 @@ async fn print_html_native(
             error!("? {}", msg);
             Err(msg)
         }
-    };
-
-    append_print_debug_log(&app_handle, &format!("=== print job end === {:?}", final_result));
-    final_result
+    }
     }
 }
 

@@ -34,5 +34,5 @@ reqwest = { version = "0.11", features = ["blocking", "rustls-tls"], default-fea
 tauri-plugin-printer-v2 = "0.2.4"
 webview2-com = "0.38.2"
 windows-core = "0.61"
-windows = { version = "0.61", features = ["Win32_Graphics_Gdi"] }
+windows = "0.61"
 tauri-plugin-single-instance = "2.4.0"
