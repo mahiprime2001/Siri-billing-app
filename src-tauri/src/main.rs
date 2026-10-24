@@ -273,6 +273,17 @@ async fn print_html_native(
             // Base print settings
             let _ = print_settings.SetShouldPrintBackgrounds(true);
             let _ = print_settings.SetShouldPrintHeaderAndFooter(false);
+            // The HTML's own CSS already sets @page { margin: 0 } and lays
+            // out receipt content edge-to-edge for the full paper width --
+            // but WebView2's print settings default to the driver's normal
+            // page margins (not zero) regardless of the page's own CSS.
+            // That reserved margin eats into the same physical width the
+            // CSS assumed it had, so the rightmost content runs past the
+            // printable area and gets cut off. Margins here are inches.
+            let _ = print_settings.SetMarginTop(0.0);
+            let _ = print_settings.SetMarginBottom(0.0);
+            let _ = print_settings.SetMarginLeft(0.0);
+            let _ = print_settings.SetMarginRight(0.0);
 
             // Extended print settings (required for printer + copies)
             let settings2: ICoreWebView2PrintSettings2 = print_settings
