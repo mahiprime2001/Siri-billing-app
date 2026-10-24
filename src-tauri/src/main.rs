@@ -208,6 +208,31 @@ fn sanity_checked_printable_area(
     Some((area.physical_width_mm, area.printable_width_mm, area.offset_left_mm))
 }
 
+// Dedicated, append-only log just for print jobs -- the main app log is
+// dominated by backend sync/API traffic noise, making it slow to find the
+// handful of lines that actually matter for a print issue. Each line here
+// is self-timestamped (seconds since epoch; no date/time crate dependency).
+#[cfg(target_os = "windows")]
+fn append_print_debug_log(app_handle: &tauri::AppHandle, line: &str) {
+    use std::io::Write;
+    let Ok(app_data_dir) = app_handle.path().app_data_dir() else {
+        return;
+    };
+    let logs_dir = app_data_dir.join("logs");
+    let _ = fs::create_dir_all(&logs_dir);
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(logs_dir.join("print-debug.log"))
+    {
+        let _ = writeln!(file, "[{}] {}", ts, line);
+    }
+}
+
 #[tauri::command]
 async fn print_html_native(
     app_handle: tauri::AppHandle,
@@ -231,6 +256,14 @@ async fn print_html_native(
     info!("   HTML len  : {}", html.len());
 
     let copies = copies.max(1);
+
+    append_print_debug_log(&app_handle, &format!(
+        "=== print job start === printer='{}' copies={} paper='{}' html_len={}",
+        if printer_name.is_empty() { "System Default" } else { &printer_name },
+        copies,
+        paper_size.as_deref().unwrap_or("Thermal 80mm"),
+        html.len()
+    ));
 
     // ?? Step 1: Write HTML to temp file ?????????????????????????????????????
     let temp_dir = std::env::temp_dir();
@@ -302,6 +335,10 @@ async fn print_html_native(
                             "Detected real printable area for '{}': {:.2}mm wide, {:.2}mm left offset (physical {:.2}mm)",
                             resolved_printer, printable_mm, offset_mm, physical_mm
                         );
+                        append_print_debug_log(&app_handle, &format!(
+                            "detected printable area: printer='{}' printable_mm={:.2} offset_mm={:.2} physical_mm={:.2}",
+                            resolved_printer, printable_mm, offset_mm, physical_mm
+                        ));
                         effective_width_mm = physical_mm;
                         let override_style = format!(
                             "<style>.invoice-wrapper{{width:{:.2}mm !important;margin-left:{:.2}mm !important;margin-right:auto !important;}}</style></head>",
@@ -314,6 +351,7 @@ async fn print_html_native(
                         };
                         if let Err(e) = fs::write(&temp_html, overridden_html.as_bytes()) {
                             warn!("Failed to apply detected printable-area override, keeping default layout: {}", e);
+                            append_print_debug_log(&app_handle, &format!("FAILED to write override HTML: {}", e));
                         }
                     }
                     None => {
@@ -321,9 +359,17 @@ async fn print_html_native(
                             "Printer '{}' reported an implausible printable area, using nominal {:.0}mm page width",
                             resolved_printer, expected_nominal_mm
                         );
+                        append_print_debug_log(&app_handle, &format!(
+                            "implausible printable area for '{}', falling back to nominal {:.0}mm",
+                            resolved_printer, expected_nominal_mm
+                        ));
                     }
                 },
                 None => {
+                    append_print_debug_log(&app_handle, &format!(
+                        "could not query printable area for '{}', falling back to nominal {:.0}mm",
+                        resolved_printer, expected_nominal_mm
+                    ));
                     info!(
                         "Could not query printable area for '{}', using nominal {:.0}mm page width",
                         resolved_printer, expected_nominal_mm
@@ -375,6 +421,7 @@ async fn print_html_native(
     let (print_tx, print_rx) = std::sync::mpsc::channel::<Result<String, String>>();
     let printer_for_settings = resolved_printer.clone();
     let printer_candidates = printer_candidates.clone();
+    let app_handle_for_debug = app_handle.clone();
 
     let with_webview_result = print_window.with_webview(move |webview| {
         let result: Result<String, String> = (|| unsafe {
@@ -438,8 +485,8 @@ async fn print_html_native(
                 let mut readback_width = -1.0f64;
                 let _ = print_settings.PageWidth(&mut readback_width);
 
-                info!(
-                    "[PRINT-DEBUG] requested_width_in={:.4} set_media_size={:?} set_page_width={:?} set_page_height={:?} readback_media_size={} readback_page_width_in={:.4}",
+                let debug_line = format!(
+                    "requested_width_in={:.4} set_media_size={:?} set_page_width={:?} set_page_height={:?} readback_media_size={} readback_page_width_in={:.4}",
                     width_in,
                     media_result.is_ok(),
                     width_result.is_ok(),
@@ -447,6 +494,8 @@ async fn print_html_native(
                     readback_media.0,
                     readback_width
                 );
+                info!("[PRINT-DEBUG] {}", debug_line);
+                append_print_debug_log(&app_handle_for_debug, &debug_line);
             }
 
             for candidate_printer in printer_candidates.iter() {
@@ -545,7 +594,7 @@ async fn print_html_native(
     let _ = fs::remove_file(&temp_html);
 
     // ?? Step 6: Return result ??????????????????????????????????????????????
-    match print_status {
+    let final_result = match print_status {
         Ok(Ok(used_printer)) => {
             let msg = format!(
                 "Printed {} cop{} to '{}'",
@@ -565,7 +614,10 @@ async fn print_html_native(
             error!("? {}", msg);
             Err(msg)
         }
-    }
+    };
+
+    append_print_debug_log(&app_handle, &format!("=== print job end === {:?}", final_result));
+    final_result
     }
 }
 
