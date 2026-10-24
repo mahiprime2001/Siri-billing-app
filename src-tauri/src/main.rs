@@ -284,10 +284,16 @@ async fn print_html_native(
     // Auto-detect this specific printer's real printable width/offset and,
     // if the driver's numbers look trustworthy, overwrite the temp HTML
     // (already written above with the frontend's generic guess) with the
-    // detected-correct layout before WebView2 loads it.
+    // detected-correct content layout before WebView2 loads it. This alone
+    // does NOT control the actual physical page size WebView2 prints to --
+    // see page_width_inches below, set via SetPageWidth further down. CSS
+    // @page size is not authoritative for native WebView2 printing; this
+    // API call is.
+    let mut page_width_inches: Option<f64> = None;
     if let Some(paper) = paper_size.as_deref() {
         if paper.contains("Thermal") {
             let expected_nominal_mm = if paper == "Thermal 58mm" { 58.0 } else { 80.0 };
+            let mut effective_width_mm = expected_nominal_mm;
             match query_printer_printable_area(&resolved_printer) {
                 Some(area) => match sanity_checked_printable_area(&area, expected_nominal_mm) {
                     Some((physical_mm, printable_mm, offset_mm)) => {
@@ -295,9 +301,10 @@ async fn print_html_native(
                             "Detected real printable area for '{}': {:.2}mm wide, {:.2}mm left offset (physical {:.2}mm)",
                             resolved_printer, printable_mm, offset_mm, physical_mm
                         );
+                        effective_width_mm = physical_mm;
                         let override_style = format!(
-                            "<style>@page{{size:{:.2}mm auto !important;margin:0 !important;}} .invoice-wrapper{{width:{:.2}mm !important;margin-left:{:.2}mm !important;margin-right:auto !important;}}</style></head>",
-                            physical_mm, printable_mm, offset_mm
+                            "<style>.invoice-wrapper{{width:{:.2}mm !important;margin-left:{:.2}mm !important;margin-right:auto !important;}}</style></head>",
+                            printable_mm, offset_mm
                         );
                         let overridden_html = if html.contains("</head>") {
                             html.replacen("</head>", &override_style, 1)
@@ -309,13 +316,20 @@ async fn print_html_native(
                         }
                     }
                     None => {
-                        info!("Printer '{}' reported an implausible printable area, keeping default layout", resolved_printer);
+                        info!(
+                            "Printer '{}' reported an implausible printable area, using nominal {:.0}mm page width",
+                            resolved_printer, expected_nominal_mm
+                        );
                     }
                 },
                 None => {
-                    info!("Could not query printable area for '{}', keeping default layout", resolved_printer);
+                    info!(
+                        "Could not query printable area for '{}', using nominal {:.0}mm page width",
+                        resolved_printer, expected_nominal_mm
+                    );
                 }
             }
+            page_width_inches = Some(effective_width_mm / 25.4);
         }
     }
 
@@ -393,6 +407,16 @@ async fn print_html_native(
             let _ = print_settings.SetMarginBottom(0.0);
             let _ = print_settings.SetMarginLeft(0.0);
             let _ = print_settings.SetMarginRight(0.0);
+
+            // This is the ACTUAL page width WebView2 prints to -- @page CSS
+            // size is not authoritative for native printing via Print(),
+            // only for print-to-PDF. Without this, the job silently uses
+            // whatever default page width the driver/engine falls back to,
+            // which is why every CSS-only width change this session had no
+            // effect on the physical printout. Inches, like the margins above.
+            if let Some(width_in) = page_width_inches {
+                let _ = print_settings.SetPageWidth(width_in);
+            }
 
             // Extended print settings (required for printer + copies)
             let settings2: ICoreWebView2PrintSettings2 = print_settings
