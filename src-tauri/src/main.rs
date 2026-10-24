@@ -34,6 +34,8 @@ use webview2_com::{
 use windows_core::Interface;
 #[cfg(target_os = "windows")]
 use windows::core::PCWSTR;
+#[cfg(target_os = "windows")]
+use windows::Win32::Graphics::Gdi::{CreateDCW, DeleteDC, GetDeviceCaps, HORZRES, LOGPIXELSX, PHYSICALOFFSETX, PHYSICALWIDTH};
 
 #[derive(Clone, Serialize, Deserialize)]
 struct UpdateInfo {
@@ -136,6 +138,75 @@ async fn install_update(app_handle: tauri::AppHandle) -> Result<String, String> 
 // any dialog or require extra tools.
 // ============================================================================
 
+// Different printer brands/heads report different real printable widths --
+// verified empirically on this machine: one installed thermal printer
+// reports ~80mm printable out of 80mm paper (nearly edge-to-edge), another
+// reports clearly broken values (printable area larger than the physical
+// paper). Rather than hardcode one brand's number, ask the Windows driver
+// for the actual printable area of whichever printer is selected, with
+// sanity checks that fall back to the existing hardcoded layout whenever
+// the driver's numbers look implausible.
+#[cfg(target_os = "windows")]
+struct PrinterPrintableArea {
+    printable_width_mm: f64,
+    offset_left_mm: f64,
+    physical_width_mm: f64,
+}
+
+#[cfg(target_os = "windows")]
+fn query_printer_printable_area(printer_name: &str) -> Option<PrinterPrintableArea> {
+    unsafe {
+        let device_wide: Vec<u16> = printer_name.encode_utf16().chain(std::iter::once(0)).collect();
+        let device_pcw = PCWSTR::from_raw(device_wide.as_ptr());
+        let hdc = CreateDCW(PCWSTR::null(), device_pcw, PCWSTR::null(), None);
+        if hdc.is_invalid() {
+            return None;
+        }
+
+        let dpi_x = GetDeviceCaps(Some(hdc), LOGPIXELSX);
+        let phys_w = GetDeviceCaps(Some(hdc), PHYSICALWIDTH);
+        let off_x = GetDeviceCaps(Some(hdc), PHYSICALOFFSETX);
+        let horz_res = GetDeviceCaps(Some(hdc), HORZRES);
+
+        let _ = DeleteDC(hdc);
+
+        if dpi_x <= 0 {
+            return None;
+        }
+
+        let to_mm = |px: i32| (px as f64 / dpi_x as f64) * 25.4;
+        Some(PrinterPrintableArea {
+            printable_width_mm: to_mm(horz_res),
+            offset_left_mm: to_mm(off_x),
+            physical_width_mm: to_mm(phys_w),
+        })
+    }
+}
+
+// Reject obviously broken driver data (seen in the wild: printable area
+// reported larger than the physical paper, or a physical size that doesn't
+// match the thermal roll the app thinks is loaded) rather than trust a
+// lying driver. Returns (physical_width_mm, printable_width_mm, offset_left_mm).
+#[cfg(target_os = "windows")]
+fn sanity_checked_printable_area(
+    area: &PrinterPrintableArea,
+    expected_nominal_mm: f64,
+) -> Option<(f64, f64, f64)> {
+    if area.printable_width_mm <= 0.0 || area.physical_width_mm <= 0.0 {
+        return None;
+    }
+    if area.printable_width_mm > area.physical_width_mm * 1.05 {
+        return None;
+    }
+    if (area.physical_width_mm - expected_nominal_mm).abs() > expected_nominal_mm * 0.15 {
+        return None;
+    }
+    if area.offset_left_mm < 0.0 || area.offset_left_mm > expected_nominal_mm {
+        return None;
+    }
+    Some((area.physical_width_mm, area.printable_width_mm, area.offset_left_mm))
+}
+
 #[tauri::command]
 async fn print_html_native(
     app_handle: tauri::AppHandle,
@@ -209,6 +280,44 @@ async fn print_html_native(
     } else {
         vec![resolved_printer.clone()]
     };
+
+    // Auto-detect this specific printer's real printable width/offset and,
+    // if the driver's numbers look trustworthy, overwrite the temp HTML
+    // (already written above with the frontend's generic guess) with the
+    // detected-correct layout before WebView2 loads it.
+    if let Some(paper) = paper_size.as_deref() {
+        if paper.contains("Thermal") {
+            let expected_nominal_mm = if paper == "Thermal 58mm" { 58.0 } else { 80.0 };
+            match query_printer_printable_area(&resolved_printer) {
+                Some(area) => match sanity_checked_printable_area(&area, expected_nominal_mm) {
+                    Some((physical_mm, printable_mm, offset_mm)) => {
+                        info!(
+                            "Detected real printable area for '{}': {:.2}mm wide, {:.2}mm left offset (physical {:.2}mm)",
+                            resolved_printer, printable_mm, offset_mm, physical_mm
+                        );
+                        let override_style = format!(
+                            "<style>@page{{size:{:.2}mm auto !important;margin:0 !important;}} .invoice-wrapper{{width:{:.2}mm !important;margin-left:{:.2}mm !important;margin-right:auto !important;}}</style></head>",
+                            physical_mm, printable_mm, offset_mm
+                        );
+                        let overridden_html = if html.contains("</head>") {
+                            html.replacen("</head>", &override_style, 1)
+                        } else {
+                            format!("{}{}", override_style, html)
+                        };
+                        if let Err(e) = fs::write(&temp_html, overridden_html.as_bytes()) {
+                            warn!("Failed to apply detected printable-area override, keeping default layout: {}", e);
+                        }
+                    }
+                    None => {
+                        info!("Printer '{}' reported an implausible printable area, keeping default layout", resolved_printer);
+                    }
+                },
+                None => {
+                    info!("Could not query printable area for '{}', keeping default layout", resolved_printer);
+                }
+            }
+        }
+    }
 
     // ?? Step 3: Open hidden WebView2 window and wait for load ???????????????
     let (page_tx, page_rx) = std::sync::mpsc::channel::<()>();
