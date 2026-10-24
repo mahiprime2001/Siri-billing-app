@@ -27,7 +27,7 @@ use webview2_com::{
         ICoreWebView2_16, ICoreWebView2Environment6, ICoreWebView2PrintSettings2,
         COREWEBVIEW2_PRINT_STATUS_SUCCEEDED,
         COREWEBVIEW2_PRINT_STATUS_PRINTER_UNAVAILABLE, COREWEBVIEW2_PRINT_STATUS_OTHER_ERROR,
-        COREWEBVIEW2_PRINT_MEDIA_SIZE_CUSTOM,
+        COREWEBVIEW2_PRINT_MEDIA_SIZE_CUSTOM, COREWEBVIEW2_PRINT_MEDIA_SIZE,
     },
     PrintCompletedHandler,
 };
@@ -429,9 +429,24 @@ async fn print_html_native(
             // generously large; continuous-roll thermal drivers feed/cut at
             // the actual content length regardless, same as before this change.
             if let Some(width_in) = page_width_inches {
-                let _ = settings2.SetMediaSize(COREWEBVIEW2_PRINT_MEDIA_SIZE_CUSTOM);
-                let _ = print_settings.SetPageWidth(width_in);
-                let _ = print_settings.SetPageHeight(100.0);
+                let media_result = settings2.SetMediaSize(COREWEBVIEW2_PRINT_MEDIA_SIZE_CUSTOM);
+                let width_result = print_settings.SetPageWidth(width_in);
+                let height_result = print_settings.SetPageHeight(100.0);
+
+                let mut readback_media = COREWEBVIEW2_PRINT_MEDIA_SIZE(-1);
+                let _ = settings2.MediaSize(&mut readback_media);
+                let mut readback_width = -1.0f64;
+                let _ = print_settings.PageWidth(&mut readback_width);
+
+                info!(
+                    "[PRINT-DEBUG] requested_width_in={:.4} set_media_size={:?} set_page_width={:?} set_page_height={:?} readback_media_size={} readback_page_width_in={:.4}",
+                    width_in,
+                    media_result.is_ok(),
+                    width_result.is_ok(),
+                    height_result.is_ok(),
+                    readback_media.0,
+                    readback_width
+                );
             }
 
             for candidate_printer in printer_candidates.iter() {
