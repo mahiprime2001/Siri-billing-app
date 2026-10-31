@@ -179,6 +179,8 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Write-only key that lets the app upload its store logs to siri-api.
+          NEXT_PUBLIC_CLIENT_LOG_KEY: ${{ secrets.CLIENT_LOG_KEY }}
 
       # --------------------------------------------------
       # 15. Debug - Show built files

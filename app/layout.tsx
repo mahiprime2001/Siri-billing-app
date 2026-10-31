@@ -12,6 +12,7 @@ import Updater from '@/components/Updater'
 import packageJson from '../package.json'
 import { apiClient } from '@/lib/api-client'
 import VersionDisplay from '@/components/VersionDisplay'
+import { initStoreLog, logEvent } from '@/lib/store-log'
 
 declare global {
   interface Window {
@@ -60,6 +61,18 @@ export default function RootLayout({
         offlineToastIntervalRef.current = null
       }
     }
+  }, [online])
+
+  // Store logs (shipped to the VPS): tag every line with this store once signed in,
+  // and record connectivity changes so offline stretches show up in the log.
+  useEffect(() => {
+    if (authChecked && pathname !== '/login') {
+      void initStoreLog()
+    }
+  }, [authChecked, pathname])
+
+  useEffect(() => {
+    logEvent(online ? 'info' : 'warn', 'network', online ? 'internet connection is back' : 'internet connection lost (offline mode)')
   }, [online])
 
   useEffect(() => {

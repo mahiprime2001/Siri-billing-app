@@ -21,6 +21,8 @@ use log::{info, error, warn, debug};
 use serde::{Serialize, Deserialize};
 use reqwest::blocking::Client;
 
+mod store_log;
+
 #[cfg(target_os = "windows")]
 use webview2_com::{
     Microsoft::Web::WebView2::Win32::{
@@ -458,6 +460,19 @@ async fn list_printers_native() -> Result<Vec<String>, String> {
 }
 
 
+/// Called by the frontend once the user is signed in and the store is known, so every
+/// log line is tagged with the store and uploads to the VPS are enabled.
+#[tauri::command]
+fn set_log_context(api_base: Option<String>, log_key: String, store_id: String, store_name: String) {
+    store_log::set_context(api_base, log_key, store_id, store_name);
+}
+
+/// Lets the frontend write a line into the same store-events log (bills queued, sync results, errors).
+#[tauri::command]
+fn write_store_log(level: String, category: String, message: String) {
+    store_log::event(&level, &category, &message);
+}
+
 fn main() {
     let child_handle: Arc<Mutex<Option<CommandChild>>> = Arc::new(Mutex::new(None));
 
@@ -494,6 +509,8 @@ fn main() {
             install_update,
             print_html_native,      // ✅ NEW
             list_printers_native,   // ✅ NEW
+            set_log_context,
+            write_store_log,
         ])
         .setup({
             let child_handle = Arc::clone(&child_handle);
@@ -512,6 +529,10 @@ fn main() {
                     .unwrap_or_else(|_| PathBuf::from("unknown"));
                 info!("📂 App data directory: {:?}", app_data_dir);
                 info!("📝 Logs directory: {:?}", app_data_dir.join("logs"));
+
+                store_log::init(app_data_dir.join("logs"), app.package_info().version.to_string());
+                store_log::event("info", "app", &format!("app started version={}", app.package_info().version));
+                store_log::start_background();
 
                 info!("=================================================");
                 info!("🔄 Updater Configuration");
@@ -550,6 +571,7 @@ fn main() {
 
                     info!("✅ Backend spawned successfully");
                     info!("🆔 Process ID: {}", pid);
+                    store_log::event("info", "sidecar", &format!("backend started pid={}", pid));
 
                     *child_handle.lock().unwrap() = Some(command_child);
 
@@ -567,9 +589,11 @@ fn main() {
                                 }
                                 CommandEvent::Error(err) => {
                                     error!("❌ [Backend] Error: {}", err);
+                                    store_log::event("error", "sidecar", &format!("backend error: {}", err));
                                 }
                                 CommandEvent::Terminated(payload) => {
                                     warn!("⚠️ [Backend] Terminated with code: {:?}", payload.code);
+                                    store_log::event("error", "sidecar", &format!("backend terminated code={:?}", payload.code));
                                 }
                                 _ => {}
                             }
@@ -594,6 +618,7 @@ fn main() {
                         WindowEvent::CloseRequested { .. } => {
                             info!("=================================================");
                             info!("🚪 Window Close Requested - Initiating Graceful Shutdown");
+                            store_log::event("info", "app", "window close requested, shutting down");
                             info!("=================================================");
 
                             if let Some(child) = child_handle_clone.lock().unwrap().as_ref() {
@@ -702,31 +727,19 @@ fn main() {
         });
 }
 
-/// Clean old log files on startup
+/// Prune old log files on startup. This used to delete EVERY .log file on each
+/// launch, which would wipe the store-events history we ship to the VPS; now it
+/// only removes files older than 14 days.
 fn cleanup_old_logs(app_handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let app_data_dir = app_handle.path().app_data_dir()?;
     let logs_dir = app_data_dir.join("logs");
-    
+
     if logs_dir.exists() {
-        println!("🧹 Cleaning old logs from: {:?}", logs_dir);
-        if let Ok(entries) = fs::read_dir(&logs_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_file() {
-                    if let Some(extension) = path.extension() {
-                        if extension == "log" {
-                            match fs::remove_file(&path) {
-                                Ok(_) => println!("✅ Deleted old log: {:?}", path.file_name()),
-                                Err(e) => eprintln!("❌ Failed to delete {:?}: {}", path, e),
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        println!("🧹 Pruning logs older than 14 days in: {:?}", logs_dir);
+        store_log::prune_old(&logs_dir, 14);
     } else {
         println!("📁 Logs directory doesn't exist yet, will be created");
     }
-    
+
     Ok(())
 }
