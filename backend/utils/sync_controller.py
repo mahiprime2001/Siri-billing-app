@@ -1,5 +1,6 @@
 import logging
 import json
+import time
 from datetime import datetime, timedelta, date
 from decimal import Decimal
 from typing import List, Dict, Any, Optional
@@ -258,8 +259,32 @@ class SyncController:
 
     def pull_sync(self, last_sync: Optional[str], tables: Optional[List[str]] = None) -> Dict[str, Any]:
         """
-        Pull updates from Supabase since last sync (delta sync)
+        Pull updates from Supabase since last sync (delta sync), and record the
+        outcome in the offline-events log so sync health is visible per store.
         """
+        started = time.monotonic()
+        results = self._pull_sync(last_sync, tables)
+        try:
+            from utils.queue_common import log_offline_event
+            data = results.get('data') or {}
+            errors = results.get('errors') or []
+            records = sum(len(rows) for rows in data.values())
+            if results.get('success') and not records:
+                return results  # nothing new: stay quiet, this runs for every table every cycle
+            log_offline_event(
+                "pull_sync",
+                ok=bool(results.get('success')),
+                tables=",".join(tables) if tables else "all",
+                records=records,
+                errors=len(errors),
+                first_error=str(errors[0])[:200] if errors else None,
+                seconds=round(time.monotonic() - started, 1),
+            )
+        except Exception:
+            pass
+        return results
+
+    def _pull_sync(self, last_sync: Optional[str], tables: Optional[List[str]] = None) -> Dict[str, Any]:
         logger.info("Starting pull_sync")
         supabase: Optional[Client] = None
         results = {

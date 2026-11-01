@@ -776,10 +776,17 @@ def dispatch_bill_create(current_user_id: str, data: Dict[str, Any]) -> Dict[str
 
     try:
         result = create_bill_transaction(current_user_id=current_user_id, data=data)
+        log_offline_event(
+            "bill_sent_online",
+            queue="bills",
+            bill_id=(result or {}).get("id") or (result or {}).get("bill_id"),
+            store_id=data.get("store_id"),
+        )
         return {"queued": False, **result}
-    except ValueError:
+    except ValueError as exc:
         # Bad request (missing fields, insufficient stock, discount approval) —
         # not a connectivity problem. Let the route surface it as a 400.
+        log_offline_event("bill_rejected", queue="bills", store_id=data.get("store_id"), reason=str(exc))
         raise
     except Exception as exc:
         # The connection may have dropped mid-request after we believed we were
@@ -794,4 +801,5 @@ def dispatch_bill_create(current_user_id: str, data: Dict[str, Any]) -> Dict[str
                 trigger="connection_lost",
                 reason=str(exc),
             )
+        log_offline_event("bill_failed", queue="bills", store_id=data.get("store_id"), reason=str(exc))
         raise
