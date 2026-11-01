@@ -1,0 +1,9 @@
+{
+  "identifier": "store-log-capability",
+  "description": "Store log shipping commands",
+  "windows": ["main"],
+  "permissions": [
+    "allow-write-store-log",
+    "allow-set-log-context"
+  ]
+}

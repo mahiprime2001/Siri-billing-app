@@ -28,7 +28,8 @@
       "csp": null,
       "capabilities": [
         "main-capability",
-        "default-capabilities"
+        "default-capabilities",
+        "store-log-capability"
       ]
     },
     "withGlobalTauri": true
