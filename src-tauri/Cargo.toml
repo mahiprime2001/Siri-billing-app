@@ -37,3 +37,5 @@ webview2-com = "0.38.2"
 windows-core = "0.61"
 windows = "0.61"
 tauri-plugin-single-instance = "2.4.0"
+# Local database for the Rust offline mode (bundled = no system SQLite needed on store PCs).
+rusqlite = { version = "0.32", features = ["bundled"] }

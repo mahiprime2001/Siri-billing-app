@@ -47,6 +47,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { useOnlineStatus } from "@/hooks/use-online-status"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { apiClient } from "@/lib/api-client"
+import { shadowBarcode } from "@/lib/store-log"
 import { authManager } from "@/lib/auth"
 
 interface User {
@@ -1333,6 +1334,7 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
     // 1) Fast path: product is in the local list AND looks in stock — add it.
     const localMatch = products.find(matchesBarcode)
     if (localMatch && localMatch.stock > 0) {
+      shadowBarcode(rawInput, localMatch.id)
       const added = addToCart(localMatch.id, 1)
       if (added) {
         setLastScanned(localMatch)
@@ -1347,6 +1349,7 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
     //    number. Online this reads the cloud; offline the backend serves the
     //    local JSON fallback. Either way we use a verified value, not a stale one.
     const serverMatchedProduct = await lookupProductByBarcode(rawInput)
+    shadowBarcode(rawInput, serverMatchedProduct?.id ?? localMatch?.id)
     if (serverMatchedProduct) {
       // Merge the fresh row back into the in-memory list so the grid heals too.
       setProducts((prev) => {

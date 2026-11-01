@@ -22,6 +22,16 @@ export function logEvent(level: Level, category: string, message: string): void 
   invoke("write_store_log", { level, category, message }).catch(() => {})
 }
 
+/**
+ * Shadow mode for the Rust offline database: tells Rust which barcode was scanned and which
+ * product the current (Flask) lookup found, so Rust can look it up too and log whether they
+ * agree. Never affects billing; failures are ignored.
+ */
+export function shadowBarcode(barcode: string, flaskProductId: string | null | undefined): void {
+  if (!inTauri()) return
+  invoke("shadow_barcode_check", { barcode, flaskProductId: flaskProductId ?? null }).catch(() => {})
+}
+
 let contextKey = ""
 
 /** Tells the Rust side which store this is, and enables uploads. Safe to call repeatedly. */

@@ -22,6 +22,8 @@ use serde::{Serialize, Deserialize};
 use reqwest::blocking::Client;
 
 mod store_log;
+mod offline_db;
+mod shadow;
 
 #[cfg(target_os = "windows")]
 use webview2_com::{
@@ -473,6 +475,13 @@ fn write_store_log(level: String, category: String, message: String) {
     store_log::event(&level, &category, &message);
 }
 
+/// Shadow mode: the cashier screen reports a scan and the product Flask found; Rust looks the
+/// same barcode up in its own database and logs whether they agree. Changes nothing the user sees.
+#[tauri::command]
+async fn shadow_barcode_check(barcode: String, flask_product_id: Option<String>) {
+    shadow::check_barcode(&barcode, flask_product_id.as_deref());
+}
+
 fn main() {
     let child_handle: Arc<Mutex<Option<CommandChild>>> = Arc::new(Mutex::new(None));
 
@@ -511,6 +520,7 @@ fn main() {
             list_printers_native,   // ✅ NEW
             set_log_context,
             write_store_log,
+            shadow_barcode_check,
         ])
         .setup({
             let child_handle = Arc::clone(&child_handle);
@@ -533,6 +543,7 @@ fn main() {
                 store_log::init(app_data_dir.join("logs"), app.package_info().version.to_string());
                 store_log::event("info", "app", &format!("app started version={}", app.package_info().version));
                 store_log::start_background();
+                shadow::start(app_data_dir.clone());
 
                 info!("=================================================");
                 info!("🔄 Updater Configuration");
