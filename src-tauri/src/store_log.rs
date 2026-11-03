@@ -152,6 +152,17 @@ pub fn set_context(api_base: Option<String>, log_key: String, store_id: String, 
     event("info", "context", "log context set");
 }
 
+/// (api_base, log_key, store_id) once the frontend has set the log context after login --
+/// the same identity the log uploader uses. `None` until then, or when no key was baked in.
+pub fn context() -> Option<(String, String, String)> {
+    let state = STATE.get()?.lock().ok()?;
+    let ctx = &state.ctx;
+    if ctx.store_id.is_empty() || ctx.log_key.is_empty() {
+        return None;
+    }
+    Some((ctx.api_base.clone(), ctx.log_key.clone(), ctx.store_id.clone()))
+}
+
 // ---- upload -----------------------------------------------------------------
 
 #[derive(Serialize, Deserialize, Default)]

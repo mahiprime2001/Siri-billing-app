@@ -13,6 +13,7 @@ from helpers.utils import read_json_file, write_json_file
 from config.config import BILLS_FILE, BILL_IDEMPOTENCY_FILE
 
 from services.billing_service import create_bill_transaction, dispatch_bill_create
+from utils.billing_pause import current_pause
 from data_access.data_access import update_both_inventory_and_product_stock
 from utils.bill_item_snapshot import get_bill_item_snapshots, replace_bill_item_snapshots
 
@@ -464,6 +465,13 @@ def create_bill():
                         "idempotent_replay": True,
                     }
                 ), 200
+
+        # The admin paused billing for an audit: no NEW bills. (Replays of an already-processed
+        # bill, handled above, and bills already queued offline are not affected.)
+        pause = current_pause()
+        if pause:
+            app.logger.warning(f"⏸️ Bill refused: billing is paused by the admin (since {pause.get('since')})")
+            return jsonify({"error": "billing_paused", "message": pause["message"], "since": pause["since"]}), 423
 
         result = dispatch_bill_create(current_user_id=current_user_id, data=data)
         _remember_bill_request(client_request_id, result.get("bill_id"), current_user_id)

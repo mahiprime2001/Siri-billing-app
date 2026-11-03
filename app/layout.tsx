@@ -12,6 +12,7 @@ import Updater from '@/components/Updater'
 import packageJson from '../package.json'
 import { apiClient } from '@/lib/api-client'
 import VersionDisplay from '@/components/VersionDisplay'
+import BillingPauseOverlay from '@/components/billing-pause-overlay'
 import { initStoreLog, logEvent } from '@/lib/store-log'
 
 declare global {
@@ -193,7 +194,10 @@ export default function RootLayout({
       <body>
         {children}
         <Toaster />
-        
+
+        {/* Blocks the whole app while the admin has paused billing for an audit. */}
+        <BillingPauseOverlay />
+
         {/* ✅ UPDATER COMPONENT - THIS IS CRITICAL! */}
         <Updater/>
         

@@ -12,6 +12,11 @@ description = "Allows invoking the shadow_barcode_check command"
 commands.allow = ["shadow_barcode_check"]
 
 [[permission]]
+identifier = "allow-get-billing-pause"
+description = "Allows invoking the get_billing_pause command"
+commands.allow = ["get_billing_pause"]
+
+[[permission]]
 identifier = "allow-set-log-context"
 description = "Allows invoking the set_log_context command"
 commands.allow = ["set_log_context"]

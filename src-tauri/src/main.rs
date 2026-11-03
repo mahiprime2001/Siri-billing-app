@@ -24,6 +24,7 @@ use reqwest::blocking::Client;
 mod store_log;
 mod offline_db;
 mod shadow;
+mod billing_pause;
 
 #[cfg(target_os = "windows")]
 use webview2_com::{
@@ -477,6 +478,13 @@ fn write_store_log(level: String, category: String, message: String) {
 
 /// Shadow mode: the cashier screen reports a scan and the product Flask found; Rust looks the
 /// same barcode up in its own database and logs whether they agree. Changes nothing the user sees.
+/// Is billing paused at this store (an audit is running and the admin paused it)? The page polls
+/// this and shows a blocking dialog while it is true. Answers come from siri-api every ~30 s.
+#[tauri::command]
+fn get_billing_pause() -> billing_pause::PauseInfo {
+    billing_pause::current()
+}
+
 #[tauri::command]
 async fn shadow_barcode_check(barcode: String, flask_product_id: Option<String>) {
     shadow::check_barcode(&barcode, flask_product_id.as_deref());
@@ -521,6 +529,7 @@ fn main() {
             set_log_context,
             write_store_log,
             shadow_barcode_check,
+            get_billing_pause,
         ])
         .setup({
             let child_handle = Arc::clone(&child_handle);
@@ -544,6 +553,11 @@ fn main() {
                 store_log::event("info", "app", &format!("app started version={}", app.package_info().version));
                 store_log::start_background();
                 shadow::start(app_data_dir.clone());
+                // The Flask sidecar keeps its data in `data/` next to the exe and reads this file
+                // before creating a bill (see backend/utils/billing_pause.py).
+                if let Some(exe_dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
+                    billing_pause::start(exe_dir.join("data").join("billing-pause.json"));
+                }
 
                 info!("=================================================");
                 info!("🔄 Updater Configuration");

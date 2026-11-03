@@ -5,6 +5,7 @@
   "permissions": [
     "allow-write-store-log",
     "allow-set-log-context",
-    "allow-shadow-barcode-check"
+    "allow-shadow-barcode-check",
+    "allow-get-billing-pause"
   ]
 }
