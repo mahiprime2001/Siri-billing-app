@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { check, type Update } from '@tauri-apps/plugin-updater';
-import { ask, message } from '@tauri-apps/plugin-dialog';
+import { message } from '@tauri-apps/plugin-dialog';
 import { relaunch } from '@tauri-apps/plugin-process';
 
 interface DownloadProgress {
@@ -20,68 +20,65 @@ export default function Updater() {
     notes: string;
   } | null>(null);
 
+  const downloading = useRef(false);
+  const snoozed = useRef<{ version: string; until: number } | null>(null);
+  const lastCheck = useRef(0);
+
   useEffect(() => {
+    if (typeof window === 'undefined' || !('__TAURI__' in window)) {
+      console.log('Not running in Tauri environment, skipping update check');
+      return;
+    }
+
     const checkForUpdates = async () => {
-      // Check if running in Tauri environment
-      if (typeof window !== 'undefined' && '__TAURI__' in window) {
-        try {
-          const update = await check();
-          
-          if (!update || !update.available) {
-            console.log('No updates available.');
-            return;
-          }
+      // Never interrupt a running download; avoid hammering the server on rapid focus changes.
+      if (downloading.current || Date.now() - lastCheck.current < 60_000) return;
+      lastCheck.current = Date.now();
+      try {
+        const update = await check();
+        if (!update || !update.available) return;
 
-          currentUpdate.current = update;
-          setUpdateAvailable(true);
-          setUpdateInfo({
-            version: update.version,
-            notes: update.body || 'No release notes available.',
-          });
+        // "Later" hides this version for an hour, then it comes back.
+        const s = snoozed.current;
+        if (s && s.version === update.version && Date.now() < s.until) return;
 
-          // Automatically prompt user about update
-          handleUpdateAvailable();
-        } catch (error) {
-          console.error('Failed to check for updates:', error);
-        }
-      } else {
-        console.log('Not running in Tauri environment, skipping update check');
+        currentUpdate.current = update;
+        setUpdateInfo({
+          version: update.version,
+          notes: update.body || 'No release notes available.',
+        });
+        setUpdateAvailable(true);
+      } catch (error) {
+        console.error('Failed to check for updates:', error);
       }
     };
 
-    // Check for updates on component mount (app load)
+    // The app stays open all day, so check on start, every 15 minutes,
+    // and whenever the window comes back to the front.
     checkForUpdates();
+    const timer = setInterval(checkForUpdates, 15 * 60_000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') checkForUpdates();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
   }, []);
 
-  async function handleUpdateAvailable() {
-    if (!updateAvailable || !currentUpdate.current) return;
-
-    try {
-      const shouldUpdate = await ask(
-        `A new version ${updateInfo?.version} is available!\n\nRelease notes:\n${updateInfo?.notes}\n\nWould you like to install it now? (App will restart after update)`,
-        {
-          title: 'Update Available!',
-          kind: 'info',
-          okLabel: 'Install Update',
-          cancelLabel: 'Later',
-        }
-      );
-
-      if (shouldUpdate && !downloadInProgress) {
-        await downloadAndInstallUpdate();
-      } else {
-        // User declined, hide the update notification
-        setUpdateAvailable(false);
-      }
-    } catch (error) {
-      console.error('Prompt failed:', error);
-    }
+  function postpone() {
+    if (updateInfo) snoozed.current = { version: updateInfo.version, until: Date.now() + 60 * 60_000 };
+    setUpdateAvailable(false);
   }
 
   async function downloadAndInstallUpdate() {
     if (!currentUpdate.current) return;
 
     try {
+      downloading.current = true;
       setDownloadInProgress(true);
       setDownloadProgress(0);
 
@@ -127,6 +124,7 @@ export default function Updater() {
         kind: 'error',
         title: 'Update Failed',
       });
+      downloading.current = false;
       setDownloadInProgress(false);
       setDownloadProgress(0);
     }
@@ -182,7 +180,7 @@ export default function Updater() {
               <p className="font-semibold text-lg">Update Available!</p>
             </div>
             <button
-              onClick={() => setUpdateAvailable(false)}
+              onClick={postpone}
               className="text-white hover:text-gray-200 transition-colors"
               aria-label="Close"
             >
@@ -212,7 +210,7 @@ export default function Updater() {
               Install Now
             </button>
             <button
-              onClick={() => setUpdateAvailable(false)}
+              onClick={postpone}
               className="bg-transparent border border-white px-4 py-2 rounded-md hover:bg-blue-800 transition-colors text-sm font-medium"
             >
               Later
