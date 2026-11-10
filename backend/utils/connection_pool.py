@@ -94,6 +94,10 @@ def _is_transport_error(err: Exception | str) -> bool:
             "remotedisconnected",
             "remoteprotocolerror",
             "dns",
+            # Windows' "[Errno 11001] getaddrinfo failed" (the PC could not look up the server's
+            # address): the most common offline cause in the field. As a plain socket error it is not
+            # an httpx type, so without this it was read as a DATA problem and could get a bill given up.
+            "getaddrinfo",
         ]
     )
 

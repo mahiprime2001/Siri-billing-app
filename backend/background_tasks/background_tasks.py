@@ -10,6 +10,7 @@ from config.config import (
 from helpers.utils import write_json_file, read_json_file
 from utils.sync_controller import SyncController  # Global instance is fine as it manages client pool
 from utils.offline_bill_queue import process_offline_bill_queue
+from utils.quarantine_recovery import recover_quarantined_bills
 from utils.offline_damage_return_queue import process_offline_damage_return_queue
 from utils.offline_return_order_queue import process_offline_return_order_queue
 from utils.offline_transfer_verification_queue import process_offline_transfer_verification_queue
@@ -269,6 +270,12 @@ def background_offline_bill_queue_scheduler(app: Flask, interval_minutes=1):
     with app.app_context():
         app.logger.info("Starting offline bill queue scheduler.")
         while True:
+            try:
+                # Bills put aside only because the internet was down go back in the queue first,
+                # so the replay below can send them in this same pass.
+                recover_quarantined_bills(app_logger=app.logger)
+            except Exception as e:
+                app.logger.error(f"Error while recovering given-up offline bills: {e}")
             try:
                 process_offline_bill_queue(app=app, max_items=25)
             except Exception as e:
