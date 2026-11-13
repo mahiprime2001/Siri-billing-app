@@ -14,6 +14,8 @@ from config.config import BILLS_FILE, BILL_IDEMPOTENCY_FILE
 
 from services.billing_service import create_bill_transaction, dispatch_bill_create
 from services.siri_bills import SiriBillRefused
+from services import siri_bill_views
+from utils.siri_proxy import via_siri_api
 from utils.billing_pause import current_pause
 from data_access.data_access import update_both_inventory_and_product_stock
 from utils.bill_item_snapshot import get_bill_item_snapshots, replace_bill_item_snapshots
@@ -336,6 +338,7 @@ def _cancel_bill_internal(bill_id, current_user_id, cancel_reason):
 
 @billing_bp.route('/bills', methods=['GET'])
 @require_auth
+@via_siri_api("bills_read", "/api/store/bills")
 def get_bills():
     """Get all bills with optional filtering"""
     try:
@@ -408,6 +411,7 @@ def get_bills():
 
 @billing_bp.route('/bills/<bill_id>', methods=['GET'])
 @require_auth
+@via_siri_api("bills_read", "/api/store/bills/{bill_id}")
 def get_bill(bill_id):
     """Get a specific bill by ID with store and customer details"""
     try:
@@ -495,6 +499,7 @@ def create_bill():
 
 @billing_bp.route('/bills/<bill_id>', methods=['PUT'])
 @require_auth
+@via_siri_api("bills_write", "/api/store/bills/{bill_id}", methods=("PUT",), repeatable=False)
 def update_bill(bill_id):
     """Update a bill"""
     try:
@@ -531,6 +536,8 @@ def update_bill(bill_id):
 
 @billing_bp.route('/bills/<bill_id>', methods=['DELETE'])
 @require_auth
+@via_siri_api("bills_write", "/api/store/bills/{bill_id}", methods=("DELETE",), repeatable=False,
+              after=siri_bill_views.after_cancel)
 def delete_bill(bill_id):
     """Legacy endpoint: cancel a bill using the same safe flow as /cancel."""
     try:
@@ -549,6 +556,7 @@ def delete_bill(bill_id):
 
 @billing_bp.route('/bills/stats', methods=['GET'])
 @require_auth
+@via_siri_api("bills_read", "/api/store/bills/stats")
 def get_billing_stats():
     """Get billing statistics"""
     try:
@@ -605,6 +613,7 @@ def get_billing_stats():
 
 @billing_bp.route('/bills/<bill_id>/items', methods=['GET'])
 @require_auth
+@via_siri_api("bills_read", "/api/store/bills/{bill_id}/items", transform=siri_bill_views.overlay_items)
 def get_bill_items(bill_id):
     """Get all items for a specific bill"""
     try:
@@ -666,6 +675,7 @@ def get_bill_items(bill_id):
 
 @billing_bp.route('/bills/<bill_id>/edit-payload', methods=['GET'])
 @require_auth
+@via_siri_api("bills_read", "/api/store/bills/{bill_id}/edit-payload", transform=siri_bill_views.overlay_edit_payload)
 def get_bill_edit_payload(bill_id):
     """Get bill + items payload for invoice edit mode."""
     try:
@@ -834,6 +844,8 @@ def get_bill_edit_payload(bill_id):
 
 @billing_bp.route('/bills/<bill_id>/revise', methods=['PUT'])
 @require_auth
+@via_siri_api("bills_write", "/api/store/bills/{bill_id}/revise", methods=("PUT",), repeatable=False,
+              after=siri_bill_views.after_revise)
 def revise_bill(bill_id):
     """Revise an existing bill within the 24-hour edit window."""
     try:
@@ -1091,6 +1103,8 @@ def revise_bill(bill_id):
 
 @billing_bp.route('/bills/<bill_id>/cancel', methods=['POST'])
 @require_auth
+@via_siri_api("bills_write", "/api/store/bills/{bill_id}/cancel", methods=("POST",), repeatable=False,
+              after=siri_bill_views.after_cancel)
 def cancel_bill(bill_id):
     """Cancel bill within edit window and restock all items."""
     try:
@@ -1112,6 +1126,7 @@ def cancel_bill(bill_id):
 
 @billing_bp.route('/bills/<bill_id>/replacements', methods=['GET'])
 @require_auth
+@via_siri_api("bills_read", "/api/store/bills/{bill_id}/replacements")
 def get_bill_replacements(bill_id):
     """Get replacement rows for a specific bill, enriched with product
     names/barcodes/hsn for both the replaced and new products so the history
@@ -1173,6 +1188,7 @@ def get_bill_replacements(bill_id):
 
 @billing_bp.route('/bills/<bill_id>/events', methods=['GET'])
 @require_auth
+@via_siri_api("bills_read", "/api/store/bills/{bill_id}/events")
 def get_bill_events(bill_id):
     """Get bill audit events (revision/cancellation) from notifications table."""
     try:
