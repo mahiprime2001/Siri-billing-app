@@ -56,7 +56,16 @@ def classify_error(err: Exception | str) -> str:
         link is back.
     permanent = anything else (validation, constraint/duplicate, RLS, a genuine
         500 bug). Retrying won't help; after a few tries the item is quarantined.
+
+    An error that carries siri-api's own verdict (`siri_retryable`) is believed over any guess from its text:
+    siri-api says "retryable" for a connection/database problem and "not retryable" for a final answer (bad data,
+    no stock). Guessing from the text is how 7 bills were wrongly given up in July.
     """
+    verdict = getattr(err, "siri_retryable", None)
+    if verdict is True:
+        return "transient"
+    if verdict is False:
+        return "permanent"
     try:
         # Lazy import avoids a circular import at module load time.
         from utils.connection_pool import _is_transport_error, SupabaseCircuitOpenError

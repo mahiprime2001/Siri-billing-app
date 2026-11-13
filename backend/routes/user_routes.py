@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app as app
 from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
+from utils.siri_proxy import via_siri_api
 from utils.connection_pool import get_supabase_client
 from datetime import datetime, timezone
 from helpers.utils import read_json_file
@@ -10,6 +11,7 @@ user_bp = Blueprint('user', __name__)
 
 @user_bp.route('/users', methods=['GET'])
 @require_auth
+@via_siri_api("reads", "/api/store/users")
 def get_users():
     """Get all users (excluding super_admin)"""
     try:

@@ -207,7 +207,9 @@ def _persist_local_offline_bill_snapshot(current_user_id: str, payload: Dict[str
     _apply_local_inventory_reduction(payload=payload)
 
 
-def enqueue_bill_create(current_user_id: str, bill_payload: Dict[str, Any]) -> Dict[str, str]:
+def enqueue_bill_create(current_user_id: str, bill_payload: Dict[str, Any], siri_unsure: bool = False) -> Dict[str, str]:
+    """`siri_unsure`: a siri-api attempt for this very sale could not be confirmed (it may have been saved). Such a sale
+    must only ever be sent through siri-api (which knows the request id), never down the old direct path."""
     client_request_id = str(bill_payload.get("_client_request_id") or "").strip()
     queue_id = f"Q-{uuid.uuid4().hex[:12]}"
 
@@ -241,6 +243,7 @@ def enqueue_bill_create(current_user_id: str, bill_payload: Dict[str, Any]) -> D
             "client_request_id": client_request_id or None,
             "forced_bill_id": forced_bill_id,
             "payload": {**bill_payload, "_forced_bill_id": forced_bill_id},
+            **({"siri_unsure": True} if siri_unsure else {}),
             "attempts": 0,
             "last_error": None,
             "created_at": _utc_now(),
@@ -313,6 +316,26 @@ def _replay_one(item: Dict[str, Any], app=None):
         try:
             if item.get("type") != "create_bill":
                 raise RuntimeError(f"Unsupported queue item type: {item.get('type')}")
+
+            # siri-api first (when its "bills_write" switch is on and this cashier has a replay pass). It says
+            # whether a failure is worth retrying for ever or is a final answer (see queue_common.classify_error).
+            from services.siri_bills import SiriReplayError, replay_queued_bill
+            siri_failure = None
+            try:
+                if replay_queued_bill(item) is not None:
+                    return ("success", item, None)
+            except SiriReplayError as e:
+                siri_failure = e
+            except Exception as e:  # noqa: BLE001 - a bug in the siri path must never lose a queued bill
+                siri_failure = SiriReplayError(f"siri-api path failed unexpectedly: {e}", retryable=True)
+            if siri_failure is not None and siri_failure.siri_retryable is False:
+                raise siri_failure                      # a final answer from siri-api: the old path would only repeat it
+            if item.get("siri_unsure"):
+                # An online attempt for this very sale may have been saved by siri-api under another bill number.
+                # Only siri-api (which knows the request id) may deliver it: wait for it, never double-bill.
+                raise siri_failure or SiriReplayError("waiting for siri-api to confirm this sale", retryable=True)
+
+            # Otherwise the old direct path (same bill number, same time: safe to repeat).
             create_bill_transaction(
                 current_user_id=item["user_id"],
                 data=item["payload"],
@@ -349,7 +372,15 @@ def process_offline_bill_queue(app=None, app_logger=None, max_items: int = 25) -
             return {"processed": 0, "succeeded": 0, "failed": 0, "quarantined": 0, "remaining": 0}
         supabase = get_supabase_client()
         if not supabase or getattr(supabase, "is_offline_fallback", False):
-            return {"processed": 0, "succeeded": 0, "failed": 0, "quarantined": 0, "remaining": len(queue)}
+            # The direct database path is down. If bills go through siri-api (switch on), that path may still be
+            # reachable, so the queue keeps trying; otherwise wait as before.
+            try:
+                from utils.siri_api import get_client
+                siri_on = get_client().switch_on("bills_write")
+            except Exception:  # noqa: BLE001
+                siri_on = False
+            if not siri_on:
+                return {"processed": 0, "succeeded": 0, "failed": 0, "quarantined": 0, "remaining": len(queue)}
         batch = list(queue[:max_items])
 
     # Phase 2 — replay lock-free, in parallel (idempotent, so safe).

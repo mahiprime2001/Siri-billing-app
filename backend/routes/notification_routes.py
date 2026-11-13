@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app as app
 from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
+from utils.siri_proxy import via_siri_api
 from utils.connection_pool import get_supabase_client
 from datetime import datetime, timezone
 from helpers.utils import read_json_file
@@ -27,6 +28,7 @@ def _resolve_current_store_id(supabase, user_id):
 
 @notification_bp.route('/notifications', methods=['GET'])
 @require_auth
+@via_siri_api("reads", "/api/store/notifications")
 def get_notifications():
     """Get notifications for the caller's current store only."""
     unread_only = request.args.get('unread_only', 'false').lower() == 'true'
@@ -76,6 +78,7 @@ def get_notifications():
 
 @notification_bp.route('/notifications/unread/count', methods=['GET'])
 @require_auth
+@via_siri_api("reads", "/api/store/notifications/unread/count")
 def get_unread_count():
     """Get count of unread notifications for the caller's current store."""
     try:

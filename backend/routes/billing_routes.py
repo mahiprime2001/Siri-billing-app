@@ -13,6 +13,7 @@ from helpers.utils import read_json_file, write_json_file
 from config.config import BILLS_FILE, BILL_IDEMPOTENCY_FILE
 
 from services.billing_service import create_bill_transaction, dispatch_bill_create
+from services.siri_bills import SiriBillRefused
 from utils.billing_pause import current_pause
 from data_access.data_access import update_both_inventory_and_product_stock
 from utils.bill_item_snapshot import get_bill_item_snapshots, replace_bill_item_snapshots
@@ -481,6 +482,9 @@ def create_bill():
         app.logger.info(f"✅ Bill {result.get('bill_id')} completed")
         return jsonify(result), 201
 
+    except SiriBillRefused as e:
+        # siri-api understood the sale and said no (no stock, bad data, billing paused...): show its reason as it is.
+        return jsonify(e.body or {"message": str(e)}), e.status
     except ValueError as e:
         return jsonify({"message": str(e)}), 400
     except Exception as e:

@@ -749,8 +749,8 @@ def dispatch_bill_create(current_user_id: str, data: Dict[str, Any]) -> Dict[str
     from utils.offline_bill_queue import enqueue_bill_create
     from utils.queue_common import log_offline_event
 
-    def _queue(message: str, trigger: str, reason: str = "") -> Dict[str, Any]:
-        result = enqueue_bill_create(current_user_id=current_user_id, bill_payload=data)
+    def _queue(message: str, trigger: str, reason: str = "", siri_unsure: bool = False) -> Dict[str, Any]:
+        result = enqueue_bill_create(current_user_id=current_user_id, bill_payload=data, siri_unsure=siri_unsure)
         log_offline_event(
             "bill_queued_offline",
             queue="bills",
@@ -766,6 +766,24 @@ def dispatch_bill_create(current_user_id: str, data: Dict[str, Any]) -> Dict[str
             "queue_id": result["queue_id"],
             "message": message,
         }
+
+    # siri-api first, when its "bills_write" switch is on for this store. The offline queue below stays the safety
+    # net: whatever siri-api cannot take right now is queued, with the same request id so it is never made twice.
+    # (SiriBillRefused, a final "no" from siri-api, is left to the route to show the cashier.)
+    from services.siri_bills import SiriBillUnsure, attempt_online_bill
+    try:
+        created = attempt_online_bill(current_user_id, data)
+    except SiriBillUnsure as unsure:
+        return _queue(
+            "Connection lost. Invoice queued and will sync automatically when internet returns.",
+            trigger="siri_unsure",
+            reason=str(unsure),
+            siri_unsure=True,
+        )
+    if created is not None:
+        log_offline_event("bill_sent_online", queue="bills", bill_id=created.get("bill_id"),
+                          store_id=data.get("store_id"), via="siri-api")
+        return created
 
     supabase = get_supabase_client()
     if getattr(supabase, "is_offline_fallback", False):

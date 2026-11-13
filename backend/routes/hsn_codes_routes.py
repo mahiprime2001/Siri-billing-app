@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, current_app as app
 from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
+from utils.siri_proxy import via_siri_api
 from utils.connection_pool import get_supabase_client
 from data_access.data_access import get_hsn_codes_data, save_hsn_codes_data
 import traceback
@@ -10,6 +11,7 @@ hsn_codes_bp = Blueprint('hsn_codes', __name__)
 
 @hsn_codes_bp.route('/hsn-codes', methods=['GET'])
 @require_auth
+@via_siri_api("reads", "/api/store/hsn-codes")
 def get_hsn_codes():
     """Get HSN codes from Supabase and cache to JSON."""
     try:

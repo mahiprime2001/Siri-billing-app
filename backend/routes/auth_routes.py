@@ -11,6 +11,7 @@ from flask_jwt_extended import (
 from datetime import datetime, timezone
 import re
 from utils.connection_pool import get_supabase_client
+from utils.siri_api import get_client as get_siri_client
 from helpers.utils import read_json_file
 from config.config import USERS_FILE
 
@@ -78,6 +79,13 @@ def login():
             app.logger.warning(f"⚠️ [BACKEND-LOGIN] Invalid password for user: {email}")
             return jsonify({"message": "Invalid email or password"}), 401
         
+        # Also log in to siri-api in the background (it gives this computer the token and the offline "replay
+        # passes" the migration needs). Best effort only: it can never slow down, fail, or change this login.
+        try:
+            get_siri_client().login_in_background(email, password)
+        except Exception as siri_err:
+            app.logger.warning(f"SIRI_API background login could not start: {siri_err}")
+
         app.logger.info(f"✅ [BACKEND-LOGIN] User authenticated: {user_id}")
         app.logger.info(f"👤 [BACKEND-LOGIN] User name: {user_name}")
         app.logger.info(f"🎭 [BACKEND-LOGIN] User role: {user_role}")
@@ -132,6 +140,11 @@ def logout():
         user_id = get_jwt_identity()
         app.logger.info(f"👋 [BACKEND-LOGOUT] User logging out: {user_id}")
         
+        try:
+            get_siri_client().drop_access_token()      # the replay passes stay: queued offline bills still need them
+        except Exception as siri_err:
+            app.logger.warning(f"SIRI_API logout cleanup failed: {siri_err}")
+
         response = jsonify({"message": "Logout successful"})
         unset_jwt_cookies(response)
         app.logger.info(f"✅ [BACKEND-LOGOUT] JWT cookie cleared")

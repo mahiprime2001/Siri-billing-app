@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app as app
 from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
+from utils.siri_proxy import via_siri_api
 from utils.connection_pool import get_supabase_client
 from datetime import datetime, timezone
 import uuid
@@ -13,6 +14,7 @@ customer_bp = Blueprint('customer', __name__)
 
 @customer_bp.route('/customers', methods=['GET'])
 @require_auth
+@via_siri_api("reads", "/api/store/customers")
 def get_customers():
     """Get all customers"""
     try:
@@ -52,6 +54,7 @@ def get_customers():
 
 @customer_bp.route('/customers/<customer_id>', methods=['GET'])
 @require_auth
+@via_siri_api("reads", "/api/store/customers/{customer_id}")
 def get_customer(customer_id):
     """Get a specific customer by ID"""
     try:

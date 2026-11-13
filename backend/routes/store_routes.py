@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, current_app as app, request
 from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
+from utils.siri_proxy import via_siri_api, current_store_from_me
 from utils.connection_pool import get_supabase_client
 from utils.offline_transfer_verification_queue import enqueue_transfer_verification_create
 from datetime import datetime, timezone
@@ -204,6 +205,7 @@ def _update_local_storeinventory(store_id: str, product_id: str, delta_qty: int,
 
 @store_bp.route('/stores', methods=['GET'], strict_slashes=False)
 @require_auth
+@via_siri_api("reads", "/api/store/stores")
 def get_stores():
     """Get all stores"""
     try:
@@ -226,6 +228,7 @@ def get_stores():
 
 @store_bp.route('/user-stores', methods=['GET'])
 @require_auth
+@via_siri_api("reads", "/api/store/user-stores")
 def get_user_stores():
     """Get user-store associations for the current user"""
     try:
@@ -260,6 +263,7 @@ def get_user_stores():
 
 @store_bp.route('/stores/current', methods=['GET'])
 @require_auth
+@via_siri_api("reads", "/api/store/me", transform=current_store_from_me)
 def get_current_user_store():
     """Get the store assigned to the current user (with full store details)"""
     try:

@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app as app
 from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
+from utils.siri_proxy import via_siri_api
 from postgrest.exceptions import APIError
 from utils.connection_pool import get_supabase_client
 from helpers.utils import read_json_file, write_json_file
@@ -461,6 +462,7 @@ def _refresh_local_products_snapshot(user_id: str, store_id: str, all_inv_rows, 
 
 @product_bp.route('/products', methods=['GET'], strict_slashes=False)
 @require_auth
+@via_siri_api("reads", "/api/store/products")
 def get_products():
     """Get products from current user's store inventory"""
     current_user_id = get_jwt_identity()
@@ -604,6 +606,7 @@ def get_products():
 
 @product_bp.route('/products/<product_id>', methods=['GET'])
 @require_auth
+@via_siri_api("reads", "/api/store/products/{product_id}")
 def get_product(product_id):
     """Get a specific product from store inventory"""
     try:

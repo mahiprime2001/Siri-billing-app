@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app as app
 from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
+from utils.siri_proxy import via_siri_api
 from utils.connection_pool import get_supabase_client
 from helpers.utils import read_json_file
 from config.config import SYSTEM_SETTINGS_FILE
@@ -9,6 +10,7 @@ settings_bp = Blueprint('settings', __name__)
 
 @settings_bp.route('/settings', methods=['GET'])
 @require_auth
+@via_siri_api("reads", "/api/store/settings")
 def get_settings():
     """Get application settings"""
     try:
