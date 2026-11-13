@@ -5,7 +5,8 @@ from typing import Any, Dict
 
 from config.config import OFFLINE_TRANSFER_VERIFICATION_QUEUE_FILE
 from helpers.utils import read_json_file, write_json_file
-from utils.connection_pool import get_supabase_client
+from utils.connection_pool import SupabaseCircuitOpenError, get_supabase_client
+from services.siri_writes import deliver_queued, switch_on as siri_switch_on
 from utils.queue_common import register_failure, quarantine_item, log_offline_event
 
 _queue_lock = threading.Lock()
@@ -20,7 +21,10 @@ def enqueue_transfer_verification_create(
     store_id: str,
     order_id: str,
     verification_data: Dict[str, Any],
+    siri_unsure: bool = False,
 ) -> Dict[str, str]:
+    # `siri_unsure`: an attempt through siri-api for this verification could not be confirmed (it may have been
+    # applied). It is then only ever delivered through siri-api, which knows the session id.
     session_id = verification_data.get("verification_session_id") or f"ver-{uuid.uuid4().hex[:16]}"
     queue_id = f"QTV-{uuid.uuid4().hex[:12]}"
     item = {
@@ -30,6 +34,7 @@ def enqueue_transfer_verification_create(
         "store_id": store_id,
         "order_id": order_id,
         "verification_data": {**verification_data, "verification_session_id": session_id},
+        **({"siri_unsure": True} if siri_unsure else {}),
         "attempts": 0,
         "last_error": None,
         "created_at": _utc_now(),
@@ -51,7 +56,8 @@ def process_offline_transfer_verification_queue(app_logger=None, max_items: int 
             return {"processed": 0, "succeeded": 0, "failed": 0, "remaining": 0}
 
         supabase = get_supabase_client()
-        if not supabase or getattr(supabase, "is_offline_fallback", False):
+        offline = not supabase or getattr(supabase, "is_offline_fallback", False)
+        if offline and not siri_switch_on("transfer"):
             return {"processed": 0, "succeeded": 0, "failed": 0, "remaining": len(queue)}
 
         from routes.store_routes import _apply_transfer_order_verification
@@ -68,6 +74,13 @@ def process_offline_transfer_verification_queue(app_logger=None, max_items: int 
 
             processed += 1
             try:
+                # siri-api first (switch on + this cashier's replay pass); see services/siri_writes.py.
+                if deliver_queued("transfer", item):
+                    succeeded += 1
+                    continue
+                if offline:
+                    # never run the old path against the offline stand-in (it would "succeed" without saving)
+                    raise SupabaseCircuitOpenError("Supabase client unavailable (offline fallback active)")
                 result, status_code = _apply_transfer_order_verification(
                     supabase=supabase,
                     current_user_id=item.get("user_id"),

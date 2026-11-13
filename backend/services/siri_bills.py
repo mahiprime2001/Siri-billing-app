@@ -114,9 +114,41 @@ def _already_made(api, request_id: str) -> Optional[Dict[str, Any]]:
     return body if isinstance(body, dict) and body.get("found") else None
 
 
+def _take_deferred_approval(user_id: str, data: Dict[str, Any]):
+    """A discount above 10% needs a manager's approval. When the cashier already entered the manager's code (before the
+    bill existed), the old path finds that approval in a small local memory and uses it. siri-api cannot see that
+    memory, so it is taken here and sent WITH the bill (the flag, and siri-api's signed token). Returns the remembered
+    approval (so it can be given back), or None."""
+    try:
+        pct = float(data.get("discount_percentage", data.get("discountPercentage")) or 0)
+    except (TypeError, ValueError):
+        return None
+    if pct <= 10 or data.get("discount_request_id") or data.get("_deferred_discount_approval"):
+        return None
+    from utils.discount_approval_cache import pop_discount_approval
+    entry = pop_discount_approval(user_id)
+    if entry:
+        data["_deferred_discount_approval"] = True
+        if entry.get("token"):
+            data["_discount_approval_token"] = entry["token"]
+    return entry
+
+
+def _give_back_approval(user_id: str, data: Dict[str, Any], entry) -> None:
+    """The sale did not go through siri-api after all (it never saw it, or refused it): put the approval back so the
+    cashier can try again, or the old path can use it."""
+    if not entry:
+        return
+    data.pop("_deferred_discount_approval", None)
+    data.pop("_discount_approval_token", None)
+    from utils.discount_approval_cache import set_discount_approval
+    set_discount_approval(user_id, entry.get("approved_by"), entry.get("token"))
+
+
 def attempt_online_bill(current_user_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Try to make the sale through siri-api. See the module docstring for the outcomes. `data` gets the sale's
-    request id added (so the queue, if it comes to that, reuses it)."""
+    request id added (so the queue, if it comes to that, reuses it), and the manager's discount approval if one was
+    given."""
     api = get_client()
     try:
         if not api.enabled("bills_write") or current_user_id != api.session_user_id():
@@ -124,6 +156,19 @@ def attempt_online_bill(current_user_id: str, data: Dict[str, Any]) -> Optional[
     except Exception:  # noqa: BLE001 - never let the switch machinery stop a sale
         return None
 
+    approval = _take_deferred_approval(current_user_id, data)
+    try:
+        result = _send_bill(api, current_user_id, data)
+    except SiriBillRefused:
+        _give_back_approval(current_user_id, data, approval)       # the cashier may fix the sale and try again
+        raise
+    # (SiriBillUnsure: the queued copy keeps the approval in its own payload, so it is not given back)
+    if result is None:
+        _give_back_approval(current_user_id, data, approval)
+    return result
+
+
+def _send_bill(api, current_user_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     request_id = str(data.get("_client_request_id") or "").strip()
     if not request_id:
         request_id = f"pc-{uuid.uuid4().hex}"

@@ -13,7 +13,8 @@ from typing import Any, Dict
 
 from config.config import OFFLINE_RETURN_ORDER_QUEUE_FILE
 from helpers.utils import read_json_file, write_json_file
-from utils.connection_pool import get_supabase_client
+from utils.connection_pool import SupabaseCircuitOpenError, get_supabase_client
+from services.siri_writes import deliver_queued, switch_on as siri_switch_on
 from utils.queue_common import register_failure, quarantine_item, log_offline_event
 
 _queue_lock = threading.Lock()
@@ -23,8 +24,9 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def enqueue_return_order_create(user_id: str, payload: Dict[str, Any]) -> Dict[str, str]:
-    """Enqueue a whole return ORDER. payload = {header, lines}."""
+def enqueue_return_order_create(user_id: str, payload: Dict[str, Any], siri_unsure: bool = False) -> Dict[str, str]:
+    """Enqueue a whole return ORDER. payload = {header, lines}. `siri_unsure`: an attempt through siri-api for this very
+    order could not be confirmed (it may have been saved): it is then only ever delivered through siri-api."""
     header = payload.get("header") or {}
     return_id = header.get("return_id") or f"RET-{uuid.uuid4().hex[:12].upper()}"
     queue_id = f"QRO-{uuid.uuid4().hex[:12]}"
@@ -33,6 +35,7 @@ def enqueue_return_order_create(user_id: str, payload: Dict[str, Any]) -> Dict[s
         "type": "create_return_order",
         "user_id": user_id,
         "payload": payload,
+        **({"siri_unsure": True} if siri_unsure else {}),
         "attempts": 0,
         "header_inserted": False,
         "lines_inserted": False,
@@ -56,8 +59,9 @@ def process_offline_return_order_queue(app_logger=None, max_items: int = 20) -> 
             return {"processed": 0, "succeeded": 0, "failed": 0, "remaining": 0}
 
         supabase = get_supabase_client()
-        # Only sync against the real cloud client (the offline fallback is truthy).
-        if not supabase or getattr(supabase, "is_offline_fallback", False):
+        # Only sync against the real cloud client (the offline fallback is truthy) -- unless siri-api can take it.
+        offline = not supabase or getattr(supabase, "is_offline_fallback", False)
+        if offline and not siri_switch_on("return_order"):
             return {"processed": 0, "succeeded": 0, "failed": 0, "remaining": len(queue)}
 
         processed = 0
@@ -77,6 +81,13 @@ def process_offline_return_order_queue(app_logger=None, max_items: int = 20) -> 
             return_id = header.get("return_id")
 
             try:
+                # siri-api first (switch on + this cashier's replay pass); see services/siri_writes.py.
+                if deliver_queued("return_order", item):
+                    succeeded += 1
+                    continue
+                if offline:
+                    # never run the old path against the offline stand-in (it would "succeed" without saving)
+                    raise SupabaseCircuitOpenError("Supabase client unavailable (offline fallback active)")
                 # `returns` has no unique constraint on return_id, so check-then-
                 # insert keeps this idempotent on retries (return_products is keyed
                 # by its own primary key, so a plain upsert is safe there).

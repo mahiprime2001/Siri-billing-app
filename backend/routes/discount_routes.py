@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app as app
 from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
+from utils.siri_proxy import via_siri_api
 from utils.connection_pool import get_supabase_client
 from utils.twofa import verify_twofa
 from datetime import datetime, timezone
@@ -12,6 +13,7 @@ discount_bp = Blueprint('discount', __name__)
 
 @discount_bp.route('/discounts/request', methods=['POST'])
 @require_auth
+@via_siri_api("discounts", "/api/store/discounts/request", methods=("POST",), repeatable=False)
 def request_discount():
     """Create a discount approval request (for discounts > 10%)."""
     try:
@@ -77,6 +79,7 @@ def request_discount():
 
 @discount_bp.route('/discounts/<discount_id>', methods=['GET'])
 @require_auth
+@via_siri_api("discounts", "/api/store/discounts/{discount_id}")
 def get_discount(discount_id):
     """Get a discount request by ID."""
     try:
@@ -96,6 +99,7 @@ def get_discount(discount_id):
 
 @discount_bp.route('/discounts/<discount_id>', methods=['PATCH'])
 @require_auth
+@via_siri_api("discounts", "/api/store/discounts/{discount_id}", methods=("PATCH",), repeatable=False)
 def update_discount_status(discount_id):
     """Update discount request status (approved/denied)."""
     try:

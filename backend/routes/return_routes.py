@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app as app
 from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
+from utils.siri_proxy import via_siri_api
 from utils.connection_pool import get_supabase_client
 from data_access.data_access import update_both_inventory_and_product_stock
 from datetime import datetime, timezone
@@ -9,6 +10,9 @@ import traceback
 from helpers.utils import read_json_file, write_json_file
 from config.config import STORE_DAMAGE_RETURNS_FILE, RETURN_PRODUCTS_FILE, PRODUCTS_FILE, STOREINVENTORY_FILE, USER_STORES_FILE
 from utils.offline_damage_return_queue import enqueue_damage_return_create
+from utils.products_cache import invalidate_products_cache_for_store
+from services.siri_bills import SiriBillRefused, SiriBillUnsure
+from services.siri_writes import attempt_post, damage_return_request
 
 return_bp = Blueprint('return', __name__)
 
@@ -55,6 +59,7 @@ def _apply_local_stock_reduction(store_id: str, product_id: str, quantity: int) 
 
 @return_bp.route('/returns', methods=['GET'])
 @require_auth
+@via_siri_api("returns", "/api/store/returns")
 def get_returns():
     """Get all returns with product and customer details via JOIN"""
     try:
@@ -106,6 +111,7 @@ def get_returns():
 
 @return_bp.route('/returns/search', methods=['POST'])
 @require_auth
+@via_siri_api("returns", "/api/store/returns/search", methods=("POST",))
 def search_bills():
     """Search bills for return processing"""
     try:
@@ -239,6 +245,7 @@ def search_bills():
 
 @return_bp.route('/returns/submit', methods=['POST'])
 @require_auth
+@via_siri_api("returns", "/api/store/returns/submit", methods=("POST",), repeatable=False)
 def submit_return():
     """Submit return request - only stores product_id and customer_id"""
     try:
@@ -362,6 +369,7 @@ def submit_return():
 
 @return_bp.route('/returns/<return_id>/approve', methods=['POST'])
 @require_auth
+@via_siri_api("returns", "/api/store/returns/{return_id}/approve", methods=("POST",), repeatable=False)
 def approve_return(return_id):
     """Approve a return request and create notification"""
     try:
@@ -438,6 +446,7 @@ def approve_return(return_id):
 
 @return_bp.route('/returns/<return_id>/deny', methods=['POST'])
 @require_auth
+@via_siri_api("returns", "/api/store/returns/{return_id}/deny", methods=("POST",), repeatable=False)
 def deny_return(return_id):
     """Deny a return request"""
     try:
@@ -477,6 +486,7 @@ def deny_return(return_id):
 
 @return_bp.route('/returns/pending/count', methods=['GET'])
 @require_auth
+@via_siri_api("returns", "/api/store/returns/pending/count")
 def get_pending_returns_count():
     """Get count of pending returns"""
     try:
@@ -498,6 +508,7 @@ def get_pending_returns_count():
 
 @return_bp.route('/store-damage-returns', methods=['GET'])
 @require_auth
+@via_siri_api("returns", "/api/store/store-damage-returns")
 def get_store_damage_returns():
     """List damage-return rows for current store user."""
     try:
@@ -524,15 +535,35 @@ def get_store_damage_returns():
         return jsonify(rows[:limit]), 200
 
 
+def _queue_damage_return_offline(current_user_id, store_id, row, siri_unsure=False):
+    """Keep the row on this PC (local list + local stock) and queue it for later delivery."""
+    rows = read_json_file(STORE_DAMAGE_RETURNS_FILE, [])
+    rows.append(row)
+    write_json_file(STORE_DAMAGE_RETURNS_FILE, rows)
+    _apply_local_stock_reduction(store_id, row["product_id"], row["quantity"])
+    queue_info = enqueue_damage_return_create(current_user_id, row, siri_unsure=siri_unsure)
+    return {**row, "queued": True, "queue_id": queue_info["queue_id"]}
+
+
 def _dispatch_damage_return_item(supabase, current_user_id, store_id, row, reason_type, reason, now_iso):
     """Connectivity-aware dispatcher for a single damage return row."""
+    # siri-api first when its "returns" switch is on. The row id is the request id, so the same row is never saved
+    # twice whether it goes now, is queued after a lost answer, or is replayed later (see services/siri_writes.py).
+    # A final "no" (SiriBillRefused) is left to the route to show.
+    try:
+        answer = attempt_post("returns", current_user_id, "/api/store/store-damage-returns", damage_return_request(row))
+    except SiriBillUnsure:
+        return _queue_damage_return_offline(current_user_id, store_id, row, siri_unsure=True)
+    if answer is not None:
+        try:
+            invalidate_products_cache_for_store(str(store_id))
+        except Exception:  # noqa: BLE001
+            pass
+        saved = (answer.get("rows") or [row])[0]
+        return saved
+
     if getattr(supabase, "is_offline_fallback", False):
-        rows = read_json_file(STORE_DAMAGE_RETURNS_FILE, [])
-        rows.append(row)
-        write_json_file(STORE_DAMAGE_RETURNS_FILE, rows)
-        _apply_local_stock_reduction(store_id, row["product_id"], row["quantity"])
-        queue_info = enqueue_damage_return_create(current_user_id, row)
-        return {**row, "queued": True, "queue_id": queue_info["queue_id"]}
+        return _queue_damage_return_offline(current_user_id, store_id, row)
 
     supabase.table("store_damage_returns").insert(row).execute()
     stock_ok = update_both_inventory_and_product_stock(
@@ -647,6 +678,9 @@ def create_store_damage_return():
             "queued": was_queued,
             "rows": created_rows,
         }), 202 if was_queued else 201
+    except SiriBillRefused as e:
+        # siri-api understood the request and said no: show its reason as it is.
+        return jsonify(e.body or {"message": str(e)}), e.status
     except Exception as e:
         app.logger.error(f"❌ Error creating store damage return: {str(e)}")
         app.logger.error(traceback.format_exc())

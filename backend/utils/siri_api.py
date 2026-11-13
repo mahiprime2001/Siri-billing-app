@@ -44,6 +44,9 @@ SWITCH_REFRESH_SECONDS = 120      # how long the switches are trusted before ask
 SWITCH_RETRY_SECONDS = 30         # after a failed ask, wait this long before asking again
 SWITCH_MAX_AGE_SECONDS = 24 * 3600  # a remembered answer older than this is not trusted
 GROUPS = ("reads", "bills_read", "bills_write", "returns", "transfers", "discounts")
+# Error kinds (the exception's class name) that mean the request never reached siri-api.
+_NOT_SENT_ERRORS = ("ConnectError", "ConnectTimeout", "PoolTimeout", "UnsupportedProtocol", "InvalidURL",
+                    "no siri-api session", "no replay pass for this cashier")
 
 
 class SiriResponse:
@@ -60,6 +63,15 @@ class SiriResponse:
         """True when the caller should fall back to the old path: no answer at all, a server fault, or a token siri-api
         no longer accepts. A 4xx like 404/403 is a real answer (siri-api understood and said no)."""
         return self.error is not None or self.status >= 500 or self.status == 401
+
+    @property
+    def not_sent(self) -> bool:
+        """True only when the request provably never left this PC (no session, connection refused, could not even
+        connect). Then nothing can have been saved, so the old path may safely be tried. A read timeout, a dropped
+        connection or a server fault are NOT 'not sent': siri-api may have saved the work."""
+        if self.error is None:
+            return False
+        return self.error.split(":", 1)[0].strip() in _NOT_SENT_ERRORS
 
     def json(self) -> Any:
         try:

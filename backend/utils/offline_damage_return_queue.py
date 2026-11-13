@@ -5,8 +5,9 @@ from typing import Dict, Any
 
 from config.config import OFFLINE_DAMAGE_RETURN_QUEUE_FILE
 from helpers.utils import read_json_file, write_json_file
-from utils.connection_pool import get_supabase_client
+from utils.connection_pool import SupabaseCircuitOpenError, get_supabase_client
 from utils.queue_common import register_failure, quarantine_item, log_offline_event
+from services.siri_writes import deliver_queued, switch_on as siri_switch_on
 from data_access.data_access import update_both_inventory_and_product_stock
 
 _queue_lock = threading.Lock()
@@ -16,7 +17,9 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def enqueue_damage_return_create(user_id: str, payload: Dict[str, Any]) -> Dict[str, str]:
+def enqueue_damage_return_create(user_id: str, payload: Dict[str, Any], siri_unsure: bool = False) -> Dict[str, str]:
+    """`siri_unsure`: an attempt through siri-api for this very row could not be confirmed (it may have been saved).
+    Such a row is only ever delivered through siri-api, which knows its id, never down the old direct path."""
     row_id = payload.get("id") or f"SDR-{uuid.uuid4().hex[:12].upper()}"
     queue_id = f"QDR-{uuid.uuid4().hex[:12]}"
     item = {
@@ -24,6 +27,7 @@ def enqueue_damage_return_create(user_id: str, payload: Dict[str, Any]) -> Dict[
         "type": "create_store_damage_return",
         "user_id": user_id,
         "payload": {**payload, "id": row_id},
+        **({"siri_unsure": True} if siri_unsure else {}),
         "attempts": 0,
         "stock_applied": False,
         "event_inserted": False,
@@ -52,7 +56,10 @@ def process_offline_damage_return_queue(app_logger=None, max_items: int = 20) ->
         # us "sync" against local JSON and then drop items from the queue without
         # ever reaching Supabase (and double-reduce local stock). The
         # is_offline_fallback check is what the bill/transfer queues already do.
-        if not supabase or getattr(supabase, "is_offline_fallback", False):
+        offline = not supabase or getattr(supabase, "is_offline_fallback", False)
+        if offline and not siri_switch_on("damage_return"):
+            # (when bills go through siri-api the queue keeps trying: siri-api may be reachable even if the direct
+            # database path is not)
             return {"processed": 0, "succeeded": 0, "failed": 0, "remaining": len(queue)}
 
         processed = 0
@@ -70,6 +77,14 @@ def process_offline_damage_return_queue(app_logger=None, max_items: int = 20) ->
             row_id = payload.get("id")
 
             try:
+                # siri-api first (switch on + this cashier's replay pass). Its own verdict decides retry-for-ever vs
+                # a final answer; a row an online attempt may already have saved there waits for siri-api only.
+                if deliver_queued("damage_return", item):
+                    succeeded += 1
+                    continue
+                if offline:
+                    # never run the old path against the offline stand-in (it would "succeed" without saving)
+                    raise SupabaseCircuitOpenError("Supabase client unavailable (offline fallback active)")
                 supabase.table("store_damage_returns").upsert(payload).execute()
 
                 if not item.get("stock_applied"):

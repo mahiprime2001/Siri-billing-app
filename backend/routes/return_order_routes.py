@@ -15,11 +15,15 @@ from flask import Blueprint, request, jsonify, current_app as app
 from flask_jwt_extended import get_jwt_identity
 
 from auth.auth import require_auth
+from utils.siri_proxy import via_siri_api
 from utils.connection_pool import get_supabase_client
 from helpers.utils import read_json_file, write_json_file
 from config.config import RETURNS_FILE, RETURN_PRODUCTS_FILE, PRODUCTS_FILE
 from routes.return_routes import _resolve_current_store_id
 from utils.offline_return_order_queue import enqueue_return_order_create
+from utils.products_cache import invalidate_products_cache_for_store  # noqa: F401  (kept for symmetry with returns)
+from services.siri_bills import SiriBillRefused, SiriBillUnsure
+from services.siri_writes import attempt_post, return_order_request
 
 return_order_bp = Blueprint('return_order', __name__)
 
@@ -57,19 +61,33 @@ def _attach_lines_to_returns(headers, lines, products):
     return result
 
 
+def _queue_return_order_offline(current_user_id, header, lines, siri_unsure=False):
+    """Keep the order on this PC (local lists) and queue it for later delivery."""
+    returns = read_json_file(RETURNS_FILE, [])
+    returns.append(header)
+    write_json_file(RETURNS_FILE, returns)
+
+    rp = read_json_file(RETURN_PRODUCTS_FILE, [])
+    rp.extend(lines)
+    write_json_file(RETURN_PRODUCTS_FILE, rp)
+
+    info = enqueue_return_order_create(current_user_id, {"header": header, "lines": lines}, siri_unsure=siri_unsure)
+    return {"queued": True, "queue_id": info["queue_id"], "return": header, "items": lines}
+
+
 def _dispatch_return_order(supabase, current_user_id, store_id, header, lines):
     """Connectivity-aware create for a store->admin return order. No stock change."""
+    # siri-api first when its "returns" switch is on. The return id is the request id: the same order is never made
+    # twice whether it goes now, is queued after a lost answer, or is replayed later (services/siri_writes.py).
+    try:
+        answer = attempt_post("returns", current_user_id, "/api/store/return-orders", return_order_request(header, lines))
+    except SiriBillUnsure:
+        return _queue_return_order_offline(current_user_id, header, lines, siri_unsure=True)
+    if answer is not None:
+        return {"queued": False, "return": answer.get("return") or header, "items": answer.get("items") or lines}
+
     if getattr(supabase, "is_offline_fallback", False):
-        returns = read_json_file(RETURNS_FILE, [])
-        returns.append(header)
-        write_json_file(RETURNS_FILE, returns)
-
-        rp = read_json_file(RETURN_PRODUCTS_FILE, [])
-        rp.extend(lines)
-        write_json_file(RETURN_PRODUCTS_FILE, rp)
-
-        info = enqueue_return_order_create(current_user_id, {"header": header, "lines": lines})
-        return {"queued": True, "queue_id": info["queue_id"], "return": header, "items": lines}
+        return _queue_return_order_offline(current_user_id, header, lines)
 
     supabase.table("returns").insert(header).execute()
     if lines:
@@ -168,6 +186,9 @@ def create_return_order():
             "return": saved["return"],
             "items": saved["items"],
         }), 202 if saved.get("queued") else 201
+    except SiriBillRefused as e:
+        # siri-api understood the request and said no: show its reason as it is.
+        return jsonify(e.body or {"message": str(e)}), e.status
     except Exception as e:
         app.logger.error(f"❌ Error creating return order: {str(e)}")
         app.logger.error(traceback.format_exc())
@@ -176,6 +197,7 @@ def create_return_order():
 
 @return_order_bp.route('/return-orders', methods=['GET'])
 @require_auth
+@via_siri_api("returns", "/api/store/return-orders")
 def get_return_orders():
     """List this store's return orders (header + nested product lines)."""
     limit = request.args.get("limit", 100, type=int)

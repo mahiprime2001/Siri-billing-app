@@ -2,6 +2,10 @@ from flask import Blueprint, jsonify, current_app as app, request
 from flask_jwt_extended import get_jwt_identity
 from auth.auth import require_auth
 from utils.siri_proxy import via_siri_api, current_store_from_me
+from urllib.parse import quote
+from utils.products_cache import invalidate_products_cache_for_store
+from services.siri_bills import SiriBillRefused, SiriBillUnsure
+from services.siri_writes import attempt_post
 from utils.connection_pool import get_supabase_client
 from utils.offline_transfer_verification_queue import enqueue_transfer_verification_create
 from datetime import datetime, timezone
@@ -315,6 +319,7 @@ def get_current_user_store():
 
 @store_bp.route('/stores/current/transfer-orders', methods=['GET'])
 @require_auth
+@via_siri_api("transfers", "/api/store/transfer-orders")
 def get_current_store_transfer_orders():
     """List active transfer orders for the current user's store."""
     try:
@@ -380,6 +385,7 @@ def get_current_store_transfer_orders():
 
 @store_bp.route('/stores/current/transfer-orders/history', methods=['GET'])
 @require_auth
+@via_siri_api("transfers", "/api/store/transfer-orders/history")
 def get_transfer_orders_history():
     """List ALL transfer orders for the current user's store with item details and last verified time per item."""
     try:
@@ -482,6 +488,7 @@ def get_transfer_orders_history():
 
 @store_bp.route('/transfer-orders/<order_id>', methods=['GET'])
 @require_auth
+@via_siri_api("transfers", "/api/store/transfer-orders/{order_id}")
 def get_transfer_order(order_id):
     """Get transfer order details for current user store."""
     try:
@@ -537,6 +544,7 @@ def get_transfer_order(order_id):
 
 @store_bp.route('/stores/current/transfer-orders/barcode-status', methods=['GET'])
 @require_auth
+@via_siri_api("transfers", "/api/store/transfer-orders/barcode-status")
 def get_transfer_barcode_status():
     """Resolve barcode against current store transfer orders (active + completed)."""
     try:
@@ -967,6 +975,36 @@ def _apply_transfer_order_verification(supabase, current_user_id: str, store_id:
 
 def _dispatch_transfer_verification(supabase, current_user_id, store_id, order_id, data):
     """Connectivity-aware dispatcher: online → apply verification, offline → enqueue."""
+    # siri-api first when its "transfers" switch is on. The verification_session_id is the request id (siri-api
+    # treats a repeat as already done, and resumes one that did not finish), so a verification is never applied
+    # twice. A lost answer is queued with the same session id and flagged siri_unsure (services/siri_writes.py).
+    if data.get("verification_session_id"):
+        try:
+            answer = attempt_post("transfers", current_user_id,
+                                  f"/api/store/transfer-orders/{quote(str(order_id), safe='')}/verify", data)
+        except SiriBillRefused as refused:
+            return (refused.body or {"message": str(refused)}), refused.status
+        except SiriBillUnsure:
+            queue_info = enqueue_transfer_verification_create(
+                user_id=current_user_id, store_id=store_id, order_id=order_id, verification_data=data, siri_unsure=True)
+            return {
+                "queued": True, "queue_id": queue_info["queue_id"],
+                "verification_session_id": queue_info["verification_session_id"],
+                "message": "Connection lost. Transfer verification queued and will sync automatically.",
+            }, 202
+        if answer is not None:
+            now_iso = datetime.now(timezone.utc).isoformat()
+            for product_id, delta in (answer.get("local_inventory_deltas") or {}).items():
+                try:
+                    _update_local_storeinventory(store_id, product_id, int(delta), now_iso)
+                except Exception:  # noqa: BLE001 - the local copy refreshes from the cloud anyway
+                    pass
+            try:
+                invalidate_products_cache_for_store(str(store_id))
+            except Exception:  # noqa: BLE001
+                pass
+            return answer, 200
+
     if getattr(supabase, "is_offline_fallback", False):
         queue_info = enqueue_transfer_verification_create(
             user_id=current_user_id,
@@ -1320,6 +1358,7 @@ def _reconcile_store_inventory(supabase, store_id: str, repair_missing_inventory
 
 @store_bp.route('/stores/current/transfer-orders/reconcile-inventory', methods=['POST'])
 @require_auth
+@via_siri_api("transfers", "/api/store/transfer-orders/reconcile-inventory", methods=("POST",), repeatable=False)
 def reconcile_store_inventory_route():
     """Manually trigger delta-based inventory reconciliation for the current store."""
     try:

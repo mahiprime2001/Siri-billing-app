@@ -2,6 +2,8 @@ from flask import Blueprint, request, jsonify, current_app as app
 from flask_jwt_extended import get_jwt_identity
 
 from auth.auth import require_auth
+from utils.siri_proxy import via_siri_api
+from utils.discount_approval_cache import remember_deferred_approval
 from utils.connection_pool import get_supabase_client
 from utils.twofa import verify_twofa
 from utils.discount_approval_cache import set_discount_approval
@@ -13,6 +15,7 @@ discount_otp_bp = Blueprint('discount_otp', __name__)
 
 @discount_otp_bp.route('/discounts/verify-otp', methods=['POST'])
 @require_auth
+@via_siri_api("discounts", "/api/store/discounts/verify-otp", methods=("POST",), repeatable=False, after=remember_deferred_approval)
 def verify_discount_otp():
     """
     Verify OTP for discount >10%. Approves the discount on success.
