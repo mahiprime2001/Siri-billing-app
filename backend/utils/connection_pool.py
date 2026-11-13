@@ -72,6 +72,7 @@ def _is_transport_error(err: Exception | str) -> bool:
         httpx.ReadError,
         httpx.WriteError,
         httpx.RemoteProtocolError,
+        httpx.ProxyError,
     )
     if isinstance(err, SupabaseCircuitOpenError):
         return False

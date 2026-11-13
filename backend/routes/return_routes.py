@@ -13,6 +13,7 @@ from utils.offline_damage_return_queue import enqueue_damage_return_create
 from utils.products_cache import invalidate_products_cache_for_store
 from services.siri_bills import SiriBillRefused, SiriBillUnsure
 from services.siri_writes import attempt_post, damage_return_request
+from utils.queue_common import classify_error
 
 return_bp = Blueprint('return', __name__)
 
@@ -565,7 +566,13 @@ def _dispatch_damage_return_item(supabase, current_user_id, store_id, row, reaso
     if getattr(supabase, "is_offline_fallback", False):
         return _queue_damage_return_offline(current_user_id, store_id, row)
 
-    supabase.table("store_damage_returns").insert(row).execute()
+    try:
+        supabase.table("store_damage_returns").insert(row).execute()
+    except Exception as e:  # noqa: BLE001
+        # the very first write failed because the link is down (nothing is saved yet): queue it, do not fail the cashier
+        if classify_error(e) != "transient":
+            raise
+        return _queue_damage_return_offline(current_user_id, store_id, row)
     stock_ok = update_both_inventory_and_product_stock(
         store_id=store_id,
         product_id=row["product_id"],

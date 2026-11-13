@@ -24,6 +24,7 @@ from utils.offline_return_order_queue import enqueue_return_order_create
 from utils.products_cache import invalidate_products_cache_for_store  # noqa: F401  (kept for symmetry with returns)
 from services.siri_bills import SiriBillRefused, SiriBillUnsure
 from services.siri_writes import attempt_post, return_order_request
+from utils.queue_common import classify_error
 
 return_order_bp = Blueprint('return_order', __name__)
 
@@ -89,7 +90,13 @@ def _dispatch_return_order(supabase, current_user_id, store_id, header, lines):
     if getattr(supabase, "is_offline_fallback", False):
         return _queue_return_order_offline(current_user_id, header, lines)
 
-    supabase.table("returns").insert(header).execute()
+    try:
+        supabase.table("returns").insert(header).execute()
+    except Exception as e:  # noqa: BLE001
+        # the very first write failed because the link is down (nothing is saved yet): queue it
+        if classify_error(e) != "transient":
+            raise
+        return _queue_return_order_offline(current_user_id, header, lines)
     if lines:
         supabase.table("return_products").insert(lines).execute()
     return {"queued": False, "return": header, "items": lines}

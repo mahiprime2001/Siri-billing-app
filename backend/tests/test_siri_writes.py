@@ -64,8 +64,13 @@ class Base(unittest.TestCase):
 # ---------------------------------------------------------------- "did the request even leave this PC?"
 
 class NotSentTests(unittest.TestCase):
+    def test_a_proxy_that_refuses_the_connection_counts_as_a_connection_problem(self):
+        from utils.queue_common import classify_error
+        self.assertEqual(classify_error(httpx.ProxyError("503 Service Unavailable")), "transient")
+        self.assertEqual(classify_error(ValueError("column does not exist")), "permanent")
+
     def test_only_a_request_that_never_left_is_not_sent(self):
-        for error in ("ConnectError: refused", "ConnectTimeout: x", "PoolTimeout: x", "no siri-api session", "no replay pass for this cashier"):
+        for error in ("ConnectError: refused", "ConnectTimeout: x", "PoolTimeout: x", "ProxyError: 503 Service Unavailable", "no siri-api session", "no replay pass for this cashier"):
             self.assertTrue(SiriResponse(0, b"", {}, error).not_sent, error)
         for error in ("ReadTimeout: slow", "RemoteProtocolError: dropped", "ReadError: x", "WriteError: x"):
             self.assertFalse(SiriResponse(0, b"", {}, error).not_sent, error)         # it may have been processed
@@ -511,6 +516,28 @@ class EntryPointTests(Base):
             out = ro._dispatch_return_order(supa, "cashier-1", "s1", dict(RETURN_HEADER), [dict(ln) for ln in RETURN_LINES])
             self.assertTrue(out["queued"] and enqueue.call_args.kwargs["siri_unsure"])
             supa.table.assert_not_called()
+
+    def test_first_old_path_write_failing_on_the_link_queues_instead_of_failing_the_cashier(self):
+        """siri-api never got the request (nothing sent) AND the direct database link is down on the first write:
+        nothing is saved yet, so the item is queued (not a 500). A real database error is still raised."""
+        from routes import return_order_routes as ro
+        from routes import return_routes as rr
+        self.siri.fail = httpx.ConnectError("no internet")
+        down = mock.Mock(is_offline_fallback=False)
+        down.table.return_value.insert.return_value.execute.side_effect = httpx.ConnectError("link down")
+        with mock.patch.object(rr, "enqueue_damage_return_create", return_value={"queue_id": "QDR-9"}) as enq_d,                 mock.patch.object(rr, "read_json_file", return_value=[]), mock.patch.object(rr, "write_json_file"),                 mock.patch.object(rr, "_apply_local_stock_reduction"), mock.patch.object(rr, "invalidate_products_cache_for_store"),                 mock.patch.object(ro, "enqueue_return_order_create", return_value={"queue_id": "QRO-9"}) as enq_o,                 mock.patch.object(ro, "read_json_file", return_value=[]), mock.patch.object(ro, "write_json_file"):
+            out = rr._dispatch_damage_return_item(down, "cashier-1", "s1", dict(DAMAGE_ROW), "damaged", "r", "now")
+            self.assertTrue(out["queued"])
+            enq_d.assert_called_once()
+            out = ro._dispatch_return_order(down, "cashier-1", "s1", dict(RETURN_HEADER), [dict(ln) for ln in RETURN_LINES])
+            self.assertTrue(out["queued"])
+            enq_o.assert_called_once()
+            broken = mock.Mock(is_offline_fallback=False)
+            broken.table.return_value.insert.return_value.execute.side_effect = ValueError("column does not exist")
+            with self.assertRaises(ValueError):
+                rr._dispatch_damage_return_item(broken, "cashier-1", "s1", dict(DAMAGE_ROW), "damaged", "r", "now")
+            with self.assertRaises(ValueError):
+                ro._dispatch_return_order(broken, "cashier-1", "s1", dict(RETURN_HEADER), [dict(ln) for ln in RETURN_LINES])
 
     def test_transfer_verification_goes_to_siri_api_applies_local_stock_and_handles_refusal_and_loss(self):
         from routes import store_routes as sr
