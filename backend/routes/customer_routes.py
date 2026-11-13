@@ -190,6 +190,7 @@ def update_customer(customer_id):
 
 @customer_bp.route('/customers/<customer_id>', methods=['DELETE'])
 @require_auth
+@via_siri_api("small_writes", "/api/store/customers/{customer_id}", methods=("DELETE",), repeatable=False)
 def delete_customer(customer_id):
     """Delete a customer"""
     try:

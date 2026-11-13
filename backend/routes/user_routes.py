@@ -41,6 +41,7 @@ def get_users():
 
 @user_bp.route('/users/<user_id>', methods=['GET'])
 @require_auth
+@via_siri_api("reads", "/api/store/users/{user_id}")
 def get_user(user_id):
     """Get a specific user by ID"""
     try:
@@ -81,6 +82,7 @@ def get_user(user_id):
 
 @user_bp.route('/users/<user_id>', methods=['PUT'])
 @require_auth
+@via_siri_api("small_writes", "/api/store/users/{user_id}", methods=("PUT",), repeatable=False)
 def update_user(user_id):
     """Update a user"""
     try:

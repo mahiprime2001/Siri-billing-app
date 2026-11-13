@@ -26,6 +26,8 @@ from flask_jwt_extended import JWTManager, create_access_token  # noqa: E402
 
 import routes.customer_routes as customers  # noqa: E402
 import routes.notification_routes as notifications  # noqa: E402
+import routes.settings_routes as settings  # noqa: E402
+import routes.user_routes as users  # noqa: E402
 from tests.test_siri_api import ClientBase, switches_body  # noqa: E402
 from utils import siri_api  # noqa: E402
 
@@ -39,6 +41,8 @@ class SmallWritesBase(ClientBase):
         JWTManager(app)
         app.register_blueprint(customers.customer_bp)
         app.register_blueprint(notifications.notification_bp)
+        app.register_blueprint(settings.settings_bp)
+        app.register_blueprint(users.user_bp)
         self.client = app.test_client()
         with app.app_context():
             self.headers = {"Authorization": "Bearer " + create_access_token(identity="cashier-1")}
@@ -48,7 +52,9 @@ class SmallWritesBase(ClientBase):
         user_ok.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [{"id": "x"}]
         for p in (mock.patch("auth.auth.get_supabase_client", return_value=user_ok),
                   mock.patch.object(customers, "get_supabase_client", return_value=self.old_db),
-                  mock.patch.object(notifications, "get_supabase_client", return_value=self.old_db)):
+                  mock.patch.object(notifications, "get_supabase_client", return_value=self.old_db),
+                  mock.patch.object(settings, "get_supabase_client", return_value=self.old_db),
+                  mock.patch.object(users, "get_supabase_client", return_value=self.old_db)):
             p.start()
         self.addCleanup(mock.patch.stopall)
 
@@ -166,6 +172,45 @@ class NotificationTests(SmallWritesBase):
         self.siri.routes[("POST", "/api/store/notifications/read-all")] = (500, {})
         self.client.post("/notifications/read-all", headers=self.headers)
         self.assertTrue(self.old_path_ran())
+
+
+class FormerlyDirectRoutesTests(SmallWritesBase):
+    """User read/edit, company settings edit and customer delete used to write straight to the database with the
+    PC's master key. They now go through siri-api (which adds the store / admin / has-bills checks)."""
+
+    def test_switch_off_means_old_code_and_no_siri_call(self):
+        self.turn_on(small_writes=False, reads=False)
+        self.client.get("/users/u1", headers=self.headers)
+        self.client.put("/users/u1", json={"name": "A", "baseVersion": 1}, headers=self.headers)
+        self.client.put("/settings", json={"companyName": "X", "baseVersion": 1}, headers=self.headers)
+        self.client.delete("/customers/C1", headers=self.headers)
+        self.assertTrue(self.old_path_ran())
+        self.assertEqual([c for c in self.siri.calls if c.url.path.startswith("/api/store/") and c.method != "GET" or "/users/" in c.url.path], [])
+
+    def test_all_four_go_to_siri_api_and_its_refusals_are_shown_as_they_are(self):
+        self.turn_on(small_writes=True, reads=True)
+        self.siri.routes[("GET", "/api/store/users/u1")] = (200, {"id": "u1", "name": "Asha"})
+        self.siri.routes[("PUT", "/api/store/users/u1")] = (200, {"id": "u1", "name": "Asha K"})
+        self.siri.routes[("PUT", "/api/store/users/u2")] = (403, {"message": "You can only change your own profile here"})
+        self.siri.routes[("PUT", "/api/store/settings")] = (403, {"message": "Only an admin can change company settings"})
+        self.siri.routes[("DELETE", "/api/store/customers/C1")] = (409, {"code": "has_bills"})
+        self.siri.routes[("DELETE", "/api/store/customers/C2")] = (200, {"message": "Customer deleted successfully"})
+        self.assertEqual(self.client.get("/users/u1", headers=self.headers).get_json()["name"], "Asha")
+        self.assertEqual(self.client.put("/users/u1", json={"name": "Asha K", "baseVersion": 1}, headers=self.headers).status_code, 200)
+        self.assertEqual(self.client.put("/users/u2", json={"name": "X", "baseVersion": 1}, headers=self.headers).status_code, 403)
+        self.assertEqual(self.client.put("/settings", json={"companyName": "X", "baseVersion": 1}, headers=self.headers).status_code, 403)
+        self.assertEqual(self.client.delete("/customers/C1", headers=self.headers).get_json()["code"], "has_bills")
+        self.assertEqual(self.client.delete("/customers/C2", headers=self.headers).status_code, 200)
+        self.assertFalse(self.old_path_ran())                       # siri-api's "no" is never overridden by the old code
+
+    def test_a_lost_answer_is_not_repeated_down_the_old_path(self):
+        self.turn_on(small_writes=True, reads=True)
+        self.siri.fail = httpx.ReadTimeout("slow")
+        for r in (self.client.put("/users/u1", json={"name": "A", "baseVersion": 1}, headers=self.headers),
+                  self.client.put("/settings", json={"companyName": "X", "baseVersion": 1}, headers=self.headers),
+                  self.client.delete("/customers/C2", headers=self.headers)):
+            self.assertEqual((r.status_code, r.get_json()["code"]), (503, "siri_unclear"))
+        self.assertFalse(self.old_path_ran())
 
 
 if __name__ == "__main__":

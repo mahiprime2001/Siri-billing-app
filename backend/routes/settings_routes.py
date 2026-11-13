@@ -74,6 +74,7 @@ def get_settings():
 
 @settings_bp.route('/settings', methods=['PUT'])
 @require_auth
+@via_siri_api("small_writes", "/api/store/settings", methods=("PUT",), repeatable=False)
 def update_settings():
     """Update application settings"""
     try:
