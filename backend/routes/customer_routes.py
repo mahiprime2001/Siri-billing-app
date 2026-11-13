@@ -83,6 +83,7 @@ def get_customer(customer_id):
 
 @customer_bp.route('/customers', methods=['POST'])
 @require_auth
+@via_siri_api("small_writes", "/api/store/customers", methods=("POST",), repeatable=False)
 def create_customer():
     """Create a new customer"""
     try:
@@ -129,6 +130,7 @@ def create_customer():
 
 @customer_bp.route('/customers/<customer_id>', methods=['PUT'])
 @require_auth
+@via_siri_api("small_writes", "/api/store/customers/{customer_id}", methods=("PUT",), repeatable=False)
 def update_customer(customer_id):
     """Update a customer"""
     try:

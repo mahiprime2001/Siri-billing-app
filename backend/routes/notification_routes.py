@@ -117,6 +117,7 @@ def get_unread_count():
 
 @notification_bp.route('/notifications/<int:notification_id>/read', methods=['POST'])
 @require_auth
+@via_siri_api("small_writes", "/api/store/notifications/{notification_id}/read", methods=("POST",))
 def mark_as_read(notification_id):
     """Mark notification as read"""
     try:
@@ -152,6 +153,7 @@ def mark_as_read(notification_id):
 
 @notification_bp.route('/notifications/read-all', methods=['POST'])
 @require_auth
+@via_siri_api("small_writes", "/api/store/notifications/read-all", methods=("POST",))
 def mark_all_as_read():
     """Mark all notifications for the caller's store as read."""
     try:
