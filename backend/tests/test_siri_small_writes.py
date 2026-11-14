@@ -25,7 +25,6 @@ from flask import Flask  # noqa: E402
 from flask_jwt_extended import JWTManager, create_access_token  # noqa: E402
 
 import routes.customer_routes as customers  # noqa: E402
-import routes.health_routes as health  # noqa: E402
 import routes.notification_routes as notifications  # noqa: E402
 import routes.settings_routes as settings  # noqa: E402
 import routes.user_routes as users  # noqa: E402
@@ -44,7 +43,6 @@ class SmallWritesBase(ClientBase):
         app.register_blueprint(notifications.notification_bp)
         app.register_blueprint(settings.settings_bp)
         app.register_blueprint(users.user_bp)
-        app.register_blueprint(health.health_bp)
         self.client = app.test_client()
         with app.app_context():
             self.headers = {"Authorization": "Bearer " + create_access_token(identity="cashier-1")}
@@ -213,33 +211,6 @@ class FormerlyDirectRoutesTests(SmallWritesBase):
                   self.client.delete("/customers/C2", headers=self.headers)):
             self.assertEqual((r.status_code, r.get_json()["code"]), (503, "siri_unclear"))
         self.assertFalse(self.old_path_ran())
-
-
-class UpdatePolicyTests(SmallWritesBase):
-    """The app asks the local backend whether it may update itself (auto_update) or must install nothing (update_hold)."""
-
-    def policy(self):
-        return self.client.get("/update-policy").get_json()
-
-    def test_everything_off_and_not_ready_without_a_siri_session(self):
-        self.assertEqual(self.policy(), {"auto_update": False, "update_hold": False, "ready": False})
-
-    def test_reports_the_stores_switches_once_signed_in(self):
-        self.turn_on(auto_update=True)
-        self.assertEqual(self.policy(), {"auto_update": True, "update_hold": False, "ready": True})
-        self.turn_on(auto_update=True, update_hold=True)
-        self.api.switches(force=True)
-        self.assertEqual(self.policy(), {"auto_update": True, "update_hold": True, "ready": True})
-
-    def test_the_emergency_kill_switch_turns_both_off(self):
-        self.turn_on(auto_update=True, update_hold=True)
-        with mock.patch.dict(os.environ, {"SIRI_API_DISABLE": "1"}):
-            out = self.policy()
-        self.assertEqual((out["auto_update"], out["update_hold"]), (False, False))
-
-    def test_a_failure_inside_never_breaks_the_screen(self):
-        with mock.patch("utils.siri_api.get_client", side_effect=RuntimeError("boom")):
-            self.assertEqual(self.policy(), {"auto_update": False, "update_hold": False, "ready": False})
 
 
 if __name__ == "__main__":

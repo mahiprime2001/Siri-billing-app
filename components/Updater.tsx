@@ -9,31 +9,18 @@ import {
   RETRY_AFTER_CHECK_FAILURE_MS,
   RETRY_AFTER_INSTALL_FAILURE_MS,
   localDay,
-  parsePolicy,
-  passiveBannerAllowed,
   shouldRunMorningUpdate,
-  type UpdatePolicy,
 } from '@/lib/update-policy';
 import { isUpdateBusy } from '@/lib/update-busy';
 
 /**
- * How updates reach a store (the rule lives in lib/update-policy.ts, set per store in siri-api's switches):
- *   - default: a banner whenever a new version exists ("Install Now" / "Later"), as before;
- *   - auto_update ON: the FIRST time the app is used each day, a new version is installed by itself (with a
- *     "please wait" screen); after that nothing is installed or shown until someone presses "Check for updates";
- *   - update_hold ON: nothing is installed at all, not even by hand.
+ * How updates reach a store (the rule lives in lib/update-policy.ts):
+ *   - the FIRST time the app is opened each day, a new version (if any) is installed by itself, with a
+ *     "please wait" screen and an automatic restart;
+ *   - after that nothing is installed or shown until someone presses "Check for updates", which offers the
+ *     normal "Install Now" box if a newer version exists.
  */
-const POLICY_URL = 'http://localhost:8080/api/update-policy';
 const DAY_KEY = 'siri-auto-update-day';
-
-async function readPolicy(): Promise<UpdatePolicy> {
-  try {
-    const r = await fetch(POLICY_URL, { cache: 'no-store' });
-    return r.ok ? parsePolicy(await r.json()) : { auto: false, hold: false };
-  } catch {
-    return { auto: false, hold: false }; // unknown means the old behaviour, never an automatic install
-  }
-}
 
 function readDoneDay(): string | null {
   try {
@@ -72,8 +59,6 @@ export default function Updater() {
   const downloading = useRef(false);
   const running = useRef(false); // a morning check/install is under way
   const retryNotBefore = useRef(0);
-  const snoozed = useRef<{ version: string; until: number } | null>(null);
-  const lastCheck = useRef(0);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('__TAURI__' in window)) {
@@ -83,39 +68,12 @@ export default function Updater() {
 
     getVersion().then(setAppVersion).catch(() => undefined);
 
-    // ---- the old behaviour: a banner whenever a new version exists (stores without auto_update)
-    const passiveCheck = async () => {
-      if (downloading.current || Date.now() - lastCheck.current < 60_000) return;
-      const policy = await readPolicy();
-      if (!passiveBannerAllowed(policy)) return;
-      lastCheck.current = Date.now();
-      try {
-        const update = await check();
-        if (!update || !update.available) return;
-
-        // "Later" hides this version for an hour, then it comes back.
-        const s = snoozed.current;
-        if (s && s.version === update.version && Date.now() < s.until) return;
-
-        currentUpdate.current = update;
-        setUpdateInfo({
-          version: update.version,
-          notes: update.body || 'No release notes available.',
-        });
-        setUpdateAvailable(true);
-      } catch (error) {
-        console.error('Failed to check for updates:', error);
-      }
-    };
-
-    // ---- the once-a-day automatic update (stores with auto_update)
+    // ---- the once-a-day automatic update
     const morningCheck = async () => {
-      const policy = await readPolicy();
       const now = Date.now();
       const today = localDay(new Date());
       if (
         !shouldRunMorningUpdate({
-          policy,
           today,
           lastDoneDay: readDoneDay(),
           busy: isUpdateBusy(),
@@ -144,25 +102,17 @@ export default function Updater() {
       }
     };
 
-    const tick = () => {
-      void morningCheck();
-      void passiveCheck();
-    };
-
-    // The app stays open all day: look on start, every 15 minutes (the passive banner), and whenever the window comes
-    // back to the front. The morning update checks its own once-a-day rule each time, so it also fires right after the
-    // first sign-in of the day (the store's switches are only known then).
-    tick();
-    const timer = setInterval(tick, 15 * 60_000);
-    const early = setInterval(() => void morningCheck(), 30_000); // catches the first sign-in of the day quickly
+    // Look when the app starts, and again whenever the window comes back to the front or a minute passes (so an app
+    // left open overnight updates when it is used the next morning). The once-a-day rule decides whether to act.
+    void morningCheck();
+    const timer = setInterval(() => void morningCheck(), 60_000);
     const onVisible = () => {
-      if (document.visibilityState === 'visible') tick();
+      if (document.visibilityState === 'visible') void morningCheck();
     };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
     return () => {
       clearInterval(timer);
-      clearInterval(early);
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onVisible);
     };
@@ -170,8 +120,7 @@ export default function Updater() {
   }, []);
 
   function postpone() {
-    if (updateInfo) snoozed.current = { version: updateInfo.version, until: Date.now() + 60 * 60_000 };
-    setUpdateAvailable(false);
+    setUpdateAvailable(false); // "Later": the box closes; the "Check for updates" link brings it back
   }
 
   /** Download + install. `auto` = the morning install: no questions asked, restarts by itself. */
@@ -238,11 +187,6 @@ export default function Updater() {
   /** "Check for updates": the only way to get an update after the morning one on an auto_update store. */
   async function checkNow() {
     if (downloading.current || running.current) return;
-    const policy = await readPolicy();
-    if (policy.hold) {
-      await message('Updates are paused for now. Please try again later.', { title: 'Updates', kind: 'info' });
-      return;
-    }
     running.current = true;
     try {
       const update = await check();

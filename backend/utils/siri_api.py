@@ -43,8 +43,7 @@ SWITCH_TIMEOUT = 3.0
 SWITCH_REFRESH_SECONDS = 120      # how long the switches are trusted before asking again
 SWITCH_RETRY_SECONDS = 30         # after a failed ask, wait this long before asking again
 SWITCH_MAX_AGE_SECONDS = 24 * 3600  # a remembered answer older than this is not trusted
-GROUPS = ("reads", "bills_read", "bills_write", "returns", "transfers", "discounts", "small_writes",
-          "auto_update", "update_hold")
+GROUPS = ("reads", "bills_read", "bills_write", "returns", "transfers", "discounts", "small_writes")
 # Error kinds (the exception's class name) that mean the request never reached siri-api.
 _NOT_SENT_ERRORS = ("ConnectError", "ConnectTimeout", "PoolTimeout", "UnsupportedProtocol", "InvalidURL", "ProxyError",
                     "no siri-api session", "no replay pass for this cashier")
