@@ -48,6 +48,7 @@ import { useOnlineStatus } from "@/hooks/use-online-status"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { apiClient } from "@/lib/api-client"
 import { shadowBarcode } from "@/lib/store-log"
+import { setUpdateBusy } from "@/lib/update-busy"
 import { authManager } from "@/lib/auth"
 
 interface User {
@@ -266,6 +267,18 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
   useEffect(() => {
     billingTabsRef.current = billingTabs
   }, [billingTabs])
+
+  // Tell the auto-updater when a bill (or an invoice edit / replacement) is open, so it never restarts the app
+  // under the cashier.
+  useEffect(() => {
+    const busy =
+      billingTabs.some((tab) => tab.cartItems.length > 0) ||
+      showPreview ||
+      replacementSession !== null ||
+      invoiceEditSession !== null
+    setUpdateBusy("billing", busy)
+    return () => setUpdateBusy("billing", false)
+  }, [billingTabs, showPreview, replacementSession, invoiceEditSession])
 
   useEffect(() => {
     return () => {
