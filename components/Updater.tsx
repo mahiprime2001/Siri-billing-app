@@ -6,9 +6,12 @@ import { message } from '@tauri-apps/plugin-dialog';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { getVersion } from '@tauri-apps/api/app';
 import {
+  ANNOUNCE_EVERY_MS,
+  MUTE_AFTER_LATER_MS,
   RETRY_AFTER_CHECK_FAILURE_MS,
   RETRY_AFTER_INSTALL_FAILURE_MS,
   localDay,
+  shouldAnnounceUpdate,
   shouldRunMorningUpdate,
 } from '@/lib/update-policy';
 import { isUpdateBusy } from '@/lib/update-busy';
@@ -17,8 +20,9 @@ import { isUpdateBusy } from '@/lib/update-busy';
  * How updates reach a store (the rule lives in lib/update-policy.ts):
  *   - the FIRST time the app is opened each day, a new version (if any) is installed by itself, with a
  *     "please wait" screen and an automatic restart;
- *   - after that nothing is installed or shown until someone presses "Check for updates", which offers the
- *     normal "Install Now" box if a newer version exists.
+ *   - after that nothing is installed by itself. Every 30 minutes the app quietly looks, and when a newer version
+ *     exists it shows the blue "Update Available" box (Install Now / Later); "Later" hides that version for 4 hours.
+ *     "Check for updates" looks at once.
  */
 const DAY_KEY = 'siri-auto-update-day';
 
@@ -59,6 +63,8 @@ export default function Updater() {
   const downloading = useRef(false);
   const running = useRef(false); // a morning check/install is under way
   const retryNotBefore = useRef(0);
+  const nextAnnounceAt = useRef(0); // the next time the app may quietly look for a newer version to offer
+  const mutedUntil = useRef<Record<string, number>>({}); // version -> "Later" was pressed, hide until then
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('__TAURI__' in window)) {
@@ -88,6 +94,7 @@ export default function Updater() {
       try {
         const update = await check();
         writeDoneDay(today); // the check itself worked: no more automatic checks today, whatever it found
+        nextAnnounceAt.current = Date.now() + ANNOUNCE_EVERY_MS;
         if (!update || !update.available) return;
 
         currentUpdate.current = update;
@@ -102,12 +109,46 @@ export default function Updater() {
       }
     };
 
+    // After the morning update: look now and then for a NEWER version and offer it (blue box, never installed by itself).
+    const announceCheck = async () => {
+      const now = Date.now();
+      if (
+        !shouldAnnounceUpdate({
+          today: localDay(new Date()),
+          lastDoneDay: readDoneDay(),
+          running: running.current || downloading.current,
+          now,
+          nextAnnounceAt: nextAnnounceAt.current,
+        })
+      ) {
+        return;
+      }
+      nextAnnounceAt.current = now + ANNOUNCE_EVERY_MS;
+      running.current = true;
+      try {
+        const update = await check();
+        if (!update || !update.available) return;
+        if (Date.now() < (mutedUntil.current[update.version] ?? 0)) return; // "Later" was pressed for this version
+        currentUpdate.current = update;
+        setUpdateInfo({ version: update.version, notes: update.body || 'No release notes available.' });
+        setUpdateAvailable(true);
+      } catch (error) {
+        console.error('Background update look failed:', error); // quiet: the next look is in 30 minutes
+      } finally {
+        running.current = false;
+      }
+    };
+
     // Look when the app starts, and again whenever the window comes back to the front or a minute passes (so an app
     // left open overnight updates when it is used the next morning). The once-a-day rule decides whether to act.
-    void morningCheck();
-    const timer = setInterval(() => void morningCheck(), 60_000);
+    const lookNow = async () => {
+      await morningCheck();
+      await announceCheck();
+    };
+    void lookNow();
+    const timer = setInterval(() => void lookNow(), 60_000);
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void morningCheck();
+      if (document.visibilityState === 'visible') void lookNow();
     };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
@@ -120,7 +161,9 @@ export default function Updater() {
   }, []);
 
   function postpone() {
-    setUpdateAvailable(false); // "Later": the box closes; the "Check for updates" link brings it back
+    // "Later": the box closes and this version stays hidden for a few hours; "Check for updates" brings it back at once.
+    if (updateInfo) mutedUntil.current[updateInfo.version] = Date.now() + MUTE_AFTER_LATER_MS;
+    setUpdateAvailable(false);
   }
 
   /** Download + install. `auto` = the morning install: no questions asked, restarts by itself. */
@@ -181,10 +224,15 @@ export default function Updater() {
 
   async function downloadAndInstallUpdate() {
     if (!currentUpdate.current) return;
+    if (isUpdateBusy()) {
+      // the app restarts to install: never in the middle of a bill, an invoice edit or a replacement
+      await message('A bill is open. Please finish or close it first, then press Install Now.', { title: 'Update', kind: 'info' });
+      return;
+    }
     await install(currentUpdate.current, false);
   }
 
-  /** "Check for updates": the only way to get an update after the morning one on an auto_update store. */
+  /** "Check for updates": looks right now (and brings back a version that was put off with "Later"). */
   async function checkNow() {
     if (downloading.current || running.current) return;
     running.current = true;
@@ -195,6 +243,7 @@ export default function Updater() {
         return;
       }
       currentUpdate.current = update;
+      delete mutedUntil.current[update.version];
       setUpdateInfo({ version: update.version, notes: update.body || 'No release notes available.' });
       setUpdateAvailable(true);
     } catch (error) {

@@ -36,3 +36,22 @@ test("the day is the shop's own local date", () => {
   assert.equal(localDay(new Date(2026, 10, 14, 23, 59)), "2026-11-14")
   assert.equal(localDay(new Date(2026, 0, 3, 9, 0)), "2026-01-03")
 })
+
+import { shouldAnnounceUpdate, type AnnounceCheck } from "./update-policy.ts"
+
+const announce: AnnounceCheck = { today: "2026-11-14", lastDoneDay: "2026-11-14", running: false, now: 5_000_000, nextAnnounceAt: 0 }
+
+test("after the morning update, the app looks for a newer version to offer", () => {
+  assert.equal(shouldAnnounceUpdate(announce), true)
+})
+
+test("it does not look before the morning update has run, or while something else is running", () => {
+  assert.equal(shouldAnnounceUpdate({ ...announce, lastDoneDay: "2026-11-13" }), false)
+  assert.equal(shouldAnnounceUpdate({ ...announce, lastDoneDay: null }), false)
+  assert.equal(shouldAnnounceUpdate({ ...announce, running: true }), false)
+})
+
+test("it looks at most once per interval", () => {
+  assert.equal(shouldAnnounceUpdate({ ...announce, nextAnnounceAt: announce.now + 1 }), false)
+  assert.equal(shouldAnnounceUpdate({ ...announce, nextAnnounceAt: announce.now }), true)
+})
