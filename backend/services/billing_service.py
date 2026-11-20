@@ -516,18 +516,27 @@ def create_bill_transaction(
             bill_item_errors.append(f"item[{index}] has invalid quantity")
             continue
 
+        sent_tax = item.get("tax_percentage", item.get("taxPercentage"))
+        if sent_tax is not None:
+            line_tax = _parse_float(sent_tax, 0.0)
+        elif str(product_id) in product_snapshot_map:
+            line_tax = product_snapshot_map[str(product_id)].get("tax_percentage")
+        else:
+            line_tax = None  # unknown: better left empty than saved as a wrong 0
         bill_item_data = {
             "billid": bill_id,
             "productid": product_id,
             "quantity": quantity,
             "price": unit_price,
             "total": item_total,
+            "tax_percentage": line_tax,
             "created_at": now,
             "updated_at": now,
         }
 
         try:
-            item_response = supabase.table("billitems").insert(bill_item_data).execute()
+            from utils.billitem_tax import insert_billitems
+            item_response = insert_billitems([bill_item_data], supabase)
             _ = item_response
             bill_items_created.append(product_id)
 

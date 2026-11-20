@@ -997,6 +997,9 @@ def revise_bill(bill_id):
         supabase.table("billitems").delete().eq("billid", bill_id).execute()
 
         now = datetime.now(timezone.utc).isoformat()
+        from utils.billitem_tax import current_taxes, insert_billitems
+        today_tax = current_taxes(
+            (item.get("product_id") or item.get("productId") for item in new_items), supabase)
         insert_rows = []
         valid_source_items = []
         for item in new_items:
@@ -1013,6 +1016,11 @@ def revise_bill(bill_id):
                     "quantity": quantity,
                     "price": unit_price,
                     "total": item_total,
+                    "tax_percentage": (
+                        float(item.get("tax_percentage", item.get("taxPercentage")))
+                        if item.get("tax_percentage", item.get("taxPercentage")) is not None
+                        else today_tax.get(str(product_id))
+                    ),
                     "created_at": now,
                     "updated_at": now,
                 }
@@ -1022,7 +1030,7 @@ def revise_bill(bill_id):
         if not insert_rows:
             return jsonify({"message": "No valid items found for revision"}), 400
 
-        supabase.table("billitems").insert(insert_rows).execute()
+        insert_billitems(insert_rows, supabase)
         product_map = _fetch_product_meta_map(
             supabase,
             [row.get("productid") for row in insert_rows],

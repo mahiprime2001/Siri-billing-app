@@ -105,8 +105,10 @@ export default function ReturnsDialog({
 
   const getItemUnitPriceWithTax = (item: BillItem, bill?: Bill) => {
     const base = Number(item.price || 0)
-    const itemTax = Number(item.taxPercentage || 0)
-    const taxPct = itemTax > 0 ? itemTax : getBillTaxPercentage(bill)
+    // The server sends the rate the line was billed with (0 is a real answer: e.g. a product that had no tax then).
+    // Only an old server that sends nothing falls back to the guess from the bill total.
+    const sent = item.taxPercentage
+    const taxPct = sent !== undefined && sent !== null && Number.isFinite(Number(sent)) ? Number(sent) : getBillTaxPercentage(bill)
     return Math.round(base * (1 + taxPct / 100) * 100) / 100
   }
 

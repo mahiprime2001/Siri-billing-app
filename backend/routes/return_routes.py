@@ -201,11 +201,22 @@ def search_bills():
 
             customer_data = bill.get('customers') or {}
 
+            # The tax rate AT THE SALE (saved on the line, or worked out from what the bill charged), never just
+            # today's rate: a product that got its HSN after the sale otherwise gives a wrong replacement credit.
+            from utils.billitem_tax import sale_taxes
+
+            def _today_tax(row):
+                hsn = (row.get('products') or {}).get('hsn_codes') or {}
+                if isinstance(hsn, list):
+                    hsn = hsn[0] if hsn else {}
+                return float(hsn.get('tax', 0) or 0)
+
+            rates = sale_taxes(bill, [{'price': r.get('price'), 'quantity': r.get('quantity'),
+                                       'saved_tax': r.get('tax_percentage'), 'current_tax': _today_tax(r)}
+                                      for r in bill_items])
             transformed_items = []
-            for item in bill_items:
+            for item, tax_percentage in zip(bill_items, rates):
                 product = item.get('products') or {}
-                hsn = product.get('hsn_codes') or {}
-                tax_percentage = float(hsn.get('tax', 0) or 0)
                 transformed_items.append({
                     'productId': item.get('productid', ''),
                     'productName': product.get('name', 'Unknown Product'),
