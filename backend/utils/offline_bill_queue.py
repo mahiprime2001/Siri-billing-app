@@ -201,6 +201,22 @@ def _apply_local_inventory_reduction(payload: Dict[str, Any]):
     write_json_file(PRODUCTS_FILE, products)
 
 
+def remember_bill_locally(current_user_id: str, payload: Dict[str, Any], bill_id: str):
+    """Keep a bill that was saved through siri-api in this PC's local bill list too (the old path always did).
+
+    The bill numbers handed out while OFFLINE come from that local list. Without this, after an internet cut the PC
+    "forgot" today's online bills and numbered the next offline bill 0001 again: the customer's receipt then showed a
+    number that already belonged to another bill (siri-api saved it under a new number). Best effort, never raises."""
+    if not bill_id:
+        return
+    try:
+        with _queue_lock:
+            _persist_local_offline_bill_snapshot(current_user_id, payload, bill_id)
+    except Exception as e:  # noqa: BLE001
+        import logging
+        logging.getLogger("main").warning("could not keep bill %s in the local bill list: %s", bill_id, e)
+
+
 def _persist_local_offline_bill_snapshot(current_user_id: str, payload: Dict[str, Any], forced_bill_id: str):
     _upsert_local_bill_snapshot(current_user_id=current_user_id, payload=payload, forced_bill_id=forced_bill_id)
     _upsert_local_billitems_snapshot(payload=payload, forced_bill_id=forced_bill_id)

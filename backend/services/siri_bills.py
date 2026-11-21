@@ -70,9 +70,15 @@ def _min_serial_hint(data: Dict[str, Any]) -> int:
         return 0
 
 
-def _after_created(data: Dict[str, Any], bill_id: str, snapshots) -> None:
+def _after_created(data: Dict[str, Any], bill_id: str, snapshots, user_id: Optional[str] = None) -> None:
     """The small local follow-ups a saved bill needs on this PC (all best effort, none may fail the sale)."""
     store_id = str(data.get("store_id") or "")
+    try:
+        # the local bill list is where OFFLINE bill numbers come from: it must know today's online bills too
+        from utils.offline_bill_queue import remember_bill_locally
+        remember_bill_locally(user_id or str(data.get("_user_id") or ""), data, bill_id)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("SIRI_API bill %s: could not keep it in the local bill list: %s", bill_id, e)
     try:
         if snapshots:
             from utils.bill_item_snapshot import replace_bill_item_snapshots
@@ -95,9 +101,9 @@ def _after_created(data: Dict[str, Any], bill_id: str, snapshots) -> None:
         logger.warning("SIRI_API bill %s: could not refresh the product cache: %s", bill_id, e)
 
 
-def _created(data: Dict[str, Any], body: Dict[str, Any], via: str) -> Dict[str, Any]:
+def _created(data: Dict[str, Any], body: Dict[str, Any], via: str, user_id: Optional[str] = None) -> Dict[str, Any]:
     bill_id = body.get("bill_id") or (body.get("bill") or {}).get("id")
-    _after_created(data, str(bill_id), body.get("item_snapshots"))
+    _after_created(data, str(bill_id), body.get("item_snapshots"), user_id)
     return {
         "queued": False, "message": body.get("message") or "Bill created successfully", "bill_id": bill_id,
         "bill": body.get("bill"), "items_created": body.get("items_created", len(data.get("items") or [])),
@@ -182,7 +188,7 @@ def _send_bill(api, current_user_id: str, data: Dict[str, Any]) -> Optional[Dict
     if resp.status in (200, 201) and resp.error is None:
         body = resp.json() if isinstance(resp.json(), dict) else {}
         logger.info("SIRI_API bill created bill=%s ms=%s", body.get("bill_id"), resp.elapsed_ms)
-        return _created(data, body, "siri-api")
+        return _created(data, body, "siri-api", current_user_id)
     if resp.status == 401:
         return None                                    # siri-api never saw the sale: the old path can make it
     if resp.error is None and 400 <= resp.status < 500:
@@ -196,7 +202,7 @@ def _send_bill(api, current_user_id: str, data: Dict[str, Any]) -> Optional[Dict
     if found:
         logger.info("SIRI_API the sale had been saved: bill=%s", found.get("bill_id"))
         return _created(data, {"bill_id": found.get("bill_id"), "bill": found.get("bill"),
-                               "message": "Bill already processed", "idempotent_replay": True}, "siri-api")
+                               "message": "Bill already processed", "idempotent_replay": True}, "siri-api", current_user_id)
     raise SiriBillUnsure(resp.error or f"HTTP {resp.status}")
 
 
@@ -227,6 +233,12 @@ def replay_queued_bill(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if resp.status in (200, 201) and resp.error is None:
         body = resp.json() if isinstance(resp.json(), dict) else {}
         made = body.get("bill_id")
+        if made:
+            try:                                       # so the next offline bill number counts this one too
+                from utils.offline_bill_queue import remember_bill_locally
+                remember_bill_locally(str(user_id or ""), payload, made)
+            except Exception:  # noqa: BLE001
+                pass
         if made and forced and made != forced:
             # siri-api already had this sale under another number (its first, online attempt landed). The receipt the
             # customer holds shows `forced`. No second bill was made; worth a person's eye.
