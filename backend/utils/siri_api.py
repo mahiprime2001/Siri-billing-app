@@ -43,7 +43,7 @@ SWITCH_TIMEOUT = 3.0
 SWITCH_REFRESH_SECONDS = 120      # how long the switches are trusted before asking again
 SWITCH_RETRY_SECONDS = 30         # after a failed ask, wait this long before asking again
 SWITCH_MAX_AGE_SECONDS = 24 * 3600  # a remembered answer older than this is not trusted
-GROUPS = ("reads", "bills_read", "bills_write", "returns", "transfers", "discounts", "small_writes")
+GROUPS = ("reads", "bills_read", "bills_write", "returns", "transfers", "discounts", "small_writes", "auth", "sync")
 # Error kinds (the exception's class name) that mean the request never reached siri-api.
 _NOT_SENT_ERRORS = ("ConnectError", "ConnectTimeout", "PoolTimeout", "UnsupportedProtocol", "InvalidURL", "ProxyError",
                     "no siri-api session", "no replay pass for this cashier")
@@ -224,9 +224,24 @@ class SiriApi:
 
     def login(self, email: str, password: str) -> bool:
         """Log in to siri-api and remember the token + replay passes. False when it did not work (never raises)."""
-        resp = self._send("POST", "/api/auth/login", token=None, json_body={"email": email, "password": password},
-                          timeout=LOGIN_TIMEOUT)
+        return self.login_verdict(email, password)[0] == "ok"
+
+    def login_verdict(self, email: str, password: str):
+        """Log in to siri-api and say how it went (never raises):
+             ("ok", user)          siri-api accepted the password (token + replay passes remembered);
+                                   user = {"id", "name", "email", "role"}
+             ("refused", None)     siri-api answered: wrong email or password
+             ("unreachable", None) no answer / a server fault: nothing is known about the password"""
+        try:
+            resp = self._send("POST", "/api/auth/login", token=None, json_body={"email": email, "password": password},
+                              timeout=LOGIN_TIMEOUT)
+        except Exception as e:  # noqa: BLE001
+            logger.info("SIRI_API login not done error=%s", e)
+            return ("unreachable", None)
         body = resp.json() if resp.error is None else None
+        if resp.error is None and resp.status in (400, 401, 403):
+            logger.info("SIRI_API login refused status=%s ms=%d", resp.status, resp.elapsed_ms)
+            return ("refused", None)
         if resp.status == 200 and isinstance(body, dict) and body.get("access_token"):
             user = body.get("user") if isinstance(body.get("user"), dict) else {}
             # A replay pass belongs to the cashier who logged in. Keep every cashier's passes (not only the latest),
@@ -244,9 +259,10 @@ class SiriApi:
                 self._switch_cache = None
             logger.info("SIRI_API login ok user=%s stores=%s replay_passes=%d ms=%d", user.get("id"), session["store_ids"],
                         len(session["replay_tokens"]), resp.elapsed_ms)
-            return True
+            return ("ok", {"id": user.get("id"), "name": user.get("name"), "email": user.get("email") or email,
+                           "role": body.get("user_role") or user.get("role")})
         logger.info("SIRI_API login not done status=%s error=%s ms=%d", resp.status, resp.error, resp.elapsed_ms)
-        return False
+        return ("unreachable", None)
 
     def login_in_background(self, email: str, password: str) -> None:
         """Fire and forget: the cashier's own login must never wait for, or fail because of, siri-api."""

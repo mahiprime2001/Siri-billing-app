@@ -302,15 +302,44 @@ class SyncController:
                       'Inventory_Transfer_Scans', 'Inventory_Transfer_Verifications',
                       'Damaged_Inventory_Events', 'Store_Damage_Returns']
 
+        # With the "sync" switch on, the copy comes from siri-api: only this store's data, and never a password.
+        # (Until the lockdown, a table siri-api cannot give right now still comes the old way.)
+        siri = None
         try:
-            supabase = get_supabase_client()
-            if not supabase:
-                logger.error("No Supabase client available at pull_sync start")
-                results['errors'].append('Failed to get Supabase client')
-                return results
+            from utils.siri_api import get_client as _siri_client
+            if _siri_client().enabled("sync"):
+                siri = _siri_client()
+        except Exception:  # noqa: BLE001
+            siri = None
+
+        try:
+            supabase = None
+            if siri is None:
+                supabase = get_supabase_client()
+                if not supabase:
+                    logger.error("No Supabase client available at pull_sync start")
+                    results['errors'].append('Failed to get Supabase client')
+                    return results
 
             for table_name in tables:
                 logger.debug(f"Pull syncing table {table_name}")
+                if siri is not None:
+                    resp = siri.request("GET", f"/api/store/sync/{table_name}",
+                                        params={"since": last_sync} if last_sync else None, timeout=90)
+                    body = resp.json() if resp.error is None and resp.status == 200 else None
+                    if isinstance(body, dict) and isinstance(body.get("rows"), list):
+                        results['data'][table_name] = body["rows"]
+                        if body.get("sync_timestamp"):
+                            results['sync_timestamp'] = body["sync_timestamp"]
+                        logger.info(f"SIRI_API ok group=sync GET /api/store/sync/{table_name} rows={len(body['rows'])} ms={resp.elapsed_ms}")
+                        continue
+                    logger.warning(f"SIRI_API FALLBACK group=sync GET /api/store/sync/{table_name} status={resp.status} "
+                                   f"error={resp.error} ms={resp.elapsed_ms}")
+                    if supabase is None:
+                        supabase = get_supabase_client()
+                    if not supabase:
+                        results['errors'].append(f"{table_name}: siri-api and the database both unavailable")
+                        continue
                 try:
                     query = supabase.from_(table_name.lower()).select("*")
 

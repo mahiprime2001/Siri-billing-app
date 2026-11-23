@@ -40,6 +40,27 @@ _background_started = False
 _background_lock = threading.Lock()
 
 
+def _siri_sync_on() -> bool:
+    """The background copy comes from siri-api ("sync" switch on): the database itself is not probed."""
+    try:
+        from utils.siri_api import get_client
+        return get_client().enabled("sync")
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _record_key(record):
+    """How a row is recognised when merging: its id, or (returns) s_no, or (store links) user + store."""
+    if record.get('id') is not None:
+        return record.get('id')
+    if record.get('s_no') is not None:
+        return f"s_no:{record.get('s_no')}"
+    user, store = record.get('userId') or record.get('userid'), record.get('storeId') or record.get('storeid')
+    if user and store:
+        return f"{user}|{store}"
+    return None
+
+
 def _is_supabase_reachable(app: Flask) -> bool:
     try:
         # Force a reconnect/probe attempt each scheduler cycle.
@@ -102,7 +123,7 @@ def background_pull_sync_scheduler(app: Flask, interval_minutes=5):
         while True:
             app.logger.info(f"Background pull sync starting. Next sync in {interval_minutes} minutes.")
             try:
-                if not _is_supabase_reachable(app):
+                if not (_siri_sync_on() or _is_supabase_reachable(app)):
                     time.sleep(interval_minutes * 60)
                     continue
 
@@ -133,13 +154,14 @@ def background_pull_sync_scheduler(app: Flask, interval_minutes=5):
                             
                             # Convert existing_data to a dictionary for easier merging by ID
                             if isinstance(existing_data, list):
-                                existing_data_map = {record.get('id'): record for record in existing_data if record.get('id')}
+                                existing_data_map = {_record_key(record): record for record in existing_data
+                                                     if isinstance(record, dict) and _record_key(record) is not None}
                             else:  # For SystemSettings, it's an object
                                 existing_data_map = {existing_data.get('id'): existing_data} if existing_data.get('id') else {}
                             
                             # Merge new/updated records
                             for record in pulled_records:
-                                record_id = record.get('id')
+                                record_id = _record_key(record)
                                 if record_id:
                                     existing_data_map[record_id] = record
                             
@@ -149,6 +171,10 @@ def background_pull_sync_scheduler(app: Flask, interval_minutes=5):
                             else:
                                 merged_data = list(existing_data_map.values())[0] if existing_data_map else {}
                             
+                            if table_name == 'Users' and _siri_sync_on():
+                                # siri-api never sends passwords; drop the plain-text ones older copies left behind
+                                merged_data = [{k: v for k, v in u.items() if k != 'password'} for u in merged_data
+                                               if isinstance(u, dict)]
                             write_json_file(file_path, merged_data)
                             app.logger.info(f"Merged and updated {file_path} for {table_name}.")
                         else:

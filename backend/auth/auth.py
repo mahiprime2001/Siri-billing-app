@@ -29,6 +29,24 @@ def require_auth(f):
         # every route, since require_auth gates almost all of them. A DB/
         # network failure here must degrade like the existing offline-
         # fallback path already does, not masquerade as an auth failure.
+        # With the "auth" switch on the check is local (no database call on every request): the people of this
+        # store from the background copy, plus everyone siri-api has accepted on this PC.
+        try:
+            from utils.siri_api import get_client as _siri
+            if _siri().switch_on("auth"):
+                from helpers.utils import read_json_file
+                from config.config import USERS_FILE
+                from utils.offline_credentials import known_user_ids
+                users = read_json_file(USERS_FILE, [])
+                known = {str(u.get("id")) for u in users if isinstance(u, dict)} | known_user_ids()
+                if known and str(user_id) not in known:
+                    app.logger.warning(f"User {user_id} is not a person of this store (auth via siri-api)")
+                    return jsonify({"message": "User not found"}), 404
+                return f(*args, **kwargs)
+        except Exception as e:  # noqa: BLE001 - never lock a signed-in cashier out over this check
+            app.logger.warning(f"Local user check failed for {user_id}: {e}; trusting the JWT")
+            return f(*args, **kwargs)
+
         try:
             supabase = get_supabase_client()
             response = supabase.table('users').select('id').eq('id', user_id).execute()
