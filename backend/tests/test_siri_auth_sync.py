@@ -193,6 +193,16 @@ class SyncTests(AuthBase):
         self.controller.pull_sync(last_sync=None, tables=["Users"])
         self.assertTrue(self.old_db_asked())
 
+    def test_old_plain_text_passwords_are_removed_from_the_local_user_list(self):
+        import json
+        from background_tasks import background_tasks as bt
+        path = os.path.join(self.json_dir, "users.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump([{"id": "cashier-1", "password": "pw"}, {"id": "cashier-2"}], f)
+        bt._drop_local_passwords(path)
+        with open(path, encoding="utf-8") as f:
+            self.assertEqual(json.load(f), [{"id": "cashier-1"}, {"id": "cashier-2"}])
+
     def test_a_table_siri_api_cannot_give_still_comes_the_old_way(self):
         self.turn_on(sync=True)
         self.siri.routes[("GET", "/api/store/sync/Bills")] = (503, {"code": "database_unavailable"})

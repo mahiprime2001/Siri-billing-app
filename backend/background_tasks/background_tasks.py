@@ -49,6 +49,17 @@ def _siri_sync_on() -> bool:
         return False
 
 
+def _drop_local_passwords(file_path):
+    """With the background copy coming from siri-api, no password is kept on this PC: remove the plain-text ones an
+    older copy left behind (every cycle, so it also happens when nothing new arrived)."""
+    try:
+        users = read_json_file(file_path, default_value=[])
+        if isinstance(users, list) and any(isinstance(u, dict) and 'password' in u for u in users):
+            write_json_file(file_path, [{k: v for k, v in u.items() if k != 'password'} for u in users if isinstance(u, dict)])
+    except Exception:  # noqa: BLE001 - tried again next cycle
+        pass
+
+
 def _record_key(record):
     """How a row is recognised when merging: its id, or (returns) s_no, or (store links) user + store."""
     if record.get('id') is not None:
@@ -180,6 +191,8 @@ def background_pull_sync_scheduler(app: Flask, interval_minutes=5):
                         else:
                             app.logger.info(f"No new records for {table_name} during delta pull.")
                         
+                        if table_name == 'Users' and _siri_sync_on():
+                            _drop_local_passwords(file_path)
                         # Update last sync timestamp for this table
                         last_sync_timestamps[table_name] = result['sync_timestamp']
                     else:

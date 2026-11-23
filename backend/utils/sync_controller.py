@@ -305,6 +305,7 @@ class SyncController:
         # With the "sync" switch on, the copy comes from siri-api: only this store's data, and never a password.
         # (Until the lockdown, a table siri-api cannot give right now still comes the old way.)
         siri = None
+        app_log = logging.getLogger("main")              # the app's own log file (the one shipped to siri-api)
         try:
             from utils.siri_api import get_client as _siri_client
             if _siri_client().enabled("sync"):
@@ -331,9 +332,9 @@ class SyncController:
                         results['data'][table_name] = body["rows"]
                         if body.get("sync_timestamp"):
                             results['sync_timestamp'] = body["sync_timestamp"]
-                        logger.info(f"SIRI_API ok group=sync GET /api/store/sync/{table_name} rows={len(body['rows'])} ms={resp.elapsed_ms}")
+                        app_log.info(f"SIRI_API ok group=sync GET /api/store/sync/{table_name} rows={len(body['rows'])} ms={resp.elapsed_ms}")
                         continue
-                    logger.warning(f"SIRI_API FALLBACK group=sync GET /api/store/sync/{table_name} status={resp.status} "
+                    app_log.warning(f"SIRI_API FALLBACK group=sync GET /api/store/sync/{table_name} status={resp.status} "
                                    f"error={resp.error} ms={resp.elapsed_ms}")
                     if supabase is None:
                         supabase = get_supabase_client()
