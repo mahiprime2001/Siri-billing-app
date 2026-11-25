@@ -45,4 +45,5 @@ tokio = { version = "1", features = ["net", "rt-multi-thread", "macros", "time"]
 # Checking offline logins against the scrambled copies (PBKDF2-HMAC-SHA256), Rust offline mode piece 2.
 hmac = "0.12"
 sha2 = "0.10"
+sha1 = "0.10"
 hex = "0.4"

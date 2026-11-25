@@ -404,8 +404,9 @@ pub fn start_replay(python_dir: std::path::PathBuf, api_base: &'static str) {
         thread::sleep(REPLAY_EVERY);
         if crate::offline_answers::is_online() {
             if let Some(db) = crate::shadow::database() {
-                replay_once(db, &python_dir, api_base);
+                // the other actions first: a bill made offline may name a customer added offline
                 crate::offline_actions::replay_once(db, &python_dir, api_base);
+                replay_once(db, &python_dir, api_base);
             }
         }
     });

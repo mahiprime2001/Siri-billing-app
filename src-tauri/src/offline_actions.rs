@@ -285,6 +285,202 @@ pub fn transfer_batch(db: &OfflineDb, user_id: &str, data: &Value, now: chrono::
     })
 }
 
+// ------------------------------------------------------------------------------------------------ customer returns,
+// customers, notifications (siri-api replay routes added for these: siri-api 781b28d)
+
+pub const CUSTOMER_RETURN: &str = "customer_return";
+pub const CUSTOMER_NEW: &str = "customer_new";
+pub const CUSTOMER_EDIT: &str = "customer_edit";
+pub const NOTE_READ: &str = "notification_read";
+pub const NOTE_READ_ALL: &str = "notifications_read_all";
+
+fn sha1_hex(text: &str) -> String {
+    use sha1::{Digest, Sha1};
+    hex::encode(Sha1::digest(text.as_bytes()))
+}
+
+/// The id siri-api gives line `index` of a queued customer return (routes/store_returns.py _derived_id).
+pub fn derived_return_id(user_id: &str, request_id: &str, index: usize) -> String {
+    format!("RET-{}", sha1_hex(&format!("{user_id}:{request_id}:{index}"))[..12].to_uppercase())
+}
+
+/// The id siri-api gives a customer added offline (routes/store_reads.py queued_customer_id).
+pub fn derived_customer_id(user_id: &str, request_id: &str) -> String {
+    format!("CUST-{}", &sha1_hex(&format!("{user_id}:{request_id}"))[..12])
+}
+
+fn request_id_of(tx: &Connection, data: &Value, prefix: &str) -> rusqlite::Result<String> {
+    let given = text(data, &["_client_request_id", "clientRequestId"]);
+    if !given.is_empty() {
+        return Ok(given);
+    }
+    Ok(format!("{prefix}-{}", random_hex(tx, 8)?.to_lowercase()))
+}
+
+/// POST /api/returns/submit with no internet (a customer bringing items back). siri-api checks the bill and the
+/// quantities when it is sent; a "no" then is kept for a person.
+pub fn customer_return(db: &OfflineDb, user_id: &str, data: &Value, now: chrono::DateTime<Utc>) -> rusqlite::Result<(u16, Value)> {
+    let selected = data.get("selectedItems").and_then(Value::as_array).cloned().unwrap_or_default();
+    if selected.is_empty() || text(data, &["returnReason"]).is_empty() {
+        return Ok(bad("Missing required fields"));
+    }
+    for item in &selected {
+        let id = text(item, &["id"]);
+        let ok = id.rsplit_once('-').map(|(bill, n)| !bill.is_empty() && !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+            .unwrap_or(false);
+        if !ok {
+            return Ok(bad(&format!("Unknown item {id}")));
+        }
+    }
+    let Some(store_id) = crate::offline_bills::store_of(db, user_id) else { return Ok(no_store()) };
+    db.with_conn(|c| {
+        let tx = c.transaction()?;
+        let request_id = request_id_of(&tx, data, "cr")?;
+        let body = json!({
+            "selectedItems": selected, "returnReason": text(data, &["returnReason"]),
+            "refundMethod": data.get("refundMethod").cloned().unwrap_or(json!("cash")), "_client_request_id": request_id,
+        });
+        let answer = json!({
+            "message": "Return request saved on this computer; it will be sent when the internet is back",
+            "returnId": derived_return_id(user_id, &request_id, 0), "count": selected.len(), "queued": true,
+            "queue_id": format!("QCR-{}", random_hex(&tx, 6)?.to_lowercase()),
+        });
+        let kept = save(&tx, CUSTOMER_RETURN, &request_id, user_id, &store_id, "", &body, &answer, now)?;
+        tx.commit()?;
+        Ok((202, kept))
+    })
+}
+
+/// POST /api/customers with no internet: the customer gets the id siri-api will give it.
+pub fn customer_new(db: &OfflineDb, user_id: &str, data: &Value, now: chrono::DateTime<Utc>) -> rusqlite::Result<(u16, Value)> {
+    if text(data, &["name"]).is_empty() && text(data, &["phone"]).is_empty() {
+        return Ok(bad("Either customer name or phone is required"));
+    }
+    let store_id = crate::offline_bills::store_of(db, user_id).unwrap_or_default();
+    let when = iso(now);
+    db.with_conn(|c| {
+        let tx = c.transaction()?;
+        let request_id = request_id_of(&tx, data, "cn")?;
+        let field = |k: &str, default: &str| data.get(k).cloned().filter(|v| !v.is_null()).unwrap_or(json!(default));
+        let row = json!({
+            "id": derived_customer_id(user_id, &request_id), "name": field("name", "Walk-in Customer"),
+            "phone": field("phone", ""), "email": field("email", ""), "address": field("address", ""),
+            "createdat": when, "updatedat": when, "queued": true,
+            "queue_id": format!("QCN-{}", random_hex(&tx, 6)?.to_lowercase()),
+        });
+        let mut body = json!({"name": row["name"], "phone": row["phone"], "email": row["email"], "address": row["address"]});
+        body["_client_request_id"] = json!(request_id);
+        let kept = save(&tx, CUSTOMER_NEW, &request_id, user_id, &store_id, "", &body, &row, now)?;
+        tx.commit()?;
+        Ok((201, kept))
+    })
+}
+
+/// The customer as this PC knows it: copied from siri-api, or added offline and not sent yet.
+fn known_customer(db: &OfflineDb, customer_id: &str) -> Option<Value> {
+    db.records("Customers").ok().unwrap_or_default().into_iter()
+        .find(|c| c.get("id").and_then(Value::as_str) == Some(customer_id))
+        .or_else(|| db.with_conn(|c| c.query_row(
+            "SELECT answer FROM offline_actions WHERE kind = ?1 AND json_extract(answer, '$.id') = ?2",
+            params![CUSTOMER_NEW, customer_id], |r| r.get::<_, String>(0)).optional()).ok().flatten()
+            .and_then(|a| serde_json::from_str(&a).ok()))
+}
+
+/// PUT /api/customers/<id> with no internet (same version rule as online: a clash shows when it is sent).
+pub fn customer_edit(db: &OfflineDb, user_id: &str, customer_id: &str, data: &Value, now: chrono::DateTime<Utc>)
+                     -> rusqlite::Result<(u16, Value)> {
+    let mut changes = serde_json::Map::new();
+    for k in ["name", "phone", "email", "address"] {
+        if let Some(v) = data.get(k) {
+            changes.insert(k.to_string(), v.clone());
+        }
+    }
+    if changes.is_empty() {
+        return Ok(bad("No valid fields to update"));
+    }
+    let base_version = data.get("baseVersion").or_else(|| data.get("base_version")).filter(|v| !v.is_null()).cloned();
+    let base_updated = text(data, &["baseUpdatedAt", "base_updated_at", "baseupdatedat"]);
+    if base_version.is_none() && base_updated.is_empty() {
+        return Ok((409, json!({"message": "Conflict check required. Send baseVersion or baseUpdatedAt.", "latest": Value::Null})));
+    }
+    let store_id = crate::offline_bills::store_of(db, user_id).unwrap_or_default();
+    let mut shown = known_customer(db, customer_id).unwrap_or_else(|| json!({"id": customer_id}));
+    db.with_conn(|c| {
+        let tx = c.transaction()?;
+        let request_id = format!("ce-{}", random_hex(&tx, 8)?.to_lowercase());
+        let mut body = Value::Object(changes.clone());
+        if let Some(v) = &base_version {
+            body["baseVersion"] = v.clone();
+        } else {
+            body["baseUpdatedAt"] = json!(base_updated);
+        }
+        for (k, v) in &changes {
+            shown[k] = v.clone();
+        }
+        shown["updatedat"] = json!(iso(now));
+        if let Some(n) = base_version.as_ref().and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse().ok()))) {
+            shown["version"] = json!(n + 1);
+        }
+        shown["queued"] = json!(true);
+        shown["queue_id"] = json!(format!("QCE-{}", random_hex(&tx, 6)?.to_lowercase()));
+        let kept = save(&tx, CUSTOMER_EDIT, &request_id, user_id, &store_id, customer_id, &body, &shown, now)?;
+        tx.commit()?;
+        Ok((200, kept))
+    })
+}
+
+/// POST /api/notifications/<id>/read (or read-all with `id` None) with no internet.
+pub fn notification_read(db: &OfflineDb, user_id: &str, id: Option<i64>, now: chrono::DateTime<Utc>) -> rusqlite::Result<(u16, Value)> {
+    let Some(store_id) = crate::offline_bills::store_of(db, user_id) else { return Ok(no_store()) };
+    db.with_conn(|c| {
+        let tx = c.transaction()?;
+        let (kind, request_id, target, answer) = match id {
+            Some(n) => (NOTE_READ, format!("read-{store_id}-{n}"), n.to_string(),
+                        json!({"id": n, "is_read": true, "queued": true})),
+            None => (NOTE_READ_ALL, format!("read-all-{}", random_hex(&tx, 6)?.to_lowercase()), String::new(),
+                     json!({"message": "All notifications marked as read", "updated": 0, "queued": true})),
+        };
+        let mut answer = answer;
+        answer["queue_id"] = json!(format!("QNR-{}", random_hex(&tx, 6)?.to_lowercase()));
+        let kept = save(&tx, kind, &request_id, user_id, &store_id, &target, &json!({}), &answer, now)?;
+        tx.commit()?;
+        Ok((200, kept))
+    })
+}
+
+/// The customer list (GET /api/customers) with customers added offline in front and offline edits shown.
+pub fn merge_customers(db: &OfflineDb, body: &[u8]) -> Vec<u8> {
+    let Ok(Value::Array(mut list)) = serde_json::from_slice::<Value>(body) else { return body.to_vec() };
+    let pending: Vec<(String, Value)> = db.with_conn(|c| {
+        let mut stmt = c.prepare(
+            "SELECT kind, answer FROM offline_actions WHERE kind IN (?1, ?2) AND status IN ('queued', 'needs_attention')
+             ORDER BY created_at, rowid")?;
+        let rows = stmt.query_map(params![CUSTOMER_NEW, CUSTOMER_EDIT], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        Ok(rows.flatten().map(|(k, a)| (k, serde_json::from_str(&a).unwrap_or(Value::Null))).collect())
+    }).unwrap_or_default();
+    if pending.is_empty() {
+        return body.to_vec();
+    }
+    let mut added = Vec::new();
+    for (kind, row) in pending {
+        let id = row.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+        if let Some(have) = list.iter_mut().chain(added.iter_mut()).find(|c| c.get("id").and_then(Value::as_str) == Some(id.as_str())) {
+            if kind == CUSTOMER_EDIT {
+                for k in ["name", "phone", "email", "address", "updatedat", "version"] {
+                    if let Some(v) = row.get(k) {
+                        have[k] = v.clone();
+                    }
+                }
+            }
+        } else if kind == CUSTOMER_NEW {
+            added.push(row);
+        }
+    }
+    added.reverse();
+    added.extend(list);
+    serde_json::to_vec(&added).unwrap_or_else(|_| body.to_vec())
+}
+
 // ------------------------------------------------------------------------------------------------ lists and stock
 
 /// (kept answer, status) of every action of `kind` at `store_id` not sent yet, newest first.
@@ -414,6 +610,11 @@ fn replay_path(kind: &str, target: &str) -> Option<String> {
         RETURN_ORDER => Some("/api/store/replay/return-orders".into()),
         TRANSFER if !target.is_empty() =>
             Some(format!("/api/store/replay/transfer-orders/{}/verify", urlencoding::encode(target))),
+        CUSTOMER_RETURN => Some("/api/store/replay/returns/submit".into()),
+        CUSTOMER_NEW => Some("/api/store/replay/customers".into()),
+        CUSTOMER_EDIT if !target.is_empty() => Some(format!("/api/store/replay/customers/{}", urlencoding::encode(target))),
+        NOTE_READ if !target.is_empty() => Some(format!("/api/store/replay/notifications/{}/read", urlencoding::encode(target))),
+        NOTE_READ_ALL => Some("/api/store/replay/notifications/read-all".into()),
         _ => None,
     }
 }
@@ -456,7 +657,8 @@ pub fn replay_once(db: &OfflineDb, python_dir: &Path, api_base: &str) -> Vec<(St
                 // siri-api keeps its own id, derived from the request id (the same every time it is sent)
                 let answer: Value = r.json().unwrap_or(Value::Null);
                 let server = answer.pointer("/rows/0/id").or_else(|| answer.pointer("/return/return_id"))
-                    .or_else(|| answer.get("verification_session_id")).and_then(Value::as_str).map(str::to_string);
+                    .or_else(|| answer.get("verification_session_id")).or_else(|| answer.get("returnId"))
+                    .or_else(|| answer.get("id")).and_then(|v| v.as_str().map(str::to_string).or_else(|| v.as_i64().map(|n| n.to_string())));
                 set("sent", None);
                 let _ = db.with_conn(|c| c.execute("UPDATE offline_actions SET server_id = ?2 WHERE queue_id = ?1",
                                                    params![queue_id, server]));
@@ -465,6 +667,10 @@ pub fn replay_once(db: &OfflineDb, python_dir: &Path, api_base: &str) -> Vec<(St
             Ok(r) if r.status().as_u16() == 401 => {
                 outcomes.push((request_id, "replay pass refused: waiting for the next login".into()));
                 break;
+            }
+            Ok(r) if r.status().as_u16() == 404 && kind == NOTE_READ => {
+                set("sent", Some("notification no longer there: nothing to mark".into()));
+                outcomes.push((request_id, "sent".into()));
             }
             Ok(r) if r.status().is_client_error() => {
                 let code = r.status().as_u16();
@@ -656,6 +862,62 @@ mod tests {
         assert_eq!(status(&db)["waiting"], 2);
     }
 
+    #[test]
+    fn ids_match_what_siri_api_makes() {
+        // python: hashlib.sha1(b"cashier-1:req-r1:0").hexdigest()[:12].upper() and "CUST-" + sha1(b"cashier-1:cust-req-1")[:12]
+        use sha1::{Digest, Sha1};
+        let r = hex::encode(Sha1::digest(b"cashier-1:req-r1:0"));
+        assert_eq!(derived_return_id("cashier-1", "req-r1", 0), format!("RET-{}", r[..12].to_uppercase()));
+        let c = hex::encode(Sha1::digest(b"cashier-1:cust-req-1"));
+        assert_eq!(derived_customer_id("cashier-1", "cust-req-1"), format!("CUST-{}", &c[..12]));
+        assert_eq!(sha1_hex("abc"), "a9993e364706816aba3e25717850c26c9cd0d89d", "the standard SHA-1 test vector");
+    }
+
+    #[test]
+    fn customer_returns_customers_and_notifications_are_queued() {
+        let db = db();
+        assert_eq!(customer_return(&db, USER, &json!({"selectedItems": [{"id": "INV-1-0"}]}), now()).unwrap().1["message"],
+                   "Missing required fields");
+        assert_eq!(customer_return(&db, USER, &json!({"selectedItems": [{"id": "INV1"}], "returnReason": "x"}), now()).unwrap().0, 400);
+        let ret = json!({"selectedItems": [{"id": "INV-NLR-251120260001-0", "quantity": 1}], "returnReason": "Too small",
+                         "searchResults": [{"big": "list"}], "_client_request_id": "req-r1"});
+        let (code, a) = customer_return(&db, USER, &ret, now()).unwrap();
+        assert_eq!(code, 202);
+        assert_eq!(a["returnId"], derived_return_id(USER, "req-r1", 0));
+        let sent = &bodies(&db, CUSTOMER_RETURN)[0];
+        assert!(sent.get("searchResults").is_none(), "only what siri-api reads is kept");
+        assert_eq!(sent["refundMethod"], "cash");
+
+        assert_eq!(customer_new(&db, USER, &json!({"email": "a@b"}), now()).unwrap().0, 400);
+        let (code, made) = customer_new(&db, USER, &json!({"name": "Kavya", "phone": "777"}), now()).unwrap();
+        assert_eq!(code, 201);
+        let cid = made["id"].as_str().unwrap().to_string();
+        let req = bodies(&db, CUSTOMER_NEW)[0]["_client_request_id"].as_str().unwrap().to_string();
+        assert_eq!(cid, derived_customer_id(USER, &req), "the PC shows the id siri-api will give it");
+
+        db.upsert_records("Customers", &[json!({"id": "c1", "name": "Anu", "phone": "1", "version": 3})], "t").unwrap();
+        assert_eq!(customer_edit(&db, USER, "c1", &json!({"name": "Anu R"}), now()).unwrap().0, 409, "needs the version seen");
+        let (code, edited) = customer_edit(&db, USER, "c1", &json!({"name": "Anu R", "baseVersion": 3}), now()).unwrap();
+        assert_eq!((code, edited["name"].clone(), edited["version"].clone(), edited["phone"].clone()),
+                   (200, json!("Anu R"), json!(4), json!("1")));
+        let (_, edited_new) = customer_edit(&db, USER, &cid, &json!({"phone": "778", "baseVersion": 1}), now()).unwrap();
+        assert_eq!(edited_new["name"], "Kavya", "an offline-added customer can be edited offline too");
+
+        let list: Value = serde_json::from_slice(&merge_customers(&db, br#"[{"id":"c1","name":"Anu","version":3}]"#)).unwrap();
+        assert_eq!(list[0]["id"], cid.as_str());
+        assert_eq!(list[0]["phone"], "778");
+        assert_eq!(list[1]["name"], "Anu R");
+        assert_eq!(list.as_array().unwrap().len(), 2);
+
+        let (_, n1) = notification_read(&db, USER, Some(5), now()).unwrap();
+        let (_, n2) = notification_read(&db, USER, Some(5), now()).unwrap();
+        assert_eq!(n1["queue_id"], n2["queue_id"], "the same notification twice is one entry");
+        notification_read(&db, USER, None, now()).unwrap();
+        assert_eq!(replay_path(NOTE_READ, "5").unwrap(), "/api/store/replay/notifications/5/read");
+        assert_eq!(replay_path(CUSTOMER_EDIT, "c1").unwrap(), "/api/store/replay/customers/c1");
+        assert_eq!(status(&db)["waiting"], 6, "1 return + 1 new customer + 2 edits + 1 read (twice = once) + 1 read-all");
+    }
+
     /// A stand-in for siri-api's three replay routes.
     async fn fake_replay(seen: Arc<Mutex<Vec<(String, Value)>>>, answer: Arc<Mutex<(u16, Value)>>) -> String {
         let note = |seen: Arc<Mutex<Vec<(String, Value)>>>, answer: Arc<Mutex<(u16, Value)>>, path: String, headers: HeaderMap, body: Value| {
@@ -767,5 +1029,58 @@ mod live {
         let resend = replay_once(&db, Path::new(&py), &api);
         println!("resend: {resend:?}");
         assert!(resend.iter().all(|(_, o)| o == "sent"), "{resend:?}");
+    }
+}
+
+#[cfg(test)]
+mod live_more {
+    //! Piece 5 part 2 live test (test store only): a bill made offline, a customer return against it, a customer
+    //! added then edited offline, one notification marked read; all sent twice. Same env as `live`, plus
+    //! SIRI_LIVE_NOTIFICATION (an id of the test store's notifications, or 0 to skip).
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn customer_return_customer_and_notification_go_through_the_real_replay_routes_once() {
+        let env = |k: &str| std::env::var(k).unwrap_or_else(|_| panic!("{k} not set"));
+        let (api, py, store, user, product) =
+            (env("SIRI_LIVE_API"), env("SIRI_LIVE_PYDATA"), env("SIRI_LIVE_STORE"), env("SIRI_LIVE_USER"), env("SIRI_LIVE_PRODUCT"));
+        let note: i64 = env("SIRI_LIVE_NOTIFICATION").parse().unwrap();
+        let py = Path::new(&py);
+        let db = OfflineDb::open_in_memory().unwrap();
+        db.upsert_records("UserStores", &[json!({"id": 1, "userId": user, "storeId": store})], "t").unwrap();
+        db.upsert_records("Stores", &[json!({"id": store, "storecode": "MPD", "name": "Mypadu"})], "t").unwrap();
+
+        let bill = json!({"store_id": store, "_client_request_id": format!("p5b-{}", Utc::now().timestamp()),
+            "items": [{"product_id": product, "quantity": 1, "unit_price": 42.86, "item_total": 45, "tax_percentage": 5}],
+            "subtotal": 42.86, "tax_amount": 2.14, "total_amount": 45, "payment_method": "cash",
+            "customer_name": "Walk-in Customer"});
+        let q = crate::offline_bills::queue_bill(&db, &user, &bill, py, Utc::now()).unwrap().unwrap();
+        println!("BILL_ID={}", q.bill_id);
+        let sent_bill = crate::offline_bills::replay_once(&db, py, &api);
+        println!("bill: {sent_bill:?}");
+        assert!(sent_bill[0].1.starts_with("sent"), "{sent_bill:?}");
+
+        let (c, r) = customer_return(&db, &user, &json!({"selectedItems": [{"id": format!("{}-0", q.bill_id), "quantity": 1}],
+                                                         "returnReason": "piece 5 live test"}), Utc::now()).unwrap();
+        assert_eq!(c, 202);
+        println!("RETURN_ID={}", r["returnId"].as_str().unwrap());
+        let (c, made) = customer_new(&db, &user, &json!({"name": "Piece5 Live Test", "phone": "0000005005"}), Utc::now()).unwrap();
+        assert_eq!(c, 201);
+        let cid = made["id"].as_str().unwrap().to_string();
+        println!("CUSTOMER_ID={cid}");
+        if note > 0 {
+            notification_read(&db, &user, Some(note), Utc::now()).unwrap();
+        }
+        let first = replay_once(&db, py, &api);
+        println!("first: {first:?}");
+        assert!(first.iter().all(|(_, o)| o == "sent"), "{first:?}");
+
+        // NOTE: the customers table has no `version` column, so an edit must carry baseUpdatedAt (siri-api's own
+        // updatedat, known only after the next copy). The edit route was checked live by hand with it (25 Nov).
+        db.with_conn(|c| c.execute("UPDATE offline_actions SET status = 'queued'", [])).unwrap();
+        let again = replay_once(&db, py, &api);
+        println!("again: {again:?}");
+        assert!(again.iter().all(|(_, o)| o == "sent"), "a second send is answered with what is already there: {again:?}");
     }
 }

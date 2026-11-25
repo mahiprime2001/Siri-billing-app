@@ -139,18 +139,36 @@ enum Action {
     ReturnOrder,
     Transfer(String),
     TransferBatch,
+    CustomerReturn,
+    CustomerNew,
+    CustomerEdit(String),
+    NotificationRead(i64),
+    NotificationsReadAll,
 }
 
-fn action_route(path: &str) -> Option<Action> {
+/// One path segment between `prefix` and `suffix` (decoded), e.g. the order id of /api/transfer-orders/<id>/verify.
+fn segment(path: &str, prefix: &str, suffix: &str) -> Option<String> {
+    let raw = path.strip_prefix(prefix)?.strip_suffix(suffix)?;
+    let s = urlencoding::decode(raw).ok()?.into_owned();
+    (!s.is_empty() && !s.contains('/')).then_some(s)
+}
+
+fn action_route(method: &Method, path: &str) -> Option<Action> {
+    if method == Method::PUT {
+        return segment(path, "/api/customers/", "").map(Action::CustomerEdit);
+    }
+    if method != Method::POST {
+        return None;
+    }
     match path {
         "/api/store-damage-returns" => Some(Action::Damage),
         "/api/return-orders" => Some(Action::ReturnOrder),
         "/api/transfer-orders/verify-batch" => Some(Action::TransferBatch),
-        _ => {
-            let order = path.strip_prefix("/api/transfer-orders/")?.strip_suffix("/verify")?;
-            let order = urlencoding::decode(order).ok()?.into_owned();
-            (!order.is_empty() && !order.contains('/')).then_some(Action::Transfer(order))
-        }
+        "/api/returns/submit" => Some(Action::CustomerReturn),
+        "/api/customers" => Some(Action::CustomerNew),
+        "/api/notifications/read-all" => Some(Action::NotificationsReadAll),
+        _ => segment(path, "/api/transfer-orders/", "/verify").map(Action::Transfer)
+            .or_else(|| segment(path, "/api/notifications/", "/read").and_then(|n| n.parse().ok()).map(Action::NotificationRead)),
     }
 }
 
@@ -289,8 +307,8 @@ pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static O
     }
 
     // ---- damaged returns, return orders, transfer verifications made with no internet (piece 5)
-    if !online && method == Method::POST {
-        if let (Some(db), Some(action)) = (db, action_route(&path)) {
+    if !online {
+        if let (Some(db), Some(action)) = (db, action_route(&method, &path)) {
             let who = person(req.headers());
             if who != "-" {
                 let (parts, body) = req.into_parts();
@@ -304,11 +322,16 @@ pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static O
                         Action::ReturnOrder => crate::offline_actions::return_order(db, &who, &data, now),
                         Action::Transfer(order) => crate::offline_actions::transfer_verify(db, &who, order, &data, now),
                         Action::TransferBatch => crate::offline_actions::transfer_batch(db, &who, &data, now),
+                        Action::CustomerReturn => crate::offline_actions::customer_return(db, &who, &data, now),
+                        Action::CustomerNew => crate::offline_actions::customer_new(db, &who, &data, now),
+                        Action::CustomerEdit(id) => crate::offline_actions::customer_edit(db, &who, id, &data, now),
+                        Action::NotificationRead(n) => crate::offline_actions::notification_read(db, &who, Some(*n), now),
+                        Action::NotificationsReadAll => crate::offline_actions::notification_read(db, &who, None, now),
                     }
                 }).await;
                 match done {
                     Ok(Ok((code, answer))) => {
-                        if code == 202 || code == 207 {
+                        if code < 300 || code == 207 {
                             store_log::event("info", "rustactions", &format!("{action:?} queued offline ({code})"));
                         }
                         return json_response(StatusCode::from_u16(code).unwrap_or(StatusCode::ACCEPTED), answer);
@@ -399,6 +422,10 @@ pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static O
         if !online {
             if let Some((status, ctype, body, saved_at)) = db.and_then(|d| d.get_answer(&answer_key)) {
                 REPLAYED.fetch_add(1, Ordering::Relaxed);
+                let body = match db {
+                    Some(d) if path == "/api/customers" => crate::offline_actions::merge_customers(d, &body),
+                    _ => body,
+                };
                 let mut r = Response::new(Body::from(body));
                 *r.status_mut() = StatusCode::from_u16(status).unwrap_or(StatusCode::OK);
                 if let Ok(v) = HeaderValue::from_str(&ctype) {
@@ -422,6 +449,12 @@ pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static O
                     Err(_) => return json_response(StatusCode::BAD_GATEWAY, json!({"message": "answer too large"})),
                 };
                 let _ = db.save_answer(&answer_key, 200, &ctype, &bytes);
+                if path == "/api/customers" {
+                    // customers added offline and not sent yet stay visible until siri-api has them
+                    let mut r = Response::from_parts(parts, Body::from(crate::offline_actions::merge_customers(db, &bytes)));
+                    r.headers_mut().remove("content-length");
+                    return r;
+                }
                 return Response::from_parts(parts, Body::from(bytes));
             }
         }
@@ -551,13 +584,22 @@ mod tests {
 
     #[test]
     fn action_routes_are_recognised() {
-        assert_eq!(action_route("/api/store-damage-returns"), Some(Action::Damage));
-        assert_eq!(action_route("/api/return-orders"), Some(Action::ReturnOrder));
-        assert_eq!(action_route("/api/transfer-orders/verify-batch"), Some(Action::TransferBatch));
-        assert_eq!(action_route("/api/transfer-orders/TO%201/verify"), Some(Action::Transfer("TO 1".into())));
-        assert_eq!(action_route("/api/transfer-orders//verify"), None);
-        assert_eq!(action_route("/api/transfer-orders/a/b/verify"), None);
-        assert_eq!(action_route("/api/returns/submit"), None);
+        let post = Method::POST;
+        assert_eq!(action_route(&post, "/api/store-damage-returns"), Some(Action::Damage));
+        assert_eq!(action_route(&post, "/api/return-orders"), Some(Action::ReturnOrder));
+        assert_eq!(action_route(&post, "/api/transfer-orders/verify-batch"), Some(Action::TransferBatch));
+        assert_eq!(action_route(&post, "/api/transfer-orders/TO%201/verify"), Some(Action::Transfer("TO 1".into())));
+        assert_eq!(action_route(&post, "/api/transfer-orders//verify"), None);
+        assert_eq!(action_route(&post, "/api/transfer-orders/a/b/verify"), None);
+        assert_eq!(action_route(&post, "/api/returns/submit"), Some(Action::CustomerReturn));
+        assert_eq!(action_route(&post, "/api/customers"), Some(Action::CustomerNew));
+        assert_eq!(action_route(&Method::PUT, "/api/customers/CUST-1"), Some(Action::CustomerEdit("CUST-1".into())));
+        assert_eq!(action_route(&Method::DELETE, "/api/customers/CUST-1"), None, "deleting waits for the internet");
+        assert_eq!(action_route(&post, "/api/notifications/12/read"), Some(Action::NotificationRead(12)));
+        assert_eq!(action_route(&post, "/api/notifications/x/read"), None);
+        assert_eq!(action_route(&post, "/api/notifications/read-all"), Some(Action::NotificationsReadAll));
+        assert_eq!(action_route(&Method::GET, "/api/return-orders"), None);
+        assert_eq!(action_route(&post, "/api/returns/RET-1/approve"), None, "approve / deny wait for the internet");
     }
 
     #[tokio::test(flavor = "multi_thread")]
