@@ -16,7 +16,7 @@ use std::time::SystemTime;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 pub struct OfflineDb {
     conn: Mutex<Connection>,
@@ -155,8 +155,40 @@ impl OfflineDb {
                  );",
             )?;
         }
+        if version < 4 {
+            // Slice 4 (piece 4): bills made with no internet, waiting to be sent, and every bill number seen online
+            // (so an offline number never repeats one already used today).
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS offline_bills (
+                     queue_id          TEXT PRIMARY KEY,
+                     bill_id           TEXT NOT NULL UNIQUE,
+                     client_request_id TEXT,
+                     user_id           TEXT NOT NULL,
+                     store_id          TEXT NOT NULL,
+                     payload           TEXT NOT NULL,
+                     status            TEXT NOT NULL DEFAULT 'queued',
+                     attempts          INTEGER NOT NULL DEFAULT 0,
+                     last_error        TEXT,
+                     server_bill_id    TEXT,
+                     created_at        TEXT NOT NULL,
+                     updated_at        TEXT NOT NULL
+                 );
+                 CREATE UNIQUE INDEX IF NOT EXISTS idx_offline_bills_request
+                     ON offline_bills(client_request_id) WHERE client_request_id IS NOT NULL AND client_request_id <> '';
+                 CREATE TABLE IF NOT EXISTS known_bills (
+                     bill_id  TEXT PRIMARY KEY,
+                     seen_at  TEXT NOT NULL DEFAULT ''
+                 );",
+            )?;
+        }
         conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         Ok(())
+    }
+
+    /// Run `f` with the database connection (one caller at a time). For modules that own their own tables.
+    pub fn with_conn<T>(&self, f: impl FnOnce(&mut Connection) -> rusqlite::Result<T>) -> rusqlite::Result<T> {
+        let mut conn = self.conn.lock().unwrap();
+        f(&mut conn)
     }
 
     /// Remembers the answer to one read (replaces the previous one).

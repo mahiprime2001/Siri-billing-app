@@ -27,6 +27,8 @@ use crate::{front_door, shadow, store_log};
 
 static ONLINE: AtomicBool = AtomicBool::new(true);
 static FRONT_KEY: OnceLock<String> = OnceLock::new();
+static PYTHON_DIR: OnceLock<std::path::PathBuf> = OnceLock::new();
+static OFFLINE_BILLS: AtomicU64 = AtomicU64::new(0);
 static REPLAYED: AtomicU64 = AtomicU64::new(0);
 static OFFLINE_LOGINS: AtomicU64 = AtomicU64::new(0);
 
@@ -40,6 +42,11 @@ const REPLAYABLE: &[&str] = &[
 
 pub fn set_front_key(key: String) {
     let _ = FRONT_KEY.set(key);
+}
+
+/// The Python side's data folder (read-only: its bill copies, queue and siri-api passes).
+pub fn set_python_dir(dir: std::path::PathBuf) {
+    let _ = PYTHON_DIR.set(dir);
 }
 
 pub fn is_online() -> bool {
@@ -65,8 +72,11 @@ pub fn start_watch(api_base: &'static str) {
             tokio::time::sleep(Duration::from_secs(60)).await;
             let r = REPLAYED.swap(0, Ordering::Relaxed);
             let l = OFFLINE_LOGINS.swap(0, Ordering::Relaxed);
-            if r > 0 || l > 0 {
-                store_log::event("info", "front", &format!("offline answers by Rust: reads={r} logins={l}"));
+            let b = OFFLINE_BILLS.swap(0, Ordering::Relaxed);
+            if r > 0 || l > 0 || b > 0 {
+                let (waiting, attention) = shadow::database().map(crate::offline_bills::counts).unwrap_or((0, 0));
+                store_log::event("info", "front", &format!(
+                    "offline answers by Rust: reads={r} logins={l} bills={b} (waiting to send={waiting} need a person={attention})"));
             }
         }
     });
@@ -75,7 +85,8 @@ pub fn start_watch(api_base: &'static str) {
 /// The front door's entry point (live: the real database, online flag and key).
 pub async fn handle(req: Request, upstream_port: u16) -> Response {
     let key = FRONT_KEY.get().cloned().unwrap_or_default();
-    handle_with(req, upstream_port, shadow::database(), is_online(), &key).await
+    let py = PYTHON_DIR.get().cloned().unwrap_or_default();
+    handle_with(req, upstream_port, shadow::database(), is_online(), &key, &py).await
 }
 
 fn replayable(method: &Method, path: &str) -> bool {
@@ -128,8 +139,8 @@ fn json_response(status: StatusCode, body: Value) -> Response {
     r
 }
 
-pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static OfflineDb>, online: bool, key: &str)
-                         -> Response {
+pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static OfflineDb>, online: bool, key: &str,
+                         python_dir: &std::path::Path) -> Response {
     let method = req.method().clone();
     let path = req.uri().path().to_string();
     let path_and_query = req.uri().path_and_query().map(|p| p.as_str().to_string()).unwrap_or_else(|| path.clone());
@@ -165,6 +176,95 @@ pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static O
             // no copy, a wrong password or no session: Python's own offline login decides, as before
             let again = Request::from_parts(parts, Body::from(bytes));
             return front_door::proxy(again, upstream_port).await;
+        }
+    }
+
+    // ---- making a bill (piece 4)
+    if method == Method::POST && path == "/api/bills" {
+        if let Some(db) = db {
+            if online {
+                // pass through; remember the number siri-api / the backend gave, so offline numbers continue after it
+                let answer = front_door::proxy(req, upstream_port).await;
+                if answer.status().is_success() {
+                    let (parts, body) = answer.into_parts();
+                    let bytes = axum::body::to_bytes(body, 4 * 1024 * 1024).await.unwrap_or_default();
+                    if let Ok(v) = serde_json::from_slice::<Value>(&bytes) {
+                        let id = v.get("bill_id").or_else(|| v.get("bill").and_then(|b| b.get("id"))).and_then(Value::as_str);
+                        if let Some(id) = id {
+                            crate::offline_bills::remember_bill(db, id);
+                        }
+                    }
+                    return Response::from_parts(parts, Body::from(bytes));
+                }
+                return answer;
+            }
+            let who = person(req.headers());
+            let (parts, body) = req.into_parts();
+            let bytes = axum::body::to_bytes(body, 8 * 1024 * 1024).await.unwrap_or_default();
+            let payload: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+            let pause = crate::billing_pause::current();
+            if pause.paused {
+                return json_response(StatusCode::LOCKED,
+                                     json!({"error": "billing_paused", "message": pause.message, "since": pause.since}));
+            }
+            if who != "-" {
+                let py = python_dir.to_path_buf();
+                let saved = tokio::task::spawn_blocking(move || {
+                    crate::offline_bills::queue_bill(db, &who, &payload, &py, chrono::Utc::now())
+                }).await;
+                match saved {
+                    Ok(Ok(Some(q))) => {
+                        if q.new {
+                            OFFLINE_BILLS.fetch_add(1, Ordering::Relaxed);
+                            store_log::event("info", "rustbills", &format!("bill {} queued offline ({})", q.bill_id, q.queue_id));
+                        }
+                        return json_response(StatusCode::ACCEPTED, crate::offline_bills::queued_answer(&q));
+                    }
+                    Ok(Err(e)) => store_log::event("error", "rustbills",
+                                                   &format!("could not queue an offline bill: {e}; the backend takes it")),
+                    _ => {}
+                }
+            }
+            // not a bill Rust can take (or no login on it): the Python side decides, as before
+            return front_door::proxy(Request::from_parts(parts, Body::from(bytes)), upstream_port).await;
+        }
+    }
+
+    // ---- the product list: remembered online, replayed offline with the offline sales taken off (piece 4)
+    if method == Method::GET && path == "/api/products" {
+        if let Some(db) = db {
+            let who = person(req.headers());
+            let answer_key = format!("{who}|GET {path_and_query}");
+            if !online {
+                if let Some((status, ctype, body, saved_at)) = db.get_answer(&answer_key) {
+                    let sold = crate::offline_bills::store_of(db, &who)
+                        .map(|s| crate::offline_bills::sold_since(db, &s, &saved_at))
+                        .unwrap_or_default();
+                    REPLAYED.fetch_add(1, Ordering::Relaxed);
+                    let mut r = Response::new(Body::from(crate::offline_bills::adjust_products(&body, &sold)));
+                    *r.status_mut() = StatusCode::from_u16(status).unwrap_or(StatusCode::OK);
+                    if let Ok(v) = HeaderValue::from_str(&ctype) {
+                        r.headers_mut().insert("content-type", v);
+                    }
+                    if let Ok(v) = HeaderValue::from_str(&saved_at) {
+                        r.headers_mut().insert("x-offline-answer-from", v);
+                    }
+                    return r;
+                }
+                return front_door::proxy(req, upstream_port).await;
+            }
+            let answer = front_door::proxy(req, upstream_port).await;
+            let ctype = answer.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+            if answer.status() == StatusCode::OK && ctype.starts_with("application/json") && who != "-" {
+                let (parts, body) = answer.into_parts();
+                let bytes = match axum::body::to_bytes(body, MAX_REMEMBERED).await {
+                    Ok(b) => b,
+                    Err(_) => return json_response(StatusCode::BAD_GATEWAY, json!({"message": "answer too large"})),
+                };
+                let _ = db.save_answer(&answer_key, 200, &ctype, &bytes);
+                return Response::from_parts(parts, Body::from(bytes));
+            }
+            return answer;
         }
     }
 
@@ -272,28 +372,85 @@ mod tests {
         let calls = Arc::new(AtomicUsize::new(0));
         let port = fake_python(calls.clone()).await;
         let db = leak(OfflineDb::open_in_memory().unwrap());
-        let online = handle_with(get("/api/settings", "u1"), port, Some(db), true, "k1").await;
+        let online = handle_with(get("/api/settings", "u1"), port, Some(db), true, "k1", std::path::Path::new(".")).await;
         assert_eq!(body(online).await["path"], "/api/settings");
         let before = calls.load(Ordering::Relaxed);
-        let offline = handle_with(get("/api/settings", "u1"), port, Some(db), false, "k1").await;
+        let offline = handle_with(get("/api/settings", "u1"), port, Some(db), false, "k1", std::path::Path::new(".")).await;
         assert!(offline.headers().get("x-offline-answer-from").is_some());
         assert_eq!(body(offline).await["path"], "/api/settings");
         assert_eq!(calls.load(Ordering::Relaxed), before, "the remembered answer did not ask Python");
         // another person has nothing remembered: Python answers for them
-        handle_with(get("/api/settings", "u2"), port, Some(db), false, "k1").await;
+        handle_with(get("/api/settings", "u2"), port, Some(db), false, "k1", std::path::Path::new(".")).await;
         assert_eq!(calls.load(Ordering::Relaxed), before + 1);
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn products_and_bills_always_go_to_python_even_offline() {
+    async fn bill_history_still_comes_from_python_even_offline() {
         let calls = Arc::new(AtomicUsize::new(0));
         let port = fake_python(calls.clone()).await;
         let db = leak(OfflineDb::open_in_memory().unwrap());
-        for path in ["/api/products", "/api/bills"] {
-            handle_with(get(path, "u1"), port, Some(db), true, "k1").await;
-            handle_with(get(path, "u1"), port, Some(db), false, "k1").await;
-        }
-        assert_eq!(calls.load(Ordering::Relaxed), 4);
+        handle_with(get("/api/bills", "u1"), port, Some(db), true, "k1", std::path::Path::new(".")).await;
+        handle_with(get("/api/bills", "u1"), port, Some(db), false, "k1", std::path::Path::new(".")).await;
+        assert_eq!(calls.load(Ordering::Relaxed), 2);
+    }
+
+    fn post_bill(who: &str, req_id: &str, qty: i64) -> Request {
+        Request::builder().method("POST").uri("/api/bills").header("authorization", format!("Bearer {}", token(who)))
+            .header("content-type", "application/json")
+            .body(Body::from(json!({"store_id": "s1", "_client_request_id": req_id,
+                "items": [{"product_id": "p1", "quantity": qty, "unit_price": 100}], "total_amount": 103}).to_string()))
+            .unwrap()
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn offline_a_bill_is_queued_by_rust_and_the_product_list_shows_it_sold() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let port = fake_python(calls.clone()).await;
+        let db = leak(OfflineDb::open_in_memory().unwrap());
+        db.upsert_records("Stores", &[json!({"id": "s1", "storecode": "nlr"})], "t").unwrap();
+        db.upsert_records("UserStores", &[json!({"userId": "u1", "storeId": "s1"})], "t").unwrap();
+        // the product list the screen got online (remembered; saved a moment ago)
+        db.save_answer(&format!("u1|GET /api/products"), 200, "application/json",
+                       json!([{"id": "p1", "name": "Ring", "stock": 5}]).to_string().as_bytes()).unwrap();
+        db.with_conn(|c| c.execute("UPDATE answers SET saved_at = '2000-01-01 00:00:00'", [])).unwrap();
+        let py = std::env::temp_dir().join(format!("oa-bills-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(py.join("json"));
+
+        let before = calls.load(Ordering::Relaxed);
+        let r = handle_with(post_bill("u1", "req-1", 2), port, Some(db), false, "k1", &py).await;
+        assert_eq!(r.status(), StatusCode::ACCEPTED);
+        let b = body(r).await;
+        assert_eq!(b["queued"], true);
+        assert!(b["bill_id"].as_str().unwrap().starts_with("INV-NLR-"));
+        let again = handle_with(post_bill("u1", "req-1", 2), port, Some(db), false, "k1", &py).await;
+        assert_eq!(body(again).await["bill_id"], b["bill_id"], "the same request is the same bill");
+        assert_eq!(calls.load(Ordering::Relaxed), before, "Python was not asked");
+
+        let list = handle_with(get("/api/products", "u1"), port, Some(db), false, "k1", &py).await;
+        assert_eq!(body(list).await[0]["stock"], 3, "5 in stock, 2 sold offline");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn online_bills_go_to_python_and_their_numbers_are_remembered() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let port = fake_python(calls.clone()).await;
+        let db = leak(OfflineDb::open_in_memory().unwrap());
+        let r = handle_with(post_bill("u1", "req-9", 1), port, Some(db), true, "k1", std::path::Path::new(".")).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_paused_store_cannot_make_bills_offline_either() {
+        // billing_pause::current() is off unless siri-api said so recently: the queue path runs (covered above).
+        // Here: a bill without a login on it is left to Python.
+        let calls = Arc::new(AtomicUsize::new(0));
+        let port = fake_python(calls.clone()).await;
+        let db = leak(OfflineDb::open_in_memory().unwrap());
+        let anonymous = Request::builder().method("POST").uri("/api/bills").header("content-type", "application/json")
+            .body(Body::from(json!({"store_id": "s1", "items": [{"product_id": "p1", "quantity": 1}]}).to_string())).unwrap();
+        handle_with(anonymous, port, Some(db), false, "k1", std::path::Path::new(".")).await;
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -309,17 +466,17 @@ mod tests {
             .header("content-type", "application/json")
             .body(Body::from(json!({"email": "A@x.com", "password": pw}).to_string())).unwrap();
 
-        let ok = handle_with(login("testing"), port, Some(db), false, "k1").await;
+        let ok = handle_with(login("testing"), port, Some(db), false, "k1", std::path::Path::new(".")).await;
         assert_eq!(ok.status(), StatusCode::OK);
         assert_eq!(body(ok).await["via"], "front-door");
 
-        let wrong = handle_with(login("nope"), port, Some(db), false, "k1").await;
+        let wrong = handle_with(login("nope"), port, Some(db), false, "k1", std::path::Path::new(".")).await;
         assert_eq!(wrong.status(), StatusCode::UNAUTHORIZED, "a wrong password goes to Python's own login");
 
-        let no_key = handle_with(login("testing"), port, Some(db), false, "").await;
+        let no_key = handle_with(login("testing"), port, Some(db), false, "", std::path::Path::new(".")).await;
         assert_eq!(no_key.status(), StatusCode::UNAUTHORIZED, "without the one-time key Rust cannot get a session");
 
-        let online = handle_with(login("testing"), port, Some(db), true, "k1").await;
+        let online = handle_with(login("testing"), port, Some(db), true, "k1", std::path::Path::new(".")).await;
         assert_eq!(online.status(), StatusCode::UNAUTHORIZED, "online, the login is always Python's (siri-api checks)");
     }
 
@@ -355,24 +512,24 @@ mod live {
         let login = |pw: &str| Request::builder().method("POST").uri("/api/auth/login")
             .header("content-type", "application/json")
             .body(Body::from(json!({"email": email, "password": pw}).to_string())).unwrap();
-        let r = handle_with(login(&password), port, Some(db), false, &key).await;
+        let r = handle_with(login(&password), port, Some(db), false, &key, std::path::Path::new(".")).await;
         let status = r.status();
         let b: Value = serde_json::from_slice(&axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap()).unwrap();
         println!("offline login: {} user={}", status, b["user"]);
         assert_eq!(status, StatusCode::OK);
         let token = b["access_token"].as_str().unwrap().to_string();
 
-        let wrong = handle_with(login("wrong-password"), port, Some(db), false, &key).await;
+        let wrong = handle_with(login("wrong-password"), port, Some(db), false, &key, std::path::Path::new(".")).await;
         println!("offline wrong password: {}", wrong.status());
         assert_ne!(wrong.status(), StatusCode::OK);
 
         // the token Python issued works on a real route, and the answer is remembered then replayed offline
         let settings = || Request::builder().uri("/api/settings").header("authorization", format!("Bearer {token}")).body(Body::empty()).unwrap();
-        let online = handle_with(settings(), port, Some(db), true, &key).await;
+        let online = handle_with(settings(), port, Some(db), true, &key, std::path::Path::new(".")).await;
         println!("settings online with the offline-login token: {}", online.status());
         assert_eq!(online.status(), StatusCode::OK);
         let first = axum::body::to_bytes(online.into_body(), 1 << 22).await.unwrap();
-        let offline = handle_with(settings(), port, Some(db), false, &key).await;
+        let offline = handle_with(settings(), port, Some(db), false, &key, std::path::Path::new(".")).await;
         assert!(offline.headers().get("x-offline-answer-from").is_some(), "replayed by Rust");
         let again = axum::body::to_bytes(offline.into_body(), 1 << 22).await.unwrap();
         assert_eq!(first, again, "the replay is exactly what the screen got online");

@@ -28,15 +28,19 @@ mod billing_pause;
 mod front_door;
 mod rust_sync;
 mod offline_answers;
+mod offline_bills;
 
 /// A fresh random key each start: proves to the local Python backend that a session request comes from the front door.
+/// 32 random bytes from SQLite's randomness (seeded from the operating system's secure random source).
 fn one_time_key() -> String {
-    use sha2::{Digest, Sha256};
-    let mut h = Sha256::new();
-    h.update(format!("{:?}|{}|{:p}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default(), std::process::id(), &h as *const _).as_bytes());
-    if let Ok(mut f) = std::fs::File::open("/dev/urandom") { use std::io::Read; let mut b = [0u8; 32]; let _ = f.read(&mut b); h.update(b); }
-    h.update(format!("{:?}", std::time::Instant::now()).as_bytes());
-    hex::encode(h.finalize())
+    rusqlite::Connection::open_in_memory()
+        .and_then(|c| c.query_row("SELECT lower(hex(randomblob(32)))", [], |r| r.get::<_, String>(0)))
+        .unwrap_or_else(|_| {
+            use sha2::{Digest, Sha256};
+            let mut h = Sha256::new();
+            h.update(format!("{:?}|{}|{:?}", SystemTime::now(), std::process::id(), std::time::Instant::now()).as_bytes());
+            hex::encode(h.finalize())
+        })
 }
 
 /// Where the Python backend answers: 8080 normally, 8081 when the Rust front door holds 8080 (front_door.rs).
@@ -593,7 +597,10 @@ fn main() {
                     front_door::start(front_door::FRONT_PORT, front_door::BACKEND_PORT_BEHIND);
                     // piece 2: Rust's own database, copied from siri-api every 5 minutes
                     if let Some(py_data) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("data"))) {
-                        rust_sync::start(py_data);
+                        rust_sync::start(py_data.clone());
+                        // piece 4: offline bills are numbered and queued by Rust, and sent through siri-api when online
+                        offline_answers::set_python_dir(py_data.clone());
+                        offline_bills::start_replay(py_data, "https://api.ifleon.com");
                     }
                 }
                 store_log::event("info", "front", &format!("mode={}", if use_front_door { "rust front door" } else { "python only" }));
@@ -808,4 +815,15 @@ fn cleanup_old_logs(app_handle: &tauri::AppHandle) -> Result<(), Box<dyn std::er
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod key_tests {
+    #[test]
+    fn the_one_time_key_is_64_hex_characters_and_never_the_same_twice() {
+        let (a, b) = (super::one_time_key(), super::one_time_key());
+        assert_eq!(a.len(), 64);
+        assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_ne!(a, b);
+    }
 }
