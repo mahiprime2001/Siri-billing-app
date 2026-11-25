@@ -31,7 +31,7 @@ tauri-plugin-updater = { version = "2.9.0", features = ["rustls-tls"] }
 anyhow = "1.0.100"
 urlencoding = "2.1.3"
 tauri-plugin-global-shortcut = "2.3.1"
-reqwest = { version = "0.11", features = ["blocking", "rustls-tls"], default-features = false }
+reqwest = { version = "0.11", features = ["blocking", "rustls-tls", "stream"], default-features = false }
 tauri-plugin-printer-v2 = "0.2.4"
 webview2-com = "0.38.2"
 windows-core = "0.61"
@@ -39,3 +39,6 @@ windows = "0.61"
 tauri-plugin-single-instance = "2.4.0"
 # Local database for the Rust offline mode (bundled = no system SQLite needed on store PCs).
 rusqlite = { version = "0.32", features = ["bundled"] }
+# The local /api "front door" in front of the Python backend (Rust offline mode, milestone 1).
+axum = "0.8"
+tokio = { version = "1", features = ["net", "rt-multi-thread", "macros", "time"] }

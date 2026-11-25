@@ -25,6 +25,14 @@ mod store_log;
 mod offline_db;
 mod shadow;
 mod billing_pause;
+mod front_door;
+
+/// Where the Python backend answers: 8080 normally, 8081 when the Rust front door holds 8080 (front_door.rs).
+static BACKEND_PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(8080);
+
+fn backend_url(path: &str) -> String {
+    format!("http://localhost:{}{}", BACKEND_PORT.load(std::sync::atomic::Ordering::Relaxed), path)
+}
 
 #[cfg(target_os = "windows")]
 use webview2_com::{
@@ -559,6 +567,18 @@ fn main() {
                     billing_pause::start(exe_dir.join("data").join("billing-pause.json"));
                 }
 
+                // Rust offline mode, milestone 1: with the store's `rust_front` switch on, Rust takes :8080 (where every
+                // screen calls) and the Python backend moves behind it to :8081. Off (the default): nothing changes.
+                let use_front_door = std::env::current_exe().ok()
+                    .and_then(|p| p.parent().map(|d| d.join("data").join("siri_switches.json")))
+                    .map(|py| front_door::wanted(&py, &front_door::own_decision_file(&app_data_dir)))
+                    .unwrap_or(false);
+                if use_front_door {
+                    BACKEND_PORT.store(front_door::BACKEND_PORT_BEHIND, std::sync::atomic::Ordering::Relaxed);
+                    front_door::start(front_door::FRONT_PORT, front_door::BACKEND_PORT_BEHIND);
+                }
+                store_log::event("info", "front", &format!("mode={}", if use_front_door { "rust front door" } else { "python only" }));
+
                 info!("=================================================");
                 info!("🔄 Updater Configuration");
                 info!("=================================================");
@@ -583,14 +603,15 @@ fn main() {
                     .timeout(Duration::from_millis(800))
                     .build()
                     .ok()
-                    .and_then(|c| c.get("http://localhost:8080/api/health").send().ok())
+                    .and_then(|c| c.get(&backend_url("/api/health")).send().ok())
                     .map(|r| r.status().is_success())
                     .unwrap_or(false);
 
                 if backend_already_running {
                     info!("✅ Backend already running and healthy on :8080 — reusing it, not spawning a duplicate.");
                 } else {
-                    let cmd = handle.shell().sidecar("Siribilling-backend")?;
+                    let cmd = handle.shell().sidecar("Siribilling-backend")?
+                        .env("SIRI_BACKEND_PORT", BACKEND_PORT.load(std::sync::atomic::Ordering::Relaxed).to_string());
                     let (mut rx, command_child) = cmd.spawn()?;
                     let pid = command_child.pid();
 
@@ -655,7 +676,7 @@ fn main() {
                                     .build()
                                     .unwrap_or_else(|_| Client::new());
                                     
-                                match client.post("http://localhost:8080/api/shutdown")
+                                match client.post(&backend_url("/api/shutdown"))
                                     .body("shutdown from tauri")
                                     .send() {
                                         Ok(response) => {

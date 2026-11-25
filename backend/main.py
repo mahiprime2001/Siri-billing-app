@@ -301,7 +301,11 @@ if __name__ == '__main__':
     # 🆕 CLEANUP OLD PYINSTALLER FOLDERS ON STARTUP
     cleanup_pyinstaller_temp_folders(keep_newest=True)
 
-    port = 8080
+    # 8080 normally; 8081 when the app's Rust front door holds 8080 (src-tauri/src/front_door.rs sets this).
+    try:
+        port = int(os.environ.get("SIRI_BACKEND_PORT", "8080"))
+    except ValueError:
+        port = 8080
     host = 'localhost'
     app.logger.info(f"Billing app will run on {host}:{port}")
     app.logger.info(f"CORS: Accepting all requests from local machine")
