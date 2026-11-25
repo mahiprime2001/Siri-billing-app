@@ -16,7 +16,7 @@ use std::time::SystemTime;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 pub struct OfflineDb {
     conn: Mutex<Connection>,
@@ -120,8 +120,141 @@ impl OfflineDb {
                  );",
             )?;
         }
+        if version < 2 {
+            // Slice 2 (Rust offline mode, piece 2): the store's own records copied from siri-api, and the scrambled
+            // offline-login copies of every cashier of the store (never a password).
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS records (
+                     tbl        TEXT NOT NULL,
+                     key        TEXT NOT NULL,
+                     raw        TEXT NOT NULL,
+                     synced_at  TEXT NOT NULL DEFAULT '',
+                     PRIMARY KEY (tbl, key)
+                 );
+                 CREATE TABLE IF NOT EXISTS offline_logins (
+                     email      TEXT PRIMARY KEY,
+                     user_id    TEXT NOT NULL,
+                     name       TEXT NOT NULL DEFAULT '',
+                     role       TEXT NOT NULL DEFAULT '',
+                     status     TEXT NOT NULL DEFAULT '',
+                     salt       TEXT NOT NULL,
+                     hash       TEXT NOT NULL,
+                     rounds     INTEGER NOT NULL
+                 );",
+            )?;
+        }
         conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         Ok(())
+    }
+
+    /// How a copied row is recognised: its id, or (returns) s_no, or (store links) user + store.
+    pub fn record_key(row: &Value) -> Option<String> {
+        let s = |k: &str| row.get(k).and_then(|v| match v {
+            Value::String(t) if !t.is_empty() => Some(t.clone()),
+            Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        });
+        if let Some(id) = s("id") {
+            return Some(id);
+        }
+        if let Some(n) = s("s_no") {
+            return Some(format!("s_no:{n}"));
+        }
+        match (s("userId").or_else(|| s("userid")), s("storeId").or_else(|| s("storeid"))) {
+            (Some(u), Some(st)) => Some(format!("{u}|{st}")),
+            _ => None,
+        }
+    }
+
+    /// Inserts or refreshes copied rows of one table (rows without a key are skipped). One transaction.
+    pub fn upsert_records(&self, tbl: &str, rows: &[Value], synced_at: &str) -> rusqlite::Result<usize> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        let mut written = 0;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO records (tbl, key, raw, synced_at) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(tbl, key) DO UPDATE SET raw=excluded.raw, synced_at=excluded.synced_at",
+            )?;
+            for row in rows {
+                if let Some(key) = Self::record_key(row) {
+                    stmt.execute(params![tbl, key, row.to_string(), synced_at])?;
+                    written += 1;
+                }
+            }
+        }
+        tx.commit()?;
+        Ok(written)
+    }
+
+    pub fn record_count(&self, tbl: &str) -> rusqlite::Result<i64> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row("SELECT COUNT(*) FROM records WHERE tbl = ?1", params![tbl], |r| r.get(0))
+    }
+
+    pub fn records(&self, tbl: &str) -> rusqlite::Result<Vec<Value>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT raw FROM records WHERE tbl = ?1")?;
+        let rows = stmt.query_map(params![tbl], |r| r.get::<_, String>(0))?;
+        Ok(rows.filter_map(|r| r.ok()).filter_map(|t| serde_json::from_str(&t).ok()).collect())
+    }
+
+    /// Stores the scrambled copies siri-api sent (one per person; a newer copy replaces the older one).
+    pub fn upsert_offline_logins(&self, rows: &[Value]) -> rusqlite::Result<usize> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        let mut written = 0;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO offline_logins (email, user_id, name, role, status, salt, hash, rounds)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                 ON CONFLICT(email) DO UPDATE SET user_id=excluded.user_id, name=excluded.name, role=excluded.role,
+                     status=excluded.status, salt=excluded.salt, hash=excluded.hash, rounds=excluded.rounds",
+            )?;
+            for row in rows {
+                let t = |k: &str| row.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+                let email = t("email").trim().to_lowercase();
+                let rounds = row.get("rounds").and_then(Value::as_i64).unwrap_or(0);
+                if email.is_empty() || t("id").is_empty() || t("salt").is_empty() || t("hash").is_empty() || rounds <= 0 {
+                    continue;
+                }
+                stmt.execute(params![email, t("id"), t("name"), t("role"), t("status"), t("salt"), t("hash"), rounds])?;
+                written += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(written)
+    }
+
+    /// The person (id, name, email, role) when `password` matches the scrambled copy for `email`; else None.
+    /// A person whose status is "inactive" is never let in.
+    pub fn check_offline_login(&self, email: &str, password: &str) -> Option<Value> {
+        let email = email.trim().to_lowercase();
+        if email.is_empty() || password.is_empty() {
+            return None;
+        }
+        let row: Option<(String, String, String, String, String, String, i64)> = {
+            let conn = self.conn.lock().unwrap();
+            conn.query_row(
+                "SELECT user_id, name, role, status, salt, hash, rounds FROM offline_logins WHERE email = ?1",
+                params![email],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)),
+            )
+            .optional()
+            .ok()
+            .flatten()
+        };
+        let (user_id, name, role, status, salt, hash, rounds) = row?;
+        if status.eq_ignore_ascii_case("inactive") {
+            return None;
+        }
+        let salt = hex::decode(salt).ok()?;
+        let expected = hex::decode(hash).ok()?;
+        let got = pbkdf2_sha256(password.as_bytes(), &salt, u32::try_from(rounds).ok()?);
+        if got.len() != expected.len() || got.iter().zip(&expected).fold(0u8, |acc, (a, b)| acc | (a ^ b)) != 0 {
+            return None;
+        }
+        Some(serde_json::json!({ "id": user_id, "name": name, "email": email, "role": role }))
     }
 
     /// Inserts or refreshes products (and their barcodes) in one transaction.
@@ -399,5 +532,69 @@ mod tests {
         assert!(db.refresh_from_flask_file(&file).is_err());
         assert_eq!(db.product_count().unwrap(), 2);
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+
+/// PBKDF2-HMAC-SHA256 with a 32-byte result (the same as Python's hashlib.pbkdf2_hmac("sha256", ...)).
+pub fn pbkdf2_sha256(password: &[u8], salt: &[u8], rounds: u32) -> Vec<u8> {
+    use hmac::{Hmac, Mac};
+    type H = Hmac<sha2::Sha256>;
+    let prf = H::new_from_slice(password).expect("HMAC takes a key of any length");
+    let mut first = prf.clone();
+    first.update(salt);
+    first.update(&1u32.to_be_bytes());
+    let mut u = first.finalize().into_bytes();
+    let mut out = u;
+    for _ in 1..rounds.max(1) {
+        let mut m = prf.clone();
+        m.update(&u);
+        u = m.finalize().into_bytes();
+        for (o, x) in out.iter_mut().zip(u.iter()) {
+            *o ^= x;
+        }
+    }
+    out.to_vec()
+}
+
+#[cfg(test)]
+mod slice2_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn pbkdf2_matches_pythons_hashlib() {
+        // python: hashlib.pbkdf2_hmac("sha256", b"testing", bytes.fromhex("00112233445566778899aabbccddeeff"), 1000).hex()
+        let got = pbkdf2_sha256(b"testing", &hex::decode("00112233445566778899aabbccddeeff").unwrap(), 1000);
+        assert_eq!(hex::encode(got), "9e92adc61d75045ce20736fa60e546f91b5c0dd233d3edeeae6b204f07978f2f");
+    }
+
+    #[test]
+    fn records_are_upserted_by_their_key() {
+        let db = OfflineDb::open_in_memory().unwrap();
+        db.upsert_records("Users", &[json!({"id": "u1", "name": "A"}), json!({"name": "no key"})], "t1").unwrap();
+        db.upsert_records("Users", &[json!({"id": "u1", "name": "B"})], "t2").unwrap();
+        db.upsert_records("Returns", &[json!({"s_no": 7})], "t1").unwrap();
+        db.upsert_records("UserStores", &[json!({"userId": "u1", "storeId": "s1"})], "t1").unwrap();
+        assert_eq!(db.record_count("Users").unwrap(), 1);
+        assert_eq!(db.records("Users").unwrap()[0]["name"], "B");
+        assert_eq!(db.record_count("Returns").unwrap(), 1);
+        assert_eq!(db.record_count("UserStores").unwrap(), 1);
+    }
+
+    #[test]
+    fn offline_login_checks_the_scrambled_copy() {
+        let db = OfflineDb::open_in_memory().unwrap();
+        let salt = hex::decode("00112233445566778899aabbccddeeff").unwrap();
+        let hash = hex::encode(pbkdf2_sha256(b"testing", &salt, 1000));
+        db.upsert_offline_logins(&[json!({"id": "u1", "email": "A@X.com ", "name": "Asha", "role": "billing_user",
+            "status": "active", "salt": hex::encode(&salt), "hash": hash, "rounds": 1000})]).unwrap();
+        let ok = db.check_offline_login("a@x.com", "testing").unwrap();
+        assert_eq!((ok["id"].as_str(), ok["name"].as_str()), (Some("u1"), Some("Asha")));
+        assert!(db.check_offline_login("a@x.com", "wrong").is_none());
+        assert!(db.check_offline_login("other@x.com", "testing").is_none());
+        db.upsert_offline_logins(&[json!({"id": "u1", "email": "a@x.com", "status": "inactive",
+            "salt": hex::encode(&salt), "hash": hex::encode(pbkdf2_sha256(b"testing", &salt, 1000)), "rounds": 1000})]).unwrap();
+        assert!(db.check_offline_login("a@x.com", "testing").is_none());      // switched off in the admin app
     }
 }

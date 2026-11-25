@@ -31,7 +31,7 @@ tauri-plugin-updater = { version = "2.9.0", features = ["rustls-tls"] }
 anyhow = "1.0.100"
 urlencoding = "2.1.3"
 tauri-plugin-global-shortcut = "2.3.1"
-reqwest = { version = "0.11", features = ["blocking", "rustls-tls", "stream"], default-features = false }
+reqwest = { version = "0.11", features = ["blocking", "rustls-tls", "stream", "json"], default-features = false }
 tauri-plugin-printer-v2 = "0.2.4"
 webview2-com = "0.38.2"
 windows-core = "0.61"
@@ -42,3 +42,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 # The local /api "front door" in front of the Python backend (Rust offline mode, milestone 1).
 axum = "0.8"
 tokio = { version = "1", features = ["net", "rt-multi-thread", "macros", "time"] }
+# Checking offline logins against the scrambled copies (PBKDF2-HMAC-SHA256), Rust offline mode piece 2.
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"

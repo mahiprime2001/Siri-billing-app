@@ -26,6 +26,7 @@ mod offline_db;
 mod shadow;
 mod billing_pause;
 mod front_door;
+mod rust_sync;
 
 /// Where the Python backend answers: 8080 normally, 8081 when the Rust front door holds 8080 (front_door.rs).
 static BACKEND_PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(8080);
@@ -576,6 +577,10 @@ fn main() {
                 if use_front_door {
                     BACKEND_PORT.store(front_door::BACKEND_PORT_BEHIND, std::sync::atomic::Ordering::Relaxed);
                     front_door::start(front_door::FRONT_PORT, front_door::BACKEND_PORT_BEHIND);
+                    // piece 2: Rust's own database, copied from siri-api every 5 minutes
+                    if let Some(py_data) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("data"))) {
+                        rust_sync::start(py_data);
+                    }
                 }
                 store_log::event("info", "front", &format!("mode={}", if use_front_door { "rust front door" } else { "python only" }));
 

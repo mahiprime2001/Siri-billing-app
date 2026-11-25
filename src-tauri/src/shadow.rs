@@ -22,6 +22,11 @@ const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 static DB: OnceLock<OfflineDb> = OnceLock::new();
 static LAST_REFRESH_ERROR: Mutex<Option<String>> = Mutex::new(None);
 
+/// The shared offline database (opened by `start`; None until then).
+pub fn database() -> Option<&'static OfflineDb> {
+    DB.get()
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Outcome {
     Match,
