@@ -203,7 +203,7 @@ pub fn adjust_products(body: &[u8], sold: &HashMap<String, f64>) -> Vec<u8> {
 }
 
 /// The cashier's replay pass for this store (kept by the Python side).
-fn replay_pass(python_dir: &Path, user_id: &str, store_id: &str) -> Option<String> {
+pub(crate) fn replay_pass(python_dir: &Path, user_id: &str, store_id: &str) -> Option<String> {
     let v: Value = serde_json::from_str(&std::fs::read_to_string(python_dir.join("siri_session.json")).ok()?).ok()?;
     let own = v.get("replay_by_user").and_then(|m| m.get(user_id)).and_then(|m| m.get(store_id)).and_then(Value::as_str);
     let any = v.get("replay_tokens").and_then(|m| m.get(store_id)).and_then(Value::as_str);
@@ -316,7 +316,8 @@ pub fn status(db: &OfflineDb, online: bool) -> Value {
             "error": r.get::<_, Option<String>>(2)?, "made_at": r.get::<_, String>(3)?})))?;
         Ok(rows.flatten().collect())
     }).unwrap_or_default();
-    json!({"online": online, "waiting": waiting, "needs_attention": attention, "bills_needing_attention": needing})
+    json!({"online": online, "waiting": waiting, "needs_attention": attention, "bills_needing_attention": needing,
+           "actions": crate::offline_actions::status(db)})
 }
 
 /// How many bills are waiting, and how many need a person (for the log and the status note).
@@ -404,6 +405,7 @@ pub fn start_replay(python_dir: std::path::PathBuf, api_base: &'static str) {
         if crate::offline_answers::is_online() {
             if let Some(db) = crate::shadow::database() {
                 replay_once(db, &python_dir, api_base);
+                crate::offline_actions::replay_once(db, &python_dir, api_base);
             }
         }
     });

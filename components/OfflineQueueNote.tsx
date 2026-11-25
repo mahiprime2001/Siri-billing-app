@@ -12,7 +12,15 @@ interface OfflineStatus {
   waiting: number;
   needs_attention: number;
   bills_needing_attention: { bill_id: string; error?: string | null }[];
+  /** damaged returns, return orders and transfer verifications made offline (Rust offline mode, piece 5) */
+  actions?: { waiting: number; needs_attention: number; needing_attention: { kind: string; id: string }[] };
 }
+
+const KIND_NAMES: Record<string, string> = {
+  damage_return: 'damaged return',
+  return_order: 'return order',
+  transfer: 'transfer check',
+};
 
 const STATUS_URL = 'http://localhost:8080/api/offline/status';
 
@@ -42,14 +50,31 @@ export default function OfflineQueueNote() {
     };
   }, []);
 
-  if (!status || (status.waiting === 0 && status.needs_attention === 0)) return null;
+  const otherWaiting = status?.actions?.waiting ?? 0;
+  const otherAttention = status?.actions?.needs_attention ?? 0;
+  if (!status || (status.waiting === 0 && status.needs_attention === 0 && otherWaiting === 0 && otherAttention === 0)) {
+    return null;
+  }
 
-  const attention = status.needs_attention > 0;
+  const attention = status.needs_attention > 0 || otherAttention > 0;
+  const needing = [
+    ...status.bills_needing_attention.map((b) => b.bill_id),
+    ...(status.actions?.needing_attention ?? []).map((a) => `${KIND_NAMES[a.kind] ?? a.kind} ${a.id}`),
+  ];
   const title = attention
-    ? `Bills that need a person: ${status.bills_needing_attention.map((b) => b.bill_id).join(', ')}`
+    ? `Need a person: ${needing.join(', ')}`
     : status.online
       ? 'Sending now; they will disappear from here once saved.'
       : 'No internet: they will be sent automatically when it is back.';
+  const parts: string[] = [];
+  if (status.waiting > 0) parts.push(`${status.waiting} bill${status.waiting === 1 ? '' : 's'} waiting to send`);
+  if (otherWaiting > 0) parts.push(`${otherWaiting} return/transfer${otherWaiting === 1 ? '' : 's'} waiting`);
+  if (status.needs_attention > 0) {
+    parts.push(`${status.needs_attention} bill${status.needs_attention === 1 ? '' : 's'} need${status.needs_attention === 1 ? 's' : ''} attention`);
+  }
+  if (otherAttention > 0) {
+    parts.push(`${otherAttention} return/transfer${otherAttention === 1 ? '' : 's'} need${otherAttention === 1 ? 's' : ''} attention`);
+  }
 
   return (
     <div
@@ -58,9 +83,7 @@ export default function OfflineQueueNote() {
       role="status"
       aria-live="polite"
     >
-      {status.waiting > 0 && `${status.waiting} bill${status.waiting === 1 ? '' : 's'} waiting to send`}
-      {status.waiting > 0 && attention && ' · '}
-      {attention && `${status.needs_attention} bill${status.needs_attention === 1 ? '' : 's'} need${status.needs_attention === 1 ? 's' : ''} attention`}
+      {parts.join(' · ')}
     </div>
   );
 }

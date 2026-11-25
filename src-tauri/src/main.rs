@@ -29,6 +29,7 @@ mod front_door;
 mod rust_sync;
 mod offline_answers;
 mod offline_bills;
+mod offline_actions;
 
 /// A fresh random key each start: proves to the local Python backend that a session request comes from the front door.
 /// 32 random bytes from SQLite's randomness (seeded from the operating system's secure random source).

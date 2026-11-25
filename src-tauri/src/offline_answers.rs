@@ -132,6 +132,28 @@ fn base64url(s: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// The write routes Rust queues itself when there is no internet (piece 5).
+#[derive(Debug, Clone, PartialEq)]
+enum Action {
+    Damage,
+    ReturnOrder,
+    Transfer(String),
+    TransferBatch,
+}
+
+fn action_route(path: &str) -> Option<Action> {
+    match path {
+        "/api/store-damage-returns" => Some(Action::Damage),
+        "/api/return-orders" => Some(Action::ReturnOrder),
+        "/api/transfer-orders/verify-batch" => Some(Action::TransferBatch),
+        _ => {
+            let order = path.strip_prefix("/api/transfer-orders/")?.strip_suffix("/verify")?;
+            let order = urlencoding::decode(order).ok()?.into_owned();
+            (!order.is_empty() && !order.contains('/')).then_some(Action::Transfer(order))
+        }
+    }
+}
+
 fn json_response(status: StatusCode, body: Value) -> Response {
     let mut r = Response::new(Body::from(body.to_string()));
     *r.status_mut() = status;
@@ -266,6 +288,66 @@ pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static O
         }
     }
 
+    // ---- damaged returns, return orders, transfer verifications made with no internet (piece 5)
+    if !online && method == Method::POST {
+        if let (Some(db), Some(action)) = (db, action_route(&path)) {
+            let who = person(req.headers());
+            if who != "-" {
+                let (parts, body) = req.into_parts();
+                let bytes = axum::body::to_bytes(body, 4 * 1024 * 1024).await.unwrap_or_default();
+                let data: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+                let what = action.clone();
+                let done = tokio::task::spawn_blocking(move || {
+                    let now = chrono::Utc::now();
+                    match &what {
+                        Action::Damage => crate::offline_actions::damage_returns(db, &who, &data, now),
+                        Action::ReturnOrder => crate::offline_actions::return_order(db, &who, &data, now),
+                        Action::Transfer(order) => crate::offline_actions::transfer_verify(db, &who, order, &data, now),
+                        Action::TransferBatch => crate::offline_actions::transfer_batch(db, &who, &data, now),
+                    }
+                }).await;
+                match done {
+                    Ok(Ok((code, answer))) => {
+                        if code == 202 || code == 207 {
+                            store_log::event("info", "rustactions", &format!("{action:?} queued offline ({code})"));
+                        }
+                        return json_response(StatusCode::from_u16(code).unwrap_or(StatusCode::ACCEPTED), answer);
+                    }
+                    Ok(Err(e)) => store_log::event("error", "rustactions",
+                                                   &format!("could not queue {action:?} offline: {e}; the backend takes it")),
+                    Err(_) => {}
+                }
+                return front_door::proxy(Request::from_parts(parts, Body::from(bytes)), upstream_port).await;
+            }
+        }
+    }
+
+    // ---- the damaged-returns and return-orders lists, with the ones made offline (not sent yet) in front
+    if method == Method::GET && (path == "/api/store-damage-returns" || path == "/api/return-orders") {
+        if let Some(db) = db {
+            let who = person(req.headers());
+            let answer = front_door::proxy(req, upstream_port).await;
+            if answer.status() != StatusCode::OK || who == "-" {
+                return answer;
+            }
+            let (parts, body) = answer.into_parts();
+            let bytes = axum::body::to_bytes(body, MAX_REMEMBERED).await.unwrap_or_default();
+            let merged = if path == "/api/return-orders" {
+                crate::offline_actions::merge_return_orders(db, &who, &bytes)
+            } else {
+                let query = path_and_query.split_once('?').map(|(_, q)| q.to_string()).unwrap_or_default();
+                let status = query.split('&').find_map(|kv| {
+                    let (k, v) = kv.split_once('=')?;
+                    (k == "status").then(|| urlencoding::decode(v).map(|s| s.into_owned()).unwrap_or_default())
+                }).filter(|s| !s.is_empty());
+                crate::offline_actions::merge_damage_list(db, &who, &bytes, status.as_deref())
+            };
+            let mut r = Response::from_parts(parts, Body::from(merged));
+            r.headers_mut().remove("content-length");
+            return r;
+        }
+    }
+
     // ---- the product list: remembered online, replayed offline with the offline sales taken off (piece 4)
     if method == Method::GET && path == "/api/products" {
         if let Some(db) = db {
@@ -273,8 +355,15 @@ pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static O
             let answer_key = format!("{who}|GET {path_and_query}");
             if !online {
                 if let Some((status, ctype, body, saved_at)) = db.get_answer(&answer_key) {
+                    // offline sales and offline damaged returns both come off the shelf stock shown
                     let sold = crate::offline_bills::store_of(db, &who)
-                        .map(|s| crate::offline_bills::sold_since(db, &s, &saved_at))
+                        .map(|s| {
+                            let mut taken = crate::offline_bills::sold_since(db, &s, &saved_at);
+                            for (pid, n) in crate::offline_actions::damaged_since(db, &s, &saved_at) {
+                                *taken.entry(pid).or_insert(0.0) += n;
+                            }
+                            taken
+                        })
                         .unwrap_or_default();
                     REPLAYED.fetch_add(1, Ordering::Relaxed);
                     let mut r = Response::new(Body::from(crate::offline_bills::adjust_products(&body, &sold)));
@@ -453,6 +542,61 @@ mod tests {
         let before = calls.load(Ordering::Relaxed);
         handle_with(get("/api/bills/INV-OTHER-1", "u1"), port, Some(db), false, "k1", &py).await;
         assert_eq!(calls.load(Ordering::Relaxed), before + 1, "any other bill still comes from the backend");
+    }
+
+    fn post_json(path: &str, who: &str, body: Value) -> Request {
+        Request::builder().method("POST").uri(path).header("authorization", format!("Bearer {}", token(who)))
+            .header("content-type", "application/json").body(Body::from(body.to_string())).unwrap()
+    }
+
+    #[test]
+    fn action_routes_are_recognised() {
+        assert_eq!(action_route("/api/store-damage-returns"), Some(Action::Damage));
+        assert_eq!(action_route("/api/return-orders"), Some(Action::ReturnOrder));
+        assert_eq!(action_route("/api/transfer-orders/verify-batch"), Some(Action::TransferBatch));
+        assert_eq!(action_route("/api/transfer-orders/TO%201/verify"), Some(Action::Transfer("TO 1".into())));
+        assert_eq!(action_route("/api/transfer-orders//verify"), None);
+        assert_eq!(action_route("/api/transfer-orders/a/b/verify"), None);
+        assert_eq!(action_route("/api/returns/submit"), None);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn offline_returns_and_transfers_are_queued_by_rust_and_online_they_go_to_python() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let port = fake_python(calls.clone()).await;
+        let db = leak(OfflineDb::open_in_memory().unwrap());
+        db.upsert_records("UserStores", &[json!({"id": 1, "userId": "u1", "storeId": "s1"})], "t").unwrap();
+        let py = std::path::Path::new(".");
+        let damage = json!({"selectedItems": [{"productId": "p1", "quantity": 1}], "reason": "broken"});
+
+        let before = calls.load(Ordering::Relaxed);
+        let r = handle_with(post_json("/api/store-damage-returns", "u1", damage.clone()), port, Some(db), false, "k1", py).await;
+        assert_eq!(r.status(), StatusCode::ACCEPTED);
+        let row_id = body(r).await["rows"][0]["id"].as_str().unwrap().to_string();
+        let r = handle_with(post_json("/api/return-orders", "u1", json!({"items": [{"productId": "p1", "quantity": 2}]})),
+                            port, Some(db), false, "k1", py).await;
+        assert_eq!(r.status(), StatusCode::ACCEPTED);
+        let r = handle_with(post_json("/api/transfer-orders/TO-1/verify", "u1", json!({"verification_session_id": "v1"})),
+                            port, Some(db), false, "k1", py).await;
+        assert_eq!(body(r).await["verification_session_id"], "v1");
+        let r = handle_with(post_json("/api/return-orders", "u1", json!({"items": []})), port, Some(db), false, "k1", py).await;
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST, "the same checks as the backend");
+        assert_eq!(calls.load(Ordering::Relaxed), before, "Python was not asked for any of them");
+
+        let status = body(handle_with(get("/api/offline/status", "u1"), port, Some(db), false, "k1", py).await).await;
+        assert_eq!(status["actions"]["waiting"], 3);
+
+        // no login on the request, or online: the backend takes it as before
+        let anon = Request::builder().method("POST").uri("/api/store-damage-returns").body(Body::from(damage.to_string())).unwrap();
+        handle_with(anon, port, Some(db), false, "k1", py).await;
+        handle_with(post_json("/api/store-damage-returns", "u1", damage), port, Some(db), true, "k1", py).await;
+        assert_eq!(calls.load(Ordering::Relaxed), before + 2);
+
+        // the lists put the unsent ones in front (the fake backend answers a non-list here, so it is left alone)
+        let list = body(handle_with(get("/api/store-damage-returns", "u1"), port, Some(db), false, "k1", py).await).await;
+        assert_eq!(list["path"], "/api/store-damage-returns");
+        let merged = crate::offline_actions::merge_damage_list(db, "u1", b"[]", None);
+        assert_eq!(serde_json::from_slice::<Value>(&merged).unwrap()[0]["id"], row_id.as_str());
     }
 
     fn post_bill(who: &str, req_id: &str, qty: i64) -> Request {

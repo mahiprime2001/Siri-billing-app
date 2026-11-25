@@ -16,7 +16,7 @@ use std::time::SystemTime;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
 
 pub struct OfflineDb {
     conn: Mutex<Connection>,
@@ -178,6 +178,29 @@ impl OfflineDb {
                  CREATE TABLE IF NOT EXISTS known_bills (
                      bill_id  TEXT PRIMARY KEY,
                      seen_at  TEXT NOT NULL DEFAULT ''
+                 );",
+            )?;
+        }
+        if version < 5 {
+            // Slice 5 (piece 5): the other actions done with no internet (damaged returns, return orders, transfer
+            // verifications), each with its own request id so siri-api never does one twice.
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS offline_actions (
+                     queue_id     TEXT PRIMARY KEY,
+                     kind         TEXT NOT NULL,
+                     request_id   TEXT NOT NULL,
+                     user_id      TEXT NOT NULL,
+                     store_id     TEXT NOT NULL,
+                     target       TEXT NOT NULL DEFAULT '',
+                     body         TEXT NOT NULL,
+                     answer       TEXT NOT NULL DEFAULT '{}',
+                     status       TEXT NOT NULL DEFAULT 'queued',
+                     attempts     INTEGER NOT NULL DEFAULT 0,
+                     last_error   TEXT,
+                     server_id    TEXT,
+                     created_at   TEXT NOT NULL,
+                     updated_at   TEXT NOT NULL,
+                     UNIQUE (kind, request_id)
                  );",
             )?;
         }
