@@ -16,7 +16,7 @@ use std::time::SystemTime;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 pub struct OfflineDb {
     conn: Mutex<Connection>,
@@ -143,8 +143,45 @@ impl OfflineDb {
                  );",
             )?;
         }
+        if version < 3 {
+            // Slice 3 (piece 3): the last good answer to each read the screens make, replayed when offline.
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS answers (
+                     key          TEXT PRIMARY KEY,
+                     status       INTEGER NOT NULL,
+                     content_type TEXT NOT NULL DEFAULT '',
+                     body         BLOB NOT NULL,
+                     saved_at     TEXT NOT NULL DEFAULT ''
+                 );",
+            )?;
+        }
         conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         Ok(())
+    }
+
+    /// Remembers the answer to one read (replaces the previous one).
+    pub fn save_answer(&self, key: &str, status: u16, content_type: &str, body: &[u8]) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO answers (key, status, content_type, body, saved_at) VALUES (?1, ?2, ?3, ?4, datetime('now'))
+             ON CONFLICT(key) DO UPDATE SET status=excluded.status, content_type=excluded.content_type,
+                 body=excluded.body, saved_at=excluded.saved_at",
+            params![key, status as i64, content_type, body],
+        )?;
+        Ok(())
+    }
+
+    /// The last good answer to one read: (status, content type, body, saved at).
+    pub fn get_answer(&self, key: &str) -> Option<(u16, String, Vec<u8>, String)> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT status, content_type, body, saved_at FROM answers WHERE key = ?1",
+            params![key],
+            |r| Ok((r.get::<_, i64>(0)? as u16, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .optional()
+        .ok()
+        .flatten()
     }
 
     /// How a copied row is recognised: its id, or (returns) s_no, or (store links) user + store.

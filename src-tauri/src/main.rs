@@ -27,9 +27,21 @@ mod shadow;
 mod billing_pause;
 mod front_door;
 mod rust_sync;
+mod offline_answers;
+
+/// A fresh random key each start: proves to the local Python backend that a session request comes from the front door.
+fn one_time_key() -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(format!("{:?}|{}|{:p}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default(), std::process::id(), &h as *const _).as_bytes());
+    if let Ok(mut f) = std::fs::File::open("/dev/urandom") { use std::io::Read; let mut b = [0u8; 32]; let _ = f.read(&mut b); h.update(b); }
+    h.update(format!("{:?}", std::time::Instant::now()).as_bytes());
+    hex::encode(h.finalize())
+}
 
 /// Where the Python backend answers: 8080 normally, 8081 when the Rust front door holds 8080 (front_door.rs).
 static BACKEND_PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(8080);
+static FRONT_KEY: std::sync::LazyLock<String> = std::sync::LazyLock::new(one_time_key);
 
 fn backend_url(path: &str) -> String {
     format!("http://localhost:{}{}", BACKEND_PORT.load(std::sync::atomic::Ordering::Relaxed), path)
@@ -576,6 +588,8 @@ fn main() {
                     .unwrap_or(false);
                 if use_front_door {
                     BACKEND_PORT.store(front_door::BACKEND_PORT_BEHIND, std::sync::atomic::Ordering::Relaxed);
+                    offline_answers::set_front_key(FRONT_KEY.clone());
+                    offline_answers::start_watch("https://api.ifleon.com");
                     front_door::start(front_door::FRONT_PORT, front_door::BACKEND_PORT_BEHIND);
                     // piece 2: Rust's own database, copied from siri-api every 5 minutes
                     if let Some(py_data) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("data"))) {
@@ -616,7 +630,8 @@ fn main() {
                     info!("✅ Backend already running and healthy on :8080 — reusing it, not spawning a duplicate.");
                 } else {
                     let cmd = handle.shell().sidecar("Siribilling-backend")?
-                        .env("SIRI_BACKEND_PORT", BACKEND_PORT.load(std::sync::atomic::Ordering::Relaxed).to_string());
+                        .env("SIRI_BACKEND_PORT", BACKEND_PORT.load(std::sync::atomic::Ordering::Relaxed).to_string())
+                        .env("SIRI_FRONT_KEY", if BACKEND_PORT.load(std::sync::atomic::Ordering::Relaxed) == front_door::BACKEND_PORT_BEHIND { FRONT_KEY.as_str() } else { "" });
                     let (mut rx, command_child) = cmd.spawn()?;
                     let pid = command_child.pid();
 

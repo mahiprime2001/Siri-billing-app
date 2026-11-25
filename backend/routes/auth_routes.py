@@ -239,6 +239,27 @@ def logout():
         return jsonify({"message": "An error occurred during logout"}), 500
 
 
+@auth_bp.route('/front-door-session', methods=['POST'])
+def front_door_session():
+    """Rust offline mode (piece 3): the app's Rust front door has checked an offline login against its scrambled
+    copy (every cashier of the store) and asks for the normal session. Only the front door can ask: it proves it with
+    the one-time key the app gave this backend at start (SIRI_FRONT_KEY, a fresh random value each start). With no
+    key set (front door off) this route does not exist."""
+    import hmac as _hmac
+    import os as _os
+    key = _os.environ.get("SIRI_FRONT_KEY", "")
+    given = request.headers.get("X-Front-Door-Key", "")
+    if not key or not given or not _hmac.compare_digest(key, given):
+        return jsonify({"message": "Not found"}), 404
+    data = request.get_json(silent=True) or {}
+    user_id = str(data.get("id") or "").strip()
+    email = str(data.get("email") or "").strip().lower()
+    if not user_id or not email:
+        return jsonify({"message": "id and email are required"}), 400
+    app.logger.info(f"SIRI_API front-door offline login ok user={user_id} (checked by Rust against its copy)")
+    return _login_response(user_id, email, data.get("name") or "Unknown", data.get("role") or "user")
+
+
 @auth_bp.route('/me', methods=['GET'])
 @jwt_required()
 def get_current_user():

@@ -67,7 +67,8 @@ pub fn own_decision_file(app_data_dir: &Path) -> PathBuf {
 /// Start serving 127.0.0.1:`front_port`, passing everything to the backend on `upstream_port`.
 pub fn start(front_port: u16, upstream_port: u16) {
     tauri::async_runtime::spawn(async move {
-        let router = Router::new().fallback(move |req: Request| proxy(req, upstream_port));
+        // piece 3: offline answers first (login, remembered reads); everything else passes to Python
+        let router = Router::new().fallback(move |req: Request| crate::offline_answers::handle(req, upstream_port));
         match tokio::net::TcpListener::bind(("127.0.0.1", front_port)).await {
             Ok(listener) => {
                 store_log::event("info", "front", &format!("front door on :{} -> backend :{}", front_port, upstream_port));

@@ -154,6 +154,26 @@ class LoginTests(AuthBase):
         self.assertTrue(self.old_db_asked())
 
 
+class FrontDoorSessionTests(AuthBase):
+    """The Rust front door checked an offline login against its copy and asks for the normal session."""
+
+    def test_only_the_front_door_with_the_one_time_key_gets_a_session(self):
+        body = {"id": "cashier-1", "email": "a@x.com", "name": "Asha", "role": "billing_user"}
+        with mock.patch.dict(os.environ, {"SIRI_FRONT_KEY": "k-123"}):
+            ok = self.client.post("/front-door-session", json=body, headers={"X-Front-Door-Key": "k-123"})
+            self.assertEqual((ok.status_code, ok.get_json()["user"]["id"]), (200, "cashier-1"))
+            self.assertTrue(ok.get_json()["access_token"])
+            self.assertEqual(self.client.post("/front-door-session", json=body,
+                                              headers={"X-Front-Door-Key": "wrong"}).status_code, 404)
+            self.assertEqual(self.client.post("/front-door-session", json=body).status_code, 404)
+            self.assertEqual(self.client.post("/front-door-session", json={"id": "x"},
+                                              headers={"X-Front-Door-Key": "k-123"}).status_code, 400)
+        with mock.patch.dict(os.environ, {"SIRI_FRONT_KEY": ""}):
+            self.assertEqual(self.client.post("/front-door-session", json=body,
+                                              headers={"X-Front-Door-Key": ""}).status_code, 404)
+        self.assertFalse(self.old_db_asked())
+
+
 class RequestCheckTests(AuthBase):
     """With `auth` on, "does this signed-in person still exist?" is answered locally (no database call per request)."""
 
