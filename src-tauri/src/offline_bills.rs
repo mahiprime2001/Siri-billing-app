@@ -445,3 +445,43 @@ mod tests {
         assert_eq!(left, (1, 0));
     }
 }
+
+#[cfg(test)]
+mod live {
+    //! Piece 4 against a REAL siri-api (SIRI_LIVE_API) with a store login + replay passes in SIRI_LIVE_PYDATA.
+    //! Makes ONE real bill on the store of that login (use the Mypadu TEST store only; clean up afterwards).
+    //! cargo test --bin app offline_bills::live -- --ignored --nocapture
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn an_offline_bill_is_queued_then_sent_once_through_the_real_replay_route() {
+        let api = std::env::var("SIRI_LIVE_API").expect("SIRI_LIVE_API");
+        let py = std::path::PathBuf::from(std::env::var("SIRI_LIVE_PYDATA").expect("SIRI_LIVE_PYDATA"));
+        let store = std::env::var("SIRI_LIVE_STORE").expect("SIRI_LIVE_STORE");
+        let user = std::env::var("SIRI_LIVE_USER").expect("SIRI_LIVE_USER");
+        let product = std::env::var("SIRI_LIVE_PRODUCT").expect("SIRI_LIVE_PRODUCT");
+        let db = OfflineDb::open_in_memory().unwrap();
+        crate::rust_sync::run_once(&db, &py, &api);                     // the store code and today's bills
+        let payload = json!({
+            "store_id": store, "customer_name": "Walk-in Customer", "customer_phone": "", "subtotal": 42.86,
+            "tax_percentage": 0, "tax_amount": 2.14, "discount_percentage": 0, "discount_amount": 0, "total_amount": 45,
+            "payment_method": "Cash", "notes": "", "timestamp": Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
+            "_client_request_id": format!("rust-live-{}", std::process::id()),
+            "items": [{"product_id": product, "quantity": 1, "unit_price": 42.86, "item_total": 42.86,
+                       "tax_percentage": 5, "hsn_code": "", "name": "", "barcode": ""}]
+        });
+        let q = queue_bill(&db, &user, &payload, &py, Utc::now()).unwrap().unwrap();
+        println!("queued offline: {} ({})", q.bill_id, q.queue_id);
+        let again = queue_bill(&db, &user, &payload, &py, Utc::now()).unwrap().unwrap();
+        assert_eq!(again.bill_id, q.bill_id);
+        let sent = replay_once(&db, &py, &api);
+        println!("first send: {:?}", sent);
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].1, format!("sent as {}", q.bill_id), "saved under the number the receipt shows");
+        let nothing = replay_once(&db, &py, &api);
+        println!("second send: {:?}", nothing);
+        assert!(nothing.is_empty(), "a sent bill is never sent again");
+        println!("BILL_ID={}", q.bill_id);
+    }
+}
