@@ -195,3 +195,47 @@ mod tests {
         assert!(none.is_empty() && refused.is_empty());
     }
 }
+
+#[cfg(test)]
+mod live {
+    //! Against a REAL siri-api (piece 2 live test). Needs: SIRI_LIVE_API (e.g. http://127.0.0.1:5055),
+    //! SIRI_LIVE_PYDATA (a folder with siri_session.json from a store login), SIRI_LIVE_EMAIL + SIRI_LIVE_PASSWORD.
+    //! cargo test --bin app rust_sync::live -- --ignored --nocapture
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn one_real_copy_cycle_fills_the_database_and_the_cashier_can_log_in_offline() {
+        let api = std::env::var("SIRI_LIVE_API").expect("SIRI_LIVE_API");
+        let pydata = PathBuf::from(std::env::var("SIRI_LIVE_PYDATA").expect("SIRI_LIVE_PYDATA"));
+        let email = std::env::var("SIRI_LIVE_EMAIL").expect("SIRI_LIVE_EMAIL");
+        let password = std::env::var("SIRI_LIVE_PASSWORD").expect("SIRI_LIVE_PASSWORD");
+        let db_path = std::env::temp_dir().join(format!("rust-offline-live-{}.db", std::process::id()));
+        let db = OfflineDb::open(&db_path).unwrap();
+
+        let t = Instant::now();
+        let first = run_once(&db, &pydata, &api);
+        println!("first cycle ({} ms): {:?}", t.elapsed().as_millis(), first);
+        for table in TABLES {
+            println!("  {table:22} rows in Rust db: {}", db.record_count(table).unwrap());
+        }
+        println!("  products (barcode table): {}", db.product_count().unwrap());
+        assert!(first.iter().any(|(t, n)| t == "OfflineLogins" && *n >= 1), "an offline login copy arrived");
+        assert!(db.product_count().unwrap() > 1000, "the product list arrived");
+        assert!(db.record_count("Users").unwrap() >= 1);
+        let ok = db.check_offline_login(&email, &password);
+        println!("offline login with the right password: {:?}", ok.as_ref().map(|u| u["id"].clone()));
+        assert!(ok.is_some());
+        assert!(db.check_offline_login(&email, "wrong-password").is_none());
+        for u in db.records("Users").unwrap() {
+            assert!(u.get("password").is_none(), "no password in the copied users");
+        }
+
+        let t = Instant::now();
+        let second = run_once(&db, &pydata, &api);
+        println!("second cycle ({} ms, only changes): {:?}", t.elapsed().as_millis(), second);
+        assert!(second.iter().all(|(t, n)| t == "OfflineLogins" || *n < 50), "the second cycle asks only for changes");
+        drop(db);
+        let _ = std::fs::remove_file(&db_path);
+    }
+}
