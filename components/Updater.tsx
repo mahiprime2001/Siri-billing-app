@@ -15,6 +15,7 @@ import {
   shouldRunMorningUpdate,
 } from '@/lib/update-policy';
 import { isUpdateBusy } from '@/lib/update-busy';
+import OfflineQueueNote from '@/components/OfflineQueueNote';
 
 /**
  * How updates reach a store (the rule lives in lib/update-policy.ts):
@@ -285,6 +286,9 @@ export default function Updater() {
 
   return (
     <>
+      {/* bills made with no internet that are still waiting to be sent (Rust offline mode) */}
+      <OfflineQueueNote />
+
       {/* a small, quiet way to look for an update by hand */}
       <button
         onClick={checkNow}

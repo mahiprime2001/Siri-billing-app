@@ -179,6 +179,42 @@ pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static O
         }
     }
 
+    // ---- the status note: bills waiting to be sent / needing a person (always answered by Rust)
+    if method == Method::GET && path == "/api/offline/status" {
+        if let Some(db) = db {
+            return json_response(StatusCode::OK, crate::offline_bills::status(db, online));
+        }
+    }
+
+    // ---- bill history, details and reprint for bills made offline that siri-api does not have yet
+    if method == Method::GET && (path == "/api/bills" || path.starts_with("/api/bills/")) {
+        if let Some(db) = db {
+            if path == "/api/bills" {
+                let answer = front_door::proxy(req, upstream_port).await;
+                if answer.status() != StatusCode::OK {
+                    return answer;
+                }
+                let (parts, body) = answer.into_parts();
+                let bytes = axum::body::to_bytes(body, MAX_REMEMBERED).await.unwrap_or_default();
+                let query = path_and_query.split_once('?').map(|(_, q)| q.to_string()).unwrap_or_default();
+                let arg = |name: &str| query.split('&').find_map(|kv| {
+                    let (k, v) = kv.split_once('=')?;
+                    (k == name).then(|| urlencoding::decode(v).map(|s| s.into_owned()).unwrap_or_default())
+                });
+                let (start, end) = (arg("start_date"), arg("end_date"));
+                let merged = crate::offline_bills::merge_into_history(db, &bytes, start.as_deref(), end.as_deref());
+                let mut r = Response::from_parts(parts, Body::from(merged));
+                r.headers_mut().remove("content-length");
+                return r;
+            }
+            let rest = &path["/api/bills/".len()..];
+            let (bill_id, part) = rest.split_once('/').unwrap_or((rest, ""));
+            if let Some(answer) = crate::offline_bills::offline_bill_part(db, bill_id, part) {
+                return json_response(StatusCode::OK, answer);
+            }
+        }
+    }
+
     // ---- making a bill (piece 4)
     if method == Method::POST && path == "/api/bills" {
         if let Some(db) = db {
@@ -385,13 +421,38 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn bill_history_still_comes_from_python_even_offline() {
+    async fn bill_history_comes_from_python_with_unsent_offline_bills_in_front_and_they_can_be_reprinted() {
         let calls = Arc::new(AtomicUsize::new(0));
         let port = fake_python(calls.clone()).await;
         let db = leak(OfflineDb::open_in_memory().unwrap());
-        handle_with(get("/api/bills", "u1"), port, Some(db), true, "k1", std::path::Path::new(".")).await;
-        handle_with(get("/api/bills", "u1"), port, Some(db), false, "k1", std::path::Path::new(".")).await;
-        assert_eq!(calls.load(Ordering::Relaxed), 2);
+        db.upsert_records("Stores", &[json!({"id": "s1", "storecode": "nlr", "name": "Nellore"})], "t").unwrap();
+        db.upsert_records("Products", &[json!({"id": "p1", "name": "Ring", "barcode": "8901"})], "t").unwrap();
+        let py = std::env::temp_dir().join(format!("oa-hist-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(py.join("json"));
+        let made = handle_with(post_bill("u1", "h-1", 2), port, Some(db), false, "k1", &py).await;
+        let bill_id = body(made).await["bill_id"].as_str().unwrap().to_string();
+
+        // the fake backend answers the history with {"path": ...} (not a list): only Rust's bill is listed
+        let list = body(handle_with(get("/api/bills", "u1"), port, Some(db), false, "k1", &py).await).await;
+        assert_eq!(list[0]["id"], bill_id.as_str());
+        assert_eq!((list[0]["offline_queued"].clone(), list[0]["can_edit"].clone()), (json!(true), json!(false)));
+        assert_eq!(list[0]["stores"]["name"], "Nellore");
+        let filtered = body(handle_with(get("/api/bills?start_date=2999-01-01", "u1"), port, Some(db), false, "k1", &py).await).await;
+        assert_eq!(filtered.as_array().unwrap().len(), 0, "outside the chosen dates: not shown");
+
+        let one = body(handle_with(get(&format!("/api/bills/{bill_id}"), "u1"), port, Some(db), false, "k1", &py).await).await;
+        assert_eq!(one["id"], bill_id.as_str());
+        let items = body(handle_with(get(&format!("/api/bills/{bill_id}/items"), "u1"), port, Some(db), false, "k1", &py).await).await;
+        assert_eq!((items[0]["quantity"].clone(), items[0]["products"]["name"].clone()), (json!(2), json!("Ring")));
+        let events = body(handle_with(get(&format!("/api/bills/{bill_id}/events"), "u1"), port, Some(db), false, "k1", &py).await).await;
+        assert_eq!(events, json!([]));
+
+        let status = body(handle_with(get("/api/offline/status", "u1"), port, Some(db), false, "k1", &py).await).await;
+        assert_eq!((status["waiting"].clone(), status["needs_attention"].clone()), (json!(1), json!(0)));
+
+        let before = calls.load(Ordering::Relaxed);
+        handle_with(get("/api/bills/INV-OTHER-1", "u1"), port, Some(db), false, "k1", &py).await;
+        assert_eq!(calls.load(Ordering::Relaxed), before + 1, "any other bill still comes from the backend");
     }
 
     fn post_bill(who: &str, req_id: &str, qty: i64) -> Request {

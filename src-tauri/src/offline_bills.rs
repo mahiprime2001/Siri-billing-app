@@ -210,7 +210,116 @@ fn replay_pass(python_dir: &Path, user_id: &str, store_id: &str) -> Option<Strin
     own.or(any).filter(|t| !t.is_empty()).map(str::to_string)
 }
 
-/// How many bills are waiting, and how many need a person (for the log and later a status screen).
+/// One bill made offline, in the shape the history screen gets from the backend (bill row + customer + store),
+/// marked `offline_queued` and never editable while it waits.
+fn history_row(db: &OfflineDb, bill_id: &str, store_id: &str, payload: &Value, status: &str, created_at: &str) -> Value {
+    let store = db.records("Stores").ok().unwrap_or_default().into_iter()
+        .find(|s| s.get("id").and_then(Value::as_str) == Some(store_id)).unwrap_or(Value::Null);
+    let p = |k: &str| payload.get(k).cloned().unwrap_or(Value::Null);
+    let when = payload.get("timestamp").and_then(Value::as_str).map(str::to_string)
+        .unwrap_or_else(|| created_at.replace(' ', "T"));
+    json!({
+        "id": bill_id, "storeid": store_id, "customerid": p("customer_id"),
+        "subtotal": p("subtotal"), "tax_amount": p("tax_amount"), "discount_amount": p("discount_amount"),
+        "discount_percentage": p("discount_percentage"), "total": p("total_amount"),
+        "paymentmethod": p("payment_method"), "timestamp": when, "created_at": when, "updated_at": when,
+        "status": "completed",
+        "customers": {"name": p("customer_name"), "phone": p("customer_phone"), "email": p("customer_email"),
+                      "address": p("customer_address")},
+        "stores": {"name": store.get("name").cloned().unwrap_or(Value::Null),
+                   "address": store.get("address").cloned().unwrap_or(Value::Null),
+                   "phone": store.get("phone").cloned().unwrap_or(Value::Null)},
+        "offline_queued": true, "offline_status": status,
+        "can_edit": false, "can_cancel": false, "edit_expires_at": Value::Null, "seconds_remaining": 0,
+    })
+}
+
+/// Bills made offline that siri-api does not have yet (waiting, or needing a person), newest first.
+fn unsent(db: &OfflineDb) -> Vec<(String, String, Value, String, String)> {
+    db.with_conn(|c| {
+        let mut stmt = c.prepare(
+            "SELECT bill_id, store_id, payload, status, created_at FROM offline_bills
+             WHERE status IN ('queued', 'needs_attention') ORDER BY created_at DESC, bill_id DESC")?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?,
+                                              r.get::<_, String>(3)?, r.get::<_, String>(4)?)))?;
+        Ok(rows.flatten()
+            .map(|(b, s, p, st, at)| (b, s, serde_json::from_str(&p).unwrap_or(Value::Null), st, at))
+            .collect())
+    }).unwrap_or_default()
+}
+
+/// The history list with the bills made offline put in front (any already in the list are not doubled).
+/// `start`/`end` are the screen's date filters (compared as text, like the backend does).
+pub fn merge_into_history(db: &OfflineDb, body: &[u8], start: Option<&str>, end: Option<&str>) -> Vec<u8> {
+    let mut list: Vec<Value> = serde_json::from_slice::<Value>(body).ok()
+        .and_then(|v| v.as_array().cloned()).unwrap_or_default();
+    let have: std::collections::HashSet<String> =
+        list.iter().filter_map(|b| b.get("id").and_then(Value::as_str).map(str::to_string)).collect();
+    let mut add = Vec::new();
+    for (bill_id, store_id, payload, status, created_at) in unsent(db) {
+        if have.contains(&bill_id) {
+            continue;
+        }
+        let row = history_row(db, &bill_id, &store_id, &payload, &status, &created_at);
+        let when = row["created_at"].as_str().unwrap_or("").to_string();
+        if start.map(|s| when.as_str() < s).unwrap_or(false) || end.map(|e| when.as_str() > e).unwrap_or(false) {
+            continue;
+        }
+        add.push(row);
+    }
+    add.extend(list.drain(..));
+    serde_json::to_vec(&add).unwrap_or_else(|_| body.to_vec())
+}
+
+/// For a bill made offline and not sent yet: its record, its lines, or (events / replacements) an empty list,
+/// in the backend's shapes. `None` when `bill_id` is not such a bill.
+pub fn offline_bill_part(db: &OfflineDb, bill_id: &str, part: &str) -> Option<Value> {
+    let (_, store_id, payload, status, created_at) = unsent(db).into_iter().find(|(b, ..)| b == bill_id)?;
+    match part {
+        "" => Some(history_row(db, bill_id, &store_id, &payload, &status, &created_at)),
+        "items" => {
+            let products = db.records("Products").ok().unwrap_or_default();
+            let items = payload.get("items").and_then(Value::as_array).cloned().unwrap_or_default();
+            Some(Value::Array(items.into_iter().enumerate().map(|(i, it)| {
+                let pid = it.get("product_id").or_else(|| it.get("productId")).and_then(Value::as_str).unwrap_or("").to_string();
+                let prod = products.iter().find(|p| p.get("id").and_then(Value::as_str) == Some(pid.as_str()))
+                    .cloned().unwrap_or(Value::Null);
+                let name = it.get("name").and_then(Value::as_str).filter(|n| !n.is_empty()).map(str::to_string)
+                    .or_else(|| prod.get("name").and_then(Value::as_str).map(str::to_string)).unwrap_or_default();
+                let tax = it.get("tax_percentage").cloned().unwrap_or(Value::Null);
+                let code = it.get("hsn_code").and_then(Value::as_str).unwrap_or("").to_string();
+                let barcode = it.get("barcode").filter(|b| b.as_str().map(|s| !s.is_empty()).unwrap_or(false)).cloned()
+                    .unwrap_or_else(|| prod.get("barcode").cloned().unwrap_or(Value::Null));
+                json!({
+                    "id": i + 1, "billid": bill_id, "productid": pid, "quantity": it.get("quantity").cloned().unwrap_or(json!(0)),
+                    "price": it.get("unit_price").cloned().unwrap_or(Value::Null),
+                    "total": it.get("item_total").cloned().unwrap_or(Value::Null),
+                    "tax_percentage": tax, "taxPercentage": tax, "hsn_code": code, "hsnCode": code,
+                    "products": {"id": pid, "name": name, "barcode": barcode,
+                                 "selling_price": prod.get("selling_price").cloned().unwrap_or(Value::Null), "tax": tax},
+                })
+            }).collect()))
+        }
+        "events" | "replacements" => Some(json!([])),
+        _ => None,
+    }
+}
+
+/// What the status note shows: waiting / needing a person, with the bills that need a person.
+pub fn status(db: &OfflineDb, online: bool) -> Value {
+    let (waiting, attention) = counts(db);
+    let needing: Vec<Value> = db.with_conn(|c| {
+        let mut stmt = c.prepare(
+            "SELECT bill_id, attempts, last_error, created_at FROM offline_bills WHERE status = 'needs_attention'
+             ORDER BY created_at")?;
+        let rows = stmt.query_map([], |r| Ok(json!({"bill_id": r.get::<_, String>(0)?, "attempts": r.get::<_, i64>(1)?,
+            "error": r.get::<_, Option<String>>(2)?, "made_at": r.get::<_, String>(3)?})))?;
+        Ok(rows.flatten().collect())
+    }).unwrap_or_default();
+    json!({"online": online, "waiting": waiting, "needs_attention": attention, "bills_needing_attention": needing})
+}
+
+/// How many bills are waiting, and how many need a person (for the log and the status note).
 pub fn counts(db: &OfflineDb) -> (i64, i64) {
     db.with_conn(|c| {
         let q = c.query_row("SELECT COUNT(*) FROM offline_bills WHERE status = 'queued'", [], |r| r.get(0))?;
