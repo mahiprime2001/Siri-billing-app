@@ -84,9 +84,42 @@ pub fn start_watch(api_base: &'static str) {
 
 /// The front door's entry point (live: the real database, online flag and key).
 pub async fn handle(req: Request, upstream_port: u16) -> Response {
+    if crate::direct::is_direct() {
+        return crate::direct::handle(req).await;              // piece 6: no Python, Rust talks to siri-api
+    }
     let key = FRONT_KEY.get().cloned().unwrap_or_default();
     let py = PYTHON_DIR.get().cloned().unwrap_or_default();
     handle_with(req, upstream_port, shadow::database(), is_online(), &key, &py).await
+}
+
+/// Who answers what Rust does not answer itself: the Python backend (pieces 1-5), or siri-api directly (piece 6).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Upstream {
+    Python(u16),
+    Siri,
+}
+
+impl From<u16> for Upstream {
+    fn from(port: u16) -> Self {
+        Upstream::Python(port)
+    }
+}
+
+async fn forward(req: Request, up: Upstream) -> Response {
+    match up {
+        Upstream::Python(port) => front_door::proxy(req, port).await,
+        Upstream::Siri => crate::direct::forward(req).await,
+    }
+}
+
+/// The Python side's data folder, when known (its bill copies and passes are still read).
+pub fn python_dir() -> Option<std::path::PathBuf> {
+    PYTHON_DIR.get().cloned()
+}
+
+/// base64url text -> bytes (for reading the person out of a token).
+pub fn decode_b64url(s: &str) -> Option<Vec<u8>> {
+    base64url(s)
 }
 
 fn replayable(method: &Method, path: &str) -> bool {
@@ -179,14 +212,15 @@ fn json_response(status: StatusCode, body: Value) -> Response {
     r
 }
 
-pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static OfflineDb>, online: bool, key: &str,
+pub async fn handle_with(req: Request, up: impl Into<Upstream>, db: Option<&'static OfflineDb>, online: bool, key: &str,
                          python_dir: &std::path::Path) -> Response {
     let method = req.method().clone();
     let path = req.uri().path().to_string();
     let path_and_query = req.uri().path_and_query().map(|p| p.as_str().to_string()).unwrap_or_else(|| path.clone());
+    let up: Upstream = up.into();
 
-    // ---- login with no internet: Rust's scrambled copies (every cashier of the store)
-    if !online && method == Method::POST && path == "/api/auth/login" {
+    // ---- login with no internet: Rust's scrambled copies (every cashier of the store). Direct mode logs in itself.
+    if !online && method == Method::POST && path == "/api/auth/login" && matches!(up, Upstream::Python(_)) {
         if let Some(db) = db {
             let (parts, body) = req.into_parts();
             let bytes = axum::body::to_bytes(body, 64 * 1024).await.unwrap_or_default();
@@ -207,7 +241,7 @@ pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static O
                     .header("X-Front-Door-Key", key)
                     .body(Body::from(user.to_string()))
                     .unwrap();
-                let answer = front_door::proxy(session, upstream_port).await;
+                let answer = forward(session, up).await;
                 if answer.status() == StatusCode::OK {
                     OFFLINE_LOGINS.fetch_add(1, Ordering::Relaxed);
                     return answer;
@@ -215,7 +249,7 @@ pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static O
             }
             // no copy, a wrong password or no session: Python's own offline login decides, as before
             let again = Request::from_parts(parts, Body::from(bytes));
-            return front_door::proxy(again, upstream_port).await;
+            return forward(again, up).await;
         }
     }
 
@@ -230,7 +264,7 @@ pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static O
     if method == Method::GET && (path == "/api/bills" || path.starts_with("/api/bills/")) {
         if let Some(db) = db {
             if path == "/api/bills" {
-                let answer = front_door::proxy(req, upstream_port).await;
+                let answer = forward(req, up).await;
                 if answer.status() != StatusCode::OK {
                     return answer;
                 }
@@ -260,7 +294,7 @@ pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static O
         if let Some(db) = db {
             if online {
                 // pass through; remember the number siri-api / the backend gave, so offline numbers continue after it
-                let answer = front_door::proxy(req, upstream_port).await;
+                let answer = forward(req, up).await;
                 if answer.status().is_success() {
                     let (parts, body) = answer.into_parts();
                     let bytes = axum::body::to_bytes(body, 4 * 1024 * 1024).await.unwrap_or_default();
@@ -302,7 +336,7 @@ pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static O
                 }
             }
             // not a bill Rust can take (or no login on it): the Python side decides, as before
-            return front_door::proxy(Request::from_parts(parts, Body::from(bytes)), upstream_port).await;
+            return forward(Request::from_parts(parts, Body::from(bytes)), up).await;
         }
     }
 
@@ -340,7 +374,7 @@ pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static O
                                                    &format!("could not queue {action:?} offline: {e}; the backend takes it")),
                     Err(_) => {}
                 }
-                return front_door::proxy(Request::from_parts(parts, Body::from(bytes)), upstream_port).await;
+                return forward(Request::from_parts(parts, Body::from(bytes)), up).await;
             }
         }
     }
@@ -349,7 +383,7 @@ pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static O
     if method == Method::GET && (path == "/api/store-damage-returns" || path == "/api/return-orders") {
         if let Some(db) = db {
             let who = person(req.headers());
-            let answer = front_door::proxy(req, upstream_port).await;
+            let answer = forward(req, up).await;
             if answer.status() != StatusCode::OK || who == "-" {
                 return answer;
             }
@@ -399,9 +433,9 @@ pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static O
                     }
                     return r;
                 }
-                return front_door::proxy(req, upstream_port).await;
+                return forward(req, up).await;
             }
-            let answer = front_door::proxy(req, upstream_port).await;
+            let answer = forward(req, up).await;
             let ctype = answer.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
             if answer.status() == StatusCode::OK && ctype.starts_with("application/json") && who != "-" {
                 let (parts, body) = answer.into_parts();
@@ -436,10 +470,10 @@ pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static O
                 }
                 return r;
             }
-            return front_door::proxy(req, upstream_port).await;
+            return forward(req, up).await;
         }
         // online: pass through, and remember a good JSON answer for later
-        let answer = front_door::proxy(req, upstream_port).await;
+        let answer = forward(req, up).await;
         let ctype = answer.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
         if answer.status() == StatusCode::OK && ctype.starts_with("application/json") && who != "-" {
             if let Some(db) = db {
@@ -461,7 +495,7 @@ pub async fn handle_with(req: Request, upstream_port: u16, db: Option<&'static O
         return answer;
     }
 
-    front_door::proxy(req, upstream_port).await
+    forward(req, up).await
 }
 
 #[cfg(test)]

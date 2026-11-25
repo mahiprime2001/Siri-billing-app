@@ -41,7 +41,8 @@ tauri-plugin-single-instance = "2.4.0"
 rusqlite = { version = "0.32", features = ["bundled"] }
 # The local /api "front door" in front of the Python backend (Rust offline mode, milestone 1).
 axum = "0.8"
-tokio = { version = "1", features = ["net", "rt-multi-thread", "macros", "time"] }
+tokio = { version = "1", features = ["net", "rt-multi-thread", "macros", "time", "sync"] }
+futures-util = { version = "0.3", default-features = false }
 # Checking offline logins against the scrambled copies (PBKDF2-HMAC-SHA256), Rust offline mode piece 2.
 hmac = "0.12"
 sha2 = "0.10"

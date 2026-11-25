@@ -42,6 +42,10 @@ pub fn start(python_data_dir: PathBuf) {
 
 /// The siri-api token the Python side holds (`None` when nobody has logged in online yet).
 pub fn borrowed_token(python_data_dir: &Path) -> Option<String> {
+    // piece 6: a token from Rust's own logins first
+    if let Some(t) = crate::direct::any_siri_token() {
+        return Some(t);
+    }
     let text = std::fs::read_to_string(python_data_dir.join("siri_session.json")).ok()?;
     let v: Value = serde_json::from_str(&text).ok()?;
     v.get("access_token").and_then(Value::as_str).filter(|t| !t.is_empty()).map(str::to_string)

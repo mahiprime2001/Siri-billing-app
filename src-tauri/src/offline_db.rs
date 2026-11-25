@@ -16,7 +16,7 @@ use std::time::SystemTime;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
 
 pub struct OfflineDb {
     conn: Mutex<Connection>,
@@ -202,6 +202,23 @@ impl OfflineDb {
                      updated_at   TEXT NOT NULL,
                      UNIQUE (kind, request_id)
                  );",
+            )?;
+        }
+        if version < 6 {
+            // Slice 6 (piece 6): Rust's own logins (no Python). One row per signed-in screen session; the siri-api
+            // token is kept so the PC can call siri-api for that person (like Python's data/siri_session.json).
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS sessions (
+                     sid         TEXT PRIMARY KEY,
+                     user_id     TEXT NOT NULL,
+                     email       TEXT NOT NULL,
+                     name        TEXT NOT NULL DEFAULT '',
+                     role        TEXT NOT NULL DEFAULT 'user',
+                     siri_token  TEXT,
+                     created_at  TEXT NOT NULL,
+                     last_seen   TEXT NOT NULL
+                 );
+                 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);",
             )?;
         }
         conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;

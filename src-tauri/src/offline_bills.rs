@@ -147,6 +147,17 @@ pub fn queue_bill(db: &OfflineDb, user_id: &str, payload: &Value, python_dir: &P
     })
 }
 
+/// The highest serial of today's bills still waiting in Rust's queue for this store (sent to siri-api with an online
+/// bill as `_min_serial`, so an online number never takes one a queued offline bill already holds). 0 = none.
+pub fn pending_serial_hint(db: &OfflineDb, store_id: &str, now: chrono::DateTime<Utc>) -> u32 {
+    db.with_conn(|c| {
+        let prefix = format!("INV-{}-{}", store_code(c, store_id), ist_day(now));
+        let mut stmt = c.prepare("SELECT bill_id FROM offline_bills WHERE store_id = ?1 AND status <> 'sent'")?;
+        let ids: Vec<String> = stmt.query_map(params![store_id], |r| r.get(0))?.flatten().collect();
+        Ok(ids.iter().map(|id| serial(id, &prefix)).max().unwrap_or(0))
+    }).unwrap_or(0)
+}
+
 /// What the screen hears for a queued bill (the same answer the Python side gives).
 pub fn queued_answer(q: &Queued) -> Value {
     json!({ "queued": true, "bill_id": q.bill_id, "queue_id": q.queue_id, "message": QUEUED_MESSAGE })
@@ -204,6 +215,10 @@ pub fn adjust_products(body: &[u8], sold: &HashMap<String, f64>) -> Vec<u8> {
 
 /// The cashier's replay pass for this store (kept by the Python side).
 pub(crate) fn replay_pass(python_dir: &Path, user_id: &str, store_id: &str) -> Option<String> {
+    // piece 6: the passes Rust got at its own logins come first
+    if let Some(p) = crate::shadow::database().and_then(|db| crate::direct::rust_replay_pass(db, user_id, store_id)) {
+        return Some(p);
+    }
     let v: Value = serde_json::from_str(&std::fs::read_to_string(python_dir.join("siri_session.json")).ok()?).ok()?;
     let own = v.get("replay_by_user").and_then(|m| m.get(user_id)).and_then(|m| m.get(store_id)).and_then(Value::as_str);
     let any = v.get("replay_tokens").and_then(|m| m.get(store_id)).and_then(Value::as_str);
@@ -370,6 +385,7 @@ pub fn replay_once(db: &OfflineDb, python_dir: &Path, api_base: &str) -> Vec<(St
                 outcomes.push((bill_id, format!("sent as {made}")));
             }
             Ok(r) if r.status().as_u16() == 401 => {
+                crate::direct::pass_refused(&user_id, &store_id);
                 outcomes.push((bill_id, "replay pass refused: waiting for the next login".into()));
                 break;
             }

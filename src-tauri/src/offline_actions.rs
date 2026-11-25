@@ -481,6 +481,37 @@ pub fn merge_customers(db: &OfflineDb, body: &[u8]) -> Vec<u8> {
     serde_json::to_vec(&added).unwrap_or_else(|_| body.to_vec())
 }
 
+/// Piece 6: a write siri-api may or may not have done (its answer was lost), or never saw. It is queued EXACTLY as it
+/// was sent, under the same request id: the replay route answers a repeat with what it already made, so it is never
+/// done twice. `target`: the transfer order or notification id. (HTTP status, answer) for the screen.
+pub fn queue_unsure(db: &OfflineDb, kind: &str, request_id: &str, user_id: &str, target: &str, body: &Value,
+                    now: chrono::DateTime<Utc>) -> rusqlite::Result<(u16, Value)> {
+    let store_id = crate::offline_bills::store_of(db, user_id).unwrap_or_default();
+    let count = |list: &str| body.get(list).and_then(Value::as_array).map(|a| a.len()).unwrap_or(0);
+    let saved_note = "The server did not answer in time: saved on this computer, it will be sent automatically.";
+    db.with_conn(|c| {
+        let tx = c.transaction()?;
+        let queue_id = format!("QUN-{}", random_hex(&tx, 6)?.to_lowercase());
+        let (stored, answer) = match kind {
+            DAMAGE => (body.clone(), json!({"message": "Damage return submitted", "count": count("selectedItems"),
+                                             "queued": true, "rows": [], "queue_id": queue_id, "note": saved_note})),
+            RETURN_ORDER => (body.clone(), json!({"message": "Return order submitted", "queued": true, "count": count("items"),
+                                                   "return": Value::Null, "items": [], "queue_id": queue_id, "note": saved_note})),
+            CUSTOMER_RETURN => (body.clone(), json!({"message": "Return request saved on this computer; it will be sent automatically",
+                                                      "returnId": derived_return_id(user_id, request_id, 0),
+                                                      "count": count("selectedItems"), "queued": true, "queue_id": queue_id})),
+            TRANSFER => (body.clone(), json!({"queued": true, "queue_id": queue_id, "verification_session_id": request_id,
+                                               "message": TRANSFER_MESSAGE})),
+            NOTE_READ => (json!({}), json!({"id": target.parse::<i64>().map(Value::from).unwrap_or(json!(target)),
+                                            "is_read": true, "queued": true, "queue_id": queue_id})),
+            _ => return Ok((400, json!({"message": format!("{kind} cannot be queued")}))),
+        };
+        let kept = save(&tx, kind, request_id, user_id, &store_id, target, &stored, &answer, now)?;
+        tx.commit()?;
+        Ok((202, kept))
+    })
+}
+
 // ------------------------------------------------------------------------------------------------ lists and stock
 
 /// (kept answer, status) of every action of `kind` at `store_id` not sent yet, newest first.
@@ -665,6 +696,7 @@ pub fn replay_once(db: &OfflineDb, python_dir: &Path, api_base: &str) -> Vec<(St
                 outcomes.push((request_id, "sent".into()));
             }
             Ok(r) if r.status().as_u16() == 401 => {
+                crate::direct::pass_refused(&user_id, &store_id);
                 outcomes.push((request_id, "replay pass refused: waiting for the next login".into()));
                 break;
             }

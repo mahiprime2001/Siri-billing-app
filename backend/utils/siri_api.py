@@ -44,7 +44,7 @@ SWITCH_REFRESH_SECONDS = 120      # how long the switches are trusted before ask
 SWITCH_RETRY_SECONDS = 30         # after a failed ask, wait this long before asking again
 SWITCH_MAX_AGE_SECONDS = 24 * 3600  # a remembered answer older than this is not trusted
 GROUPS = ("reads", "bills_read", "bills_write", "returns", "transfers", "discounts", "small_writes", "auth", "sync",
-          "rust_front")   # rust_front: read by the Rust side at start-up (front_door.rs), not by this backend
+          "rust_front", "rust_direct")   # rust_front / rust_direct: read by the Rust side at start-up (front_door.rs)
 # Error kinds (the exception's class name) that mean the request never reached siri-api.
 _NOT_SENT_ERRORS = ("ConnectError", "ConnectTimeout", "PoolTimeout", "UnsupportedProtocol", "InvalidURL", "ProxyError",
                     "no siri-api session", "no replay pass for this cashier")

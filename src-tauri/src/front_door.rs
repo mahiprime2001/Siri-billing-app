@@ -45,19 +45,35 @@ fn hop_by_hop(name: &str) -> bool {
 /// Should this start use the front door? `python_switches` = the Python side's remembered switches file,
 /// `own` = Rust's own remembered decision. A fresh answer from siri-api wins; otherwise the last decision; else off.
 pub fn wanted(python_switches: &Path, own: &Path) -> bool {
-    let from_python = std::fs::read_to_string(python_switches)
-        .ok()
-        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-        .and_then(|v| v.get("switches").and_then(|s| s.get(SWITCH)).and_then(Value::as_bool));
-    if let Some(on) = from_python {
-        let _ = std::fs::write(own, json!({ "rust_front": on }).to_string());
-        return on;
+    switch(python_switches, own, SWITCH)
+}
+
+/// Piece 6: is the store's `rust_direct` switch on (Rust talks to siri-api itself, no Python)? Default off.
+pub fn direct_wanted(python_switches: &Path, own: &Path) -> bool {
+    switch(python_switches, own, "rust_direct")
+}
+
+/// One switch, from whichever copy heard from siri-api last: the Python side's (data/siri_switches.json) or Rust's
+/// own (front_door.json, written by direct mode, which runs without Python, so Python's copy then goes stale).
+/// The answer is remembered in Rust's copy without touching its other switches.
+fn switch(python_switches: &Path, own: &Path, name: &str) -> bool {
+    let read = |p: &Path| std::fs::read_to_string(p).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok());
+    let at = |v: &Value| v.get("fetched_at").and_then(Value::as_f64).unwrap_or(0.0);
+    let from_python = read(python_switches)
+        .and_then(|v| v.pointer(&format!("/switches/{name}")).and_then(Value::as_bool).map(|on| (on, at(&v))));
+    let mut mine = read(own).filter(Value::is_object).unwrap_or_else(|| json!({}));
+    let from_own = mine.get(name).and_then(Value::as_bool).map(|on| (on, at(&mine)));
+    let on = match (from_python, from_own) {
+        (Some((p, pa)), Some((o, oa))) => if oa > pa { o } else { p },
+        (Some((p, _)), None) => p,
+        (None, Some((o, _))) => o,
+        (None, None) => false,
+    };
+    if from_own.map(|(o, _)| o) != Some(on) {
+        mine[name] = json!(on);
+        let _ = std::fs::write(own, mine.to_string());
     }
-    std::fs::read_to_string(own)
-        .ok()
-        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-        .and_then(|v| v.get(SWITCH).and_then(Value::as_bool))
-        .unwrap_or(false)
+    on
 }
 
 pub fn own_decision_file(app_data_dir: &Path) -> PathBuf {
@@ -181,6 +197,22 @@ mod tests {
         assert!(wanted(&py, &own));
         std::fs::write(&py, r#"{"switches": {"rust_front": false}}"#).unwrap();
         assert!(!wanted(&py, &own));
+    }
+
+    #[test]
+    fn with_python_stopped_rusts_newer_copy_of_the_switches_wins() {
+        let d = tmp("direct-wanted");
+        let py = d.join("siri_switches.json");
+        let own = d.join("front_door.json");
+        let _ = std::fs::remove_file(&own);
+        std::fs::write(&py, r#"{"fetched_at": 100, "switches": {"rust_front": true, "rust_direct": true}}"#).unwrap();
+        assert!(wanted(&py, &own) && direct_wanted(&py, &own));
+        // direct mode heard from siri-api later (Python no longer runs): an admin turned rust_direct off
+        std::fs::write(&own, r#"{"fetched_at": 200, "rust_front": true, "rust_direct": false}"#).unwrap();
+        assert!(!direct_wanted(&py, &own), "the stale Python copy does not turn it back on");
+        assert!(wanted(&py, &own));
+        let kept: Value = serde_json::from_str(&std::fs::read_to_string(&own).unwrap()).unwrap();
+        assert_eq!((kept["rust_direct"].clone(), kept["fetched_at"].clone()), (json!(false), json!(200)), "nothing else wiped");
     }
 
     #[test]

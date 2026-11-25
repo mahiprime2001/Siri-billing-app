@@ -30,6 +30,7 @@ mod rust_sync;
 mod offline_answers;
 mod offline_bills;
 mod offline_actions;
+mod direct;
 
 /// A fresh random key each start: proves to the local Python backend that a session request comes from the front door.
 /// 32 random bytes from SQLite's randomness (seeded from the operating system's secure random source).
@@ -601,10 +602,23 @@ fn main() {
                         rust_sync::start(py_data.clone());
                         // piece 4: offline bills are numbered and queued by Rust, and sent through siri-api when online
                         offline_answers::set_python_dir(py_data.clone());
-                        offline_bills::start_replay(py_data, "https://api.ifleon.com");
+                        offline_bills::start_replay(py_data.clone(), "https://api.ifleon.com");
+                        // piece 6: with `rust_direct` on too, Rust talks to siri-api itself and Python is not started,
+                        // unless Python's own offline queues still hold work from before (Python must send it first)
+                        let own = front_door::own_decision_file(&app_data_dir);
+                        if front_door::direct_wanted(&py_data.join("siri_switches.json"), &own) {
+                            if direct::python_has_queued_work(&py_data) {
+                                store_log::event("warn", "direct",
+                                                 "rust_direct is on, but the Python side still has queued work: starting Python this time");
+                            } else {
+                                direct::start("https://api.ifleon.com", own);
+                            }
+                        }
                     }
                 }
-                store_log::event("info", "front", &format!("mode={}", if use_front_door { "rust front door" } else { "python only" }));
+                let mode = if direct::is_direct() { "rust direct (no python)" }
+                           else if use_front_door { "rust front door" } else { "python only" };
+                store_log::event("info", "front", &format!("mode={mode}"));
 
                 info!("=================================================");
                 info!("🔄 Updater Configuration");
@@ -634,7 +648,9 @@ fn main() {
                     .map(|r| r.status().is_success())
                     .unwrap_or(false);
 
-                if backend_already_running {
+                if direct::is_direct() {
+                    info!("✅ Rust direct mode: the Python backend is not started.");
+                } else if backend_already_running {
                     info!("✅ Backend already running and healthy on :8080 — reusing it, not spawning a duplicate.");
                 } else {
                     let cmd = handle.shell().sidecar("Siribilling-backend")?
