@@ -264,6 +264,49 @@ class SiriApi:
         logger.info("SIRI_API login not done status=%s error=%s ms=%d", resp.status, resp.error, resp.elapsed_ms)
         return ("unreachable", None)
 
+    def keep_trying_login(self, email: str, password: str, every: float = 60.0, give_up_after: float = 12 * 3600) -> None:
+        """After an OFFLINE login: keep trying to log in to siri-api in the background until the internet is back
+        (then the token, the replay passes and the switches are fresh again). Without this, a PC that only ever
+        logged in offline never refreshed its switches and after 24 hours treated them all as off.
+        One retry thread per person; stops on success, on a refused password, or after `give_up_after` seconds.
+        The password lives only in this thread's memory, never on disk."""
+        key = (email or "").strip().lower()
+        with self._lock:
+            active = getattr(self, "_login_retries", None)
+            if active is None:
+                active = self._login_retries = set()
+            if key in active:
+                return
+            active.add(key)
+
+        def run():
+            started = time.time()
+            try:
+                while time.time() - started < give_up_after:
+                    verdict, _user = self.login_verdict(email, password)
+                    if verdict == "ok":
+                        try:
+                            self.switches(force=True)
+                        except Exception:  # noqa: BLE001
+                            pass
+                        logger.info("SIRI_API login restored after an offline login (%s)", key)
+                        return
+                    if verdict == "refused":
+                        try:
+                            from utils import offline_credentials
+                            offline_credentials.forget(email)
+                        except Exception:  # noqa: BLE001
+                            pass
+                        logger.warning("SIRI_API password no longer accepted for %s: offline copy removed", key)
+                        return
+                    time.sleep(every)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("SIRI_API login retry stopped: %s", e)
+            finally:
+                with self._lock:
+                    self._login_retries.discard(key)
+        threading.Thread(target=run, name="siri-api-login-retry", daemon=True).start()
+
     def login_in_background(self, email: str, password: str) -> None:
         """Fire and forget: the cashier's own login must never wait for, or fail because of, siri-api."""
         def run():

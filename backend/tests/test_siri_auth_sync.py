@@ -44,6 +44,7 @@ class AuthBase(ClientBase):
         app.register_blueprint(auth_routes.auth_bp)
         self.client = app.test_client()
         self.old_db = mock.MagicMock(name="old_db")
+        self.old_db.is_offline_fallback = False        # the real database client (a MagicMock would say "yes")
         self.old_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
             {"id": "cashier-1", "email": "a@x.com", "password": "pw", "name": "Asha", "role": "billing_user"}]
         p = mock.patch.object(auth_routes, "get_supabase_client", return_value=self.old_db)
@@ -110,6 +111,41 @@ class LoginTests(AuthBase):
         self.siri.routes[("POST", "/api/auth/login")] = (401, {"error": "Invalid credentials"})
         self.post_login("changed-elsewhere")
         self.assertIsNone(offline_credentials.check("a@x.com", "pw"))
+
+    def test_nellore_25_nov_switches_gone_stale_offline_the_copy_still_lets_the_cashier_in(self):
+        """Copy saved online; later the app sees `auth` as off (stale switches), the internet is down and the local
+        user list has no passwords. Before the fix: 16x "invalid password". Now: the copy is used."""
+        self.turn_on(auth=True)
+        self.assertEqual(self.post_login().status_code, 200)                # online: copy saved
+        self.turn_on(auth=False)                                             # switches look off now
+        self.siri.fail = httpx.ConnectError("getaddrinfo failed")
+        self.old_db.table.return_value.select.return_value.eq.return_value.execute.side_effect = Exception("getaddrinfo failed")
+        started = []
+        with mock.patch.object(self.api, "keep_trying_login", lambda e, p, **k: started.append(e)),              mock.patch.object(auth_routes, "_find_local_user_by_email",
+                               return_value={"id": "cashier-1", "email": "a@x.com", "name": "Asha", "role": "billing_user"}):
+            r = self.post_login()
+            self.assertEqual((r.status_code, r.get_json()["user"]["id"]), (200, "cashier-1"))
+            self.assertEqual(self.post_login("wrong").status_code, 401)
+        self.assertEqual(started, ["a@x.com"])                               # the siri-api login is retried later
+
+    def test_the_local_offline_stand_in_counts_as_no_internet_too(self):
+        self.turn_on(auth=True)
+        self.post_login()
+        self.turn_on(auth=False)
+        self.siri.fail = httpx.ConnectError("no internet")
+        stand_in = mock.MagicMock(name="offline_stand_in", is_offline_fallback=True)
+        stand_in.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+            {"id": "cashier-1", "email": "a@x.com", "name": "Asha", "role": "billing_user"}]          # no password left
+        with mock.patch.object(auth_routes, "get_supabase_client", return_value=stand_in),              mock.patch.object(self.api, "keep_trying_login", lambda *a, **k: None):
+            self.assertEqual(self.post_login().status_code, 200)
+
+    def test_online_the_copy_is_never_used_instead_of_the_real_check(self):
+        self.turn_on(auth=True)
+        self.post_login()
+        self.turn_on(auth=False)
+        self.old_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+            {"id": "cashier-1", "email": "a@x.com", "password": "new-password", "role": "billing_user"}]
+        self.assertEqual(self.post_login("pw").status_code, 401)            # database reachable: its answer stands
 
     def test_offline_with_no_copy_falls_back_to_the_old_way_until_the_lockdown(self):
         self.turn_on(auth=True)

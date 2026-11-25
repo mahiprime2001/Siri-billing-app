@@ -74,9 +74,31 @@ def _login_through_siri(email, password):
     offline_user = offline_credentials.check(email, password)
     if offline_user:
         app.logger.info(f"SIRI_API auth offline login ok user={offline_user['id']} (siri-api not reachable)")
+        _restore_siri_login_later(email, password)
         return _login_response(offline_user["id"], email, offline_user.get("name") or "Unknown", offline_user.get("role") or "user")
     app.logger.warning(f"SIRI_API FALLBACK group=auth login for {email}: siri-api not reachable and no offline copy")
     return None
+
+
+def _restore_siri_login_later(email, password):
+    """An offline login: keep trying the siri-api login in the background so the token and switches come back."""
+    try:
+        get_siri_client().keep_trying_login(email, password)
+    except Exception as e:  # noqa: BLE001
+        app.logger.warning(f"SIRI_API login retry could not start: {e}")
+
+
+def _offline_copy_login(email, password):
+    """No internet and the old check did not pass: a password siri-api accepted earlier on this PC (its scrambled
+    copy) is still good, whatever the switches say. (On 2026-11-25 Nellore's switches had gone stale offline, the
+    app took the old path, the local user list had no passwords any more, and every login said "invalid password".)"""
+    from utils import offline_credentials
+    offline_user = offline_credentials.check(email, password)
+    if not offline_user:
+        return None
+    app.logger.info(f"SIRI_API offline-copy login ok user={offline_user['id']} (no internet, old check could not pass)")
+    _restore_siri_login_later(email, password)
+    return _login_response(offline_user["id"], email, offline_user.get("name") or "Unknown", offline_user.get("role") or "user")
 
 
 @auth_bp.route('/login', methods=['POST'])
@@ -116,7 +138,15 @@ def login():
             # Offline fallback to local JSON cache
             user = _find_local_user_by_email(email)
 
+        # No internet: either the database call failed, or the client is the local offline stand-in (that one does
+        # not fail, it answers from the PC's own files). Both mean "the real database was not asked".
+        db_unreachable = supabase_error is not None or bool(getattr(supabase, "is_offline_fallback", False))
+
         if not user:
+            if db_unreachable:
+                by_copy = _offline_copy_login(email, password)
+                if by_copy is not None:
+                    return by_copy
             app.logger.warning(f"⚠️ [BACKEND-LOGIN] User not found: {email}")
             return jsonify({"message": "Invalid email or password"}), 401
         user_id = user['id']
@@ -126,6 +156,10 @@ def login():
         
         # Simple password comparison (no hashing)
         if password != stored_password:
+            if db_unreachable:
+                by_copy = _offline_copy_login(email, password)
+                if by_copy is not None:
+                    return by_copy
             app.logger.warning(f"⚠️ [BACKEND-LOGIN] Invalid password for user: {email}")
             return jsonify({"message": "Invalid email or password"}), 401
         
