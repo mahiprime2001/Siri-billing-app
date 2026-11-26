@@ -83,13 +83,78 @@ pub fn describe(port: u16) -> String {
     h.iter().map(|(pid, img)| format!("{} pid {pid}", if img.is_empty() { "?" } else { img })).collect::<Vec<_>>().join(", ")
 }
 
-/// Close a stale copy of this app (or, with `front_door`, a leftover backend) holding `port`. Returns how many were
+/// (pid, parent pid, program name) of every process, from PowerShell's CSV ("ProcessId","ParentProcessId","Name").
+pub fn parse_processes(csv: &str) -> Vec<(u32, u32, String)> {
+    csv.lines().filter_map(|l| {
+        let cols: Vec<String> = l.split("\",\"").map(|c| c.trim().trim_matches('"').to_string()).collect();
+        if cols.len() < 3 {
+            return None;
+        }
+        Some((cols[0].parse().ok()?, cols[1].parse().ok()?, cols[2].clone()))
+    }).collect()
+}
+
+fn processes() -> Vec<(u32, u32, String)> {
+    if !cfg!(target_os = "windows") {
+        return Vec::new();
+    }
+    parse_processes(&run("powershell", &["-NoProfile", "-NonInteractive", "-Command",
+        "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name | ConvertTo-Csv -NoTypeInformation"]))
+}
+
+/// Backends left behind by an app that is gone (their parent process no longer exists). Not `own_pid`'s children.
+pub fn orphan_backends(procs: &[(u32, u32, String)], own_pid: u32) -> Vec<u32> {
+    let alive: std::collections::HashSet<u32> = procs.iter().map(|p| p.0).collect();
+    procs.iter()
+        .filter(|(_, ppid, name)| name.eq_ignore_ascii_case(BACKEND_IMAGE) && *ppid != own_pid && !alive.contains(ppid))
+        .map(|p| p.0).collect()
+}
+
+/// The children of a process that is gone, which may still hold its port (a socket handed down to them): only our
+/// own backend or a copy of this app.
+pub fn leftovers_of(procs: &[(u32, u32, String)], dead_pid: u32, own_image: &str, own_pid: u32) -> Vec<u32> {
+    procs.iter()
+        .filter(|(pid, ppid, name)| *ppid == dead_pid && *pid != own_pid
+            && (name.eq_ignore_ascii_case(BACKEND_IMAGE) || (!own_image.is_empty() && name.eq_ignore_ascii_case(own_image))))
+        .map(|p| p.0).collect()
+}
+
+/// At start: close every backend left behind by an app that is gone (after an update or a crash). A leftover from
+/// an older version must not be reused, nor keep a port. Cheap when there is none (one tasklist call).
+pub fn close_orphan_backends() -> usize {
+    if !cfg!(target_os = "windows") {
+        return 0;
+    }
+    let listed = run("tasklist", &["/FI", &format!("IMAGENAME eq {BACKEND_IMAGE}"), "/FO", "CSV", "/NH"]);
+    if image_name(&listed).is_none() {
+        return 0;
+    }
+    let mut closed = 0;
+    for pid in orphan_backends(&processes(), std::process::id()) {
+        store_log::event("warn", "front", &format!("a backend left behind by an earlier run (pid {pid}): closing it"));
+        run("taskkill", &["/PID", &pid.to_string(), "/T", "/F"]);
+        closed += 1;
+    }
+    closed
+}
+
+/// Close a stale copy of this app (or, with `front_door`, a leftover backend) holding `port`. When the port's listed
+/// owner no longer exists, its leftover children (our backend / a copy of this app) are closed. Returns how many were
 /// closed. Waits up to 5 s for the port to come free.
 pub fn free_port(port: u16, front_door: bool) -> usize {
     let (own, me) = (own_image(), std::process::id());
     let mut closed = 0;
     for (pid, image) in holders(port) {
-        if should_close(&image, pid, &own, me, front_door) {
+        if image.is_empty() && pid != me {
+            // netstat names a process that has exited: the port is held by something it handed it down to
+            let kids = leftovers_of(&processes(), pid, &own, me);
+            store_log::event("warn", "front", &format!(
+                "port :{port} is listed under pid {pid}, which has exited; leftovers of it closed: {kids:?}"));
+            for kid in kids {
+                run("taskkill", &["/PID", &kid.to_string(), "/T", "/F"]);
+                closed += 1;
+            }
+        } else if should_close(&image, pid, &own, me, front_door) {
             store_log::event("warn", "front", &format!("port :{port} held by a stale {image} (pid {pid}): closing it"));
             run("taskkill", &["/PID", &pid.to_string(), "/T", "/F"]);
             closed += 1;
@@ -151,6 +216,22 @@ Active Connections
         assert!(!should_close("Siri-Billing-App.exe", 5, "", 999, true), "own name unknown: close nothing of that name");
     }
 
+    #[test]
+    fn leftover_backends_of_a_gone_app_are_found_and_nothing_else() {
+        let csv = "\"ProcessId\",\"ParentProcessId\",\"Name\"\r\n\"4\",\"0\",\"System\"\r\n\"900\",\"4\",\"explorer.exe\"\r\n\
+                   \"10068\",\"5520\",\"Siribilling-backend.exe\"\r\n\"12100\",\"7000\",\"Siribilling-backend.exe\"\r\n\
+                   \"7000\",\"900\",\"Siri-Billing-App.exe\"\r\n\"3333\",\"5520\",\"msedgewebview2.exe\"\r\n\
+                   \"4444\",\"5520\",\"Siri-Billing-App.exe\"\r\n";
+        let procs = parse_processes(csv);
+        assert_eq!(procs.len(), 7, "the header line is skipped");
+        assert_eq!(orphan_backends(&procs, 7000), vec![10068], "the running app's own backend (12100) is kept");
+        assert_eq!(orphan_backends(&procs, 1), vec![10068]);
+        let mut kids = leftovers_of(&procs, 5520, "Siri-Billing-App.exe", 7000);
+        kids.sort();
+        assert_eq!(kids, vec![4444, 10068], "the browser view and anything else are left alone");
+        assert!(leftovers_of(&procs, 5520, "Siri-Billing-App.exe", 4444).contains(&10068), "never this process");
+    }
+
     /// Helper for the live test: run by a SECOND copy of this test program, holds port 18556 for 60 s.
     #[test]
     #[ignore]
@@ -179,6 +260,34 @@ Active Connections
         let foreign = std::net::TcpListener::bind("127.0.0.1:18557").unwrap();   // held by THIS process
         assert_eq!(free_port(18557, true), 0, "this process is never closed");
         drop(foreign);
+    }
+
+    #[test]
+    #[ignore]
+    fn live_a_backend_left_behind_by_a_gone_parent_is_closed() {
+        // cargo test --bin app port_guard::tests::live_a_backend -- --ignored --nocapture
+        // A copy of this test program named like the backend, started by a `cmd` that exits at once (so its parent is
+        // gone, as after the update at Nellore), holding port 18556.
+        let dir = std::env::temp_dir().join(format!("pg-orphan-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let fake = dir.join("Siribilling-backend.exe");
+        std::fs::copy(std::env::current_exe().unwrap(), &fake).unwrap();
+        let line = format!("Start-Process -FilePath '{}' -ArgumentList 'port_guard::tests::helper_hold_port_18556','--ignored','--exact' -WindowStyle Hidden",
+                           fake.display());
+        Command::new("powershell").args(["-NoProfile", "-Command", &line]).status().unwrap();
+        let start = std::time::Instant::now();
+        while holders(18556).is_empty() && start.elapsed().as_secs() < 20 {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        }
+        println!("before: {}", describe(18556));
+        let orphans = orphan_backends(&processes(), std::process::id());
+        println!("left-behind backends seen: {orphans:?}");
+        assert!(!orphans.is_empty());
+        assert!(close_orphan_backends() >= 1);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        println!("after: {}", describe(18556));
+        assert!(holders(18556).is_empty(), "the port is free again");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

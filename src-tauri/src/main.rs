@@ -595,6 +595,7 @@ fn main() {
                     .unwrap_or(false);
                 // A stale copy of this app (e.g. the old version left running by an update) must not keep :8080.
                 // Done before the front door and the backend start, so neither meets it.
+                port_guard::close_orphan_backends();
                 if port_guard::free_port(front_door::FRONT_PORT, use_front_door) > 0 {
                     store_log::event("warn", "front", "a stale copy was holding :8080 and was closed");
                 }
@@ -612,9 +613,10 @@ fn main() {
                         // piece 6: with `rust_direct` on too, Rust talks to siri-api itself and Python is not started,
                         // unless Python's own offline queues still hold work from before (Python must send it first)
                         let own = front_door::own_decision_file(&app_data_dir);
-                        // PAUSED (2026-11-26, Nellore): direct mode sent no CORS headers, so the screens' browser
-                        // blocked every answer (login failed). Off in code until that is fixed and tested in the real app.
-                        const DIRECT_MODE_ALLOWED: bool = false;
+                        // Was paused 2026-11-26 (Nellore): direct mode sent no CORS headers, so the screens' browser
+                        // blocked every answer. Fixed in front_door.rs (every answer carries CORS); the store switch
+                        // `rust_direct` decides again.
+                        const DIRECT_MODE_ALLOWED: bool = true;
                         if DIRECT_MODE_ALLOWED && front_door::direct_wanted(&py_data.join("siri_switches.json"), &own) {
                             if direct::python_has_queued_work(&py_data) {
                                 store_log::event("warn", "direct",

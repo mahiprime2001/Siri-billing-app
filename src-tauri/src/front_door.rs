@@ -80,16 +80,90 @@ pub fn own_decision_file(app_data_dir: &Path) -> PathBuf {
     app_data_dir.join("front_door.json")
 }
 
+/// The origins the screens run under (the same list Python's CORS setup allowed), matched exactly.
+pub fn cors_allowed(origin: &str) -> bool {
+    let host_port = |rest: &str, host: &str| rest.strip_prefix(host).map(|p| p.is_empty()
+        || (p.starts_with(':') && p.len() > 1 && p[1..].bytes().all(|b| b.is_ascii_digit()))).unwrap_or(false);
+    matches!(origin, "tauri://localhost" | "http://tauri.localhost" | "https://tauri.localhost")
+        || origin.strip_prefix("http://").map(|r| host_port(r, "localhost") || host_port(r, "127.0.0.1")).unwrap_or(false)
+}
+
+/// The answer to a browser pre-check (OPTIONS): allowed when the origin is one of the app's own.
+fn cors_preflight(origin: Option<&str>, headers: &axum::http::HeaderMap) -> Response {
+    let mut r = Response::new(Body::empty());
+    *r.status_mut() = StatusCode::NO_CONTENT;
+    if let Some(o) = origin {
+        let asked = headers.get("access-control-request-headers").and_then(|v| v.to_str().ok())
+            .unwrap_or("Content-Type, Authorization, X-Requested-With").to_string();
+        let h = r.headers_mut();
+        let set = |h: &mut axum::http::HeaderMap, k: &'static str, v: &str| {
+            if let Ok(v) = HeaderValue::from_str(v) {
+                h.insert(k, v);
+            }
+        };
+        set(h, "access-control-allow-origin", o);
+        set(h, "access-control-allow-credentials", "true");
+        set(h, "access-control-allow-methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
+        set(h, "access-control-allow-headers", &asked);
+        set(h, "access-control-max-age", "600");
+        set(h, "vary", "Origin");
+    }
+    r
+}
+
+/// Add the CORS permission to an answer that does not have it yet (Python's own answers already do).
+fn cors_decorate(r: &mut Response, origin: Option<&str>) {
+    let Some(o) = origin else { return };
+    let h = r.headers_mut();
+    if h.contains_key("access-control-allow-origin") {
+        return;
+    }
+    if let Ok(v) = HeaderValue::from_str(o) {
+        h.insert("access-control-allow-origin", v);
+    }
+    h.insert("access-control-allow-credentials", HeaderValue::from_static("true"));
+    h.insert("access-control-expose-headers", HeaderValue::from_static("X-Access-Token, Set-Cookie"));
+    h.append("vary", HeaderValue::from_static("Origin"));
+}
+
+/// Take the port with a socket child programs do NOT inherit. (A port handed down to the Python backend outlived the
+/// app after an update at Nellore: netstat then names the dead app, and calls to the port hang.)
+fn bind_not_inherited(port: u16) -> std::io::Result<tokio::net::TcpListener> {
+    let l = std::net::TcpListener::bind(("127.0.0.1", port))?;   // std opens sockets non-inheritable on Windows
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::io::AsRawSocket;
+        extern "system" {
+            fn SetHandleInformation(handle: isize, mask: u32, flags: u32) -> i32;
+        }
+        const HANDLE_FLAG_INHERIT: u32 = 1;
+        // belt and braces: make sure, whatever the socket library did
+        unsafe { SetHandleInformation(l.as_raw_socket() as isize, HANDLE_FLAG_INHERIT, 0) };
+    }
+    l.set_nonblocking(true)?;
+    tokio::net::TcpListener::from_std(l)
+}
+
 /// Start serving 127.0.0.1:`front_port`, passing everything to the backend on `upstream_port`.
 pub fn start(front_port: u16, upstream_port: u16) {
     tauri::async_runtime::spawn(async move {
         // piece 3: offline answers first (login, remembered reads); everything else passes to Python
-        let router = Router::new().fallback(move |req: Request| crate::offline_answers::handle(req, upstream_port));
+        // Every answer carries the browser's CORS permission (the screens run in a browser view whose origin is not
+        // localhost:8080): Rust's own answers need it as much as Python's. Pre-checks (OPTIONS) are answered here.
+        let router = Router::new().fallback(move |req: Request| async move {
+            let origin = req.headers().get("origin").and_then(|v| v.to_str().ok()).filter(|o| cors_allowed(o)).map(str::to_string);
+            if req.method() == Method::OPTIONS && req.headers().contains_key("access-control-request-method") {
+                return cors_preflight(origin.as_deref(), req.headers());
+            }
+            let mut answer = crate::offline_answers::handle(req, upstream_port).await;
+            cors_decorate(&mut answer, origin.as_deref());
+            answer
+        });
         // The port can still be held for a moment by a copy that is closing (or, after an update, by the old copy
         // left running): keep trying for up to 2 minutes instead of giving up after one try.
         let mut tries = 0u32;
         let listener = loop {
-            match tokio::net::TcpListener::bind(("127.0.0.1", front_port)).await {
+            match bind_not_inherited(front_port) {
                 Ok(l) => break Some(l),
                 Err(e) => {
                     tries += 1;
@@ -221,6 +295,53 @@ mod tests {
         assert!(wanted(&py, &own));
         std::fs::write(&py, r#"{"switches": {"rust_front": false}}"#).unwrap();
         assert!(!wanted(&py, &own));
+    }
+
+    #[test]
+    fn the_apps_own_origins_get_cors_and_nothing_else() {
+        for ok in ["http://tauri.localhost", "https://tauri.localhost", "tauri://localhost", "http://localhost",
+                   "http://localhost:3000", "http://127.0.0.1:8080"] {
+            assert!(cors_allowed(ok), "{ok}");
+        }
+        for no in ["http://localhost.evil.com", "http://evil.com", "https://localhost:3000", "http://localhost:", "null",
+                   "http://127.0.0.1:80x", "http://tauri.localhost.evil.com"] {
+            assert!(!cors_allowed(no), "{no}");
+        }
+        let mut asked = axum::http::HeaderMap::new();
+        asked.insert("access-control-request-headers", HeaderValue::from_static("authorization,content-type"));
+        let pre = cors_preflight(Some("http://tauri.localhost"), &asked);
+        assert_eq!(pre.status(), StatusCode::NO_CONTENT);
+        let h = pre.headers();
+        assert_eq!(h["access-control-allow-origin"], "http://tauri.localhost");
+        assert_eq!(h["access-control-allow-credentials"], "true");
+        assert_eq!(h["access-control-allow-headers"], "authorization,content-type");
+        assert!(cors_preflight(None, &asked).headers().get("access-control-allow-origin").is_none(), "a stranger gets no permission");
+        let mut r = Response::new(Body::empty());
+        cors_decorate(&mut r, Some("http://tauri.localhost"));
+        assert_eq!(r.headers()["access-control-allow-origin"], "http://tauri.localhost");
+        assert!(r.headers()["access-control-expose-headers"].to_str().unwrap().contains("X-Access-Token"));
+        let mut from_python = Response::new(Body::empty());
+        from_python.headers_mut().insert("access-control-allow-origin", HeaderValue::from_static("http://localhost:3000"));
+        cors_decorate(&mut from_python, Some("http://tauri.localhost"));
+        assert_eq!(from_python.headers()["access-control-allow-origin"], "http://localhost:3000", "Python's own is kept");
+    }
+
+    #[tokio::test]
+    async fn the_front_door_socket_is_not_handed_down_to_child_programs() {
+        let l = bind_not_inherited(0).unwrap();
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::io::AsRawSocket;
+            extern "system" {
+                fn GetHandleInformation(handle: isize, flags: *mut u32) -> i32;
+            }
+            let std_l = l.into_std().unwrap();
+            let mut flags = 0u32;
+            assert_ne!(unsafe { GetHandleInformation(std_l.as_raw_socket() as isize, &mut flags) }, 0);
+            assert_eq!(flags & 1, 0, "HANDLE_FLAG_INHERIT is off");
+        }
+        #[cfg(not(target_os = "windows"))]
+        drop(l);
     }
 
     #[test]
