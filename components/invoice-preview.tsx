@@ -75,6 +75,15 @@ export default function InvoicePreview({
   // before capture so the printout always shows the real saved invoice number.
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null)
   const [printError, setPrintError] = useState<string | null>(null)
+  // Once the bill is saved it lives here, with its real invoice number: the drawer then only PRINTS this bill (as
+  // often as needed) and never saves it again. A failed print used to leave "Print & Save" active, and pressing it
+  // again made a second bill (duplicates at Vastraalaya, 26 Nov 2026).
+  const [savedInvoice, setSavedInvoice] = useState<Invoice | null>(null)
+  const savedInvoiceRef = useRef<Invoice | null>(null)
+  const keepSaved = (saved: Invoice) => {
+    savedInvoiceRef.current = saved
+    setSavedInvoice(saved)
+  }
   const [discountApprovalStatus, setDiscountApprovalStatus] = useState<Invoice["discountApprovalStatus"]>(
     invoice.discountApprovalStatus || "not_required"
   )
@@ -297,7 +306,7 @@ export default function InvoicePreview({
     setFilteredCustomers([])
   }
 
-  const getUpdatedInvoice = (): Invoice => ({
+  const getUpdatedInvoice = (): Invoice => savedInvoiceRef.current ?? ({
     ...invoice,
     customerName,
     customerPhone,
@@ -374,7 +383,7 @@ export default function InvoicePreview({
   }
 
   const handleSaveClick = async () => {
-    if (isSaving) return
+    if (isSaving || savedInvoiceRef.current) return
     if (isDiscountBlocked) {
       toast({
         title: "Approval Required",
@@ -386,9 +395,13 @@ export default function InvoicePreview({
     if (!onSave) return
     setIsSaving(true)
     try {
-      const result = await Promise.resolve(onSave(getUpdatedInvoice()))
-      if (result !== false) {
-        onClose()
+      const toSave = getUpdatedInvoice()
+      const result = await Promise.resolve(onSave(toSave))
+      if (result) {
+        // saved: the drawer stays open showing the real invoice number; only Print / Close from here
+        const saved = typeof result === "object" ? { ...toSave, ...(result as Invoice) } : toSave
+        keepSaved(saved)
+        onUpdateInvoice?.(saved)
       }
     } finally {
       setIsSaving(false)
@@ -422,8 +435,9 @@ export default function InvoicePreview({
 
       const updatedInvoice = getUpdatedInvoice()
 
-      // Save first so print always uses the real persisted invoice number.
-      if (onPrintAndSave) {
+      // Save first so print always uses the real persisted invoice number. Already saved (a print that failed, or
+      // "Save Only" first): print that same bill again, never save a second one.
+      if (onPrintAndSave && !savedInvoiceRef.current) {
         console.log('💾 Saving invoice...')
         const saveResult = await Promise.resolve(onPrintAndSave(updatedInvoice))
         // Block printing on ANY falsy result (false / undefined / null). A failed
@@ -435,6 +449,7 @@ export default function InvoicePreview({
         if (typeof saveResult === "object") {
           Object.assign(updatedInvoice, saveResult)
         }
+        keepSaved({ ...updatedInvoice })
       }
 
       onUpdateInvoice?.(updatedInvoice)
@@ -521,6 +536,11 @@ export default function InvoicePreview({
         side="left"
         showOverlay={false}
         className="!w-[98vw] sm:!w-[96vw] lg:!w-[52vw] !max-w-none sm:!max-w-none overflow-y-auto p-4 sm:p-6"
+        // After a save the billing screen puts the cursor back in the barcode box: that must not close the drawer
+        // (it would hide the saved number and the Print button). While saving / printing, a click outside does
+        // not close it either; Close does.
+        onFocusOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => { if (isSaving || isPrinting) e.preventDefault() }}
       >
         <SheetHeader>
           <SheetTitle className="text-2xl font-bold">Invoice Preview</SheetTitle>
@@ -544,6 +564,7 @@ export default function InvoicePreview({
                 <Label htmlFor="customerName">Customer Name</Label>
                 <Input
                   id="customerName"
+                  disabled={!!savedInvoice}
                   value={customerName}
                   onChange={(e) => handleNameChange(e.target.value)}
                   onFocus={() => {
@@ -577,6 +598,7 @@ export default function InvoicePreview({
                 <Label htmlFor="customerPhone">Customer Phone</Label>
                 <Input
                   id="customerPhone"
+                  disabled={!!savedInvoice}
                   value={customerPhone}
                   onChange={(e) => handlePhoneChange(e.target.value)}
                   onFocus={() => {
@@ -612,7 +634,7 @@ export default function InvoicePreview({
                 <CreditCard className="h-4 w-4 mr-2" />
                 Payment Method
               </h3>
-              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+              <Select value={paymentMethod} onValueChange={setPaymentMethod} disabled={!!savedInvoice}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -790,7 +812,23 @@ export default function InvoicePreview({
         </div>
 
         {/* Action Buttons */}
+        {savedInvoice && (
+          <div className="mt-4 rounded-md border border-green-300 bg-green-50 px-4 py-2 text-center text-green-800" role="status">
+            Saved as <strong>{savedInvoice.id}</strong>. Use <strong>Print</strong> to print this bill (again if the
+            printer failed); it will not be saved twice.
+          </div>
+        )}
         <SheetFooter className="flex justify-center sm:justify-center space-x-4 mt-4">
+          {savedInvoice ? (
+            <Button
+              onClick={handlePrintAndSave}
+              className={`bg-blue-600 hover:bg-blue-700 ${isPrinting ? "animate-pulse" : ""}`}
+              disabled={isPrinting}
+            >
+              <Printer className="h-4 w-4 mr-2" />
+              {isPrinting ? "Printing..." : "Print"}
+            </Button>
+          ) : (
           <Button
             onClick={handlePrintAndSave}
             className={`bg-blue-600 hover:bg-blue-700 ${isPrinting ? "animate-pulse" : ""}`}
@@ -810,8 +848,9 @@ export default function InvoicePreview({
               </>
             )}
           </Button>
+          )}
 
-          {onSave && (
+          {onSave && !savedInvoice && (
             <Button onClick={handleSaveClick} variant="outline" disabled={isPrinting || isSaving || isDiscountBlocked}>
               <Save className="h-4 w-4 mr-2" />
               {isSaving ? "Saving..." : "Save Only"}

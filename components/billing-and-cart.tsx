@@ -2970,7 +2970,7 @@ export default function BillingAndCart({ onRequestTransferVerification, refreshS
           invoice={currentInvoice}
           isOpen={showPreview}
           onClose={() => setShowPreview(false)}
-          onSave={handleSaveInvoice ? (updatedInvoice) => handleSaveInvoice(updatedInvoice) : undefined}
+          onSave={handleSaveInvoice ? (updatedInvoice) => handleSaveInvoice(updatedInvoice, false, { closePreview: false }) : undefined}
           onPrintAndSave={handlePrintAndSave ? (updatedInvoice) => handlePrintAndSave(updatedInvoice) : undefined}
           onUpdateInvoice={handlePreviewInvoiceUpdate}
           initialPaperSize={"Thermal 80mm"}
