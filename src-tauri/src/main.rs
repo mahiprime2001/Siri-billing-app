@@ -612,7 +612,10 @@ fn main() {
                         // piece 6: with `rust_direct` on too, Rust talks to siri-api itself and Python is not started,
                         // unless Python's own offline queues still hold work from before (Python must send it first)
                         let own = front_door::own_decision_file(&app_data_dir);
-                        if front_door::direct_wanted(&py_data.join("siri_switches.json"), &own) {
+                        // PAUSED (2026-11-26, Nellore): direct mode sent no CORS headers, so the screens' browser
+                        // blocked every answer (login failed). Off in code until that is fixed and tested in the real app.
+                        const DIRECT_MODE_ALLOWED: bool = false;
+                        if DIRECT_MODE_ALLOWED && front_door::direct_wanted(&py_data.join("siri_switches.json"), &own) {
                             if direct::python_has_queued_work(&py_data) {
                                 store_log::event("warn", "direct",
                                                  "rust_direct is on, but the Python side still has queued work: starting Python this time");
