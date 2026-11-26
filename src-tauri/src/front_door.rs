@@ -85,14 +85,38 @@ pub fn start(front_port: u16, upstream_port: u16) {
     tauri::async_runtime::spawn(async move {
         // piece 3: offline answers first (login, remembered reads); everything else passes to Python
         let router = Router::new().fallback(move |req: Request| crate::offline_answers::handle(req, upstream_port));
-        match tokio::net::TcpListener::bind(("127.0.0.1", front_port)).await {
-            Ok(listener) => {
-                store_log::event("info", "front", &format!("front door on :{} -> backend :{}", front_port, upstream_port));
+        // The port can still be held for a moment by a copy that is closing (or, after an update, by the old copy
+        // left running): keep trying for up to 2 minutes instead of giving up after one try.
+        let mut tries = 0u32;
+        let listener = loop {
+            match tokio::net::TcpListener::bind(("127.0.0.1", front_port)).await {
+                Ok(l) => break Some(l),
+                Err(e) => {
+                    tries += 1;
+                    if tries == 1 || tries % 15 == 0 {
+                        let who = tokio::task::spawn_blocking(move || crate::port_guard::describe(front_port)).await.unwrap_or_default();
+                        store_log::event("error", "front", &format!(
+                            "front door could not take :{front_port} (try {tries}): {e}; held by {who}"));
+                    }
+                    if tries >= 120 {
+                        break None;
+                    }
+                    if tries % 5 == 0 {
+                        let _ = tokio::task::spawn_blocking(move || crate::port_guard::free_port(front_port, true)).await;
+                    }
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+            }
+        };
+        match listener {
+            Some(listener) => {
+                let after = if tries > 0 { format!(" (after {tries} tries)") } else { String::new() };
+                store_log::event("info", "front", &format!("front door on :{} -> backend :{}{}", front_port, upstream_port, after));
                 if let Err(e) = axum::serve(listener, router).await {
                     store_log::event("error", "front", &format!("front door stopped: {}", e));
                 }
             }
-            Err(e) => store_log::event("error", "front", &format!("front door could not take :{}: {}", front_port, e)),
+            None => store_log::event("error", "front", &format!("front door gave up on :{front_port} after 2 minutes")),
         }
     });
     tauri::async_runtime::spawn(async {

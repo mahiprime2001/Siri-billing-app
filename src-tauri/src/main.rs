@@ -31,6 +31,7 @@ mod offline_answers;
 mod offline_bills;
 mod offline_actions;
 mod direct;
+mod port_guard;
 
 /// A fresh random key each start: proves to the local Python backend that a session request comes from the front door.
 /// 32 random bytes from SQLite's randomness (seeded from the operating system's secure random source).
@@ -592,6 +593,11 @@ fn main() {
                     .and_then(|p| p.parent().map(|d| d.join("data").join("siri_switches.json")))
                     .map(|py| front_door::wanted(&py, &front_door::own_decision_file(&app_data_dir)))
                     .unwrap_or(false);
+                // A stale copy of this app (e.g. the old version left running by an update) must not keep :8080.
+                // Done before the front door and the backend start, so neither meets it.
+                if port_guard::free_port(front_door::FRONT_PORT, use_front_door) > 0 {
+                    store_log::event("warn", "front", "a stale copy was holding :8080 and was closed");
+                }
                 if use_front_door {
                     BACKEND_PORT.store(front_door::BACKEND_PORT_BEHIND, std::sync::atomic::Ordering::Relaxed);
                     offline_answers::set_front_key(FRONT_KEY.clone());
